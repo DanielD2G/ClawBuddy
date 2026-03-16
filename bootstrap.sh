@@ -151,7 +151,7 @@ fi
 
 # ── 6. Push DB schema ───────────────────────────────
 info "Pushing database schema..."
-docker compose exec api bunx prisma db push --skip-generate 2>&1 | tail -3
+docker compose exec api bunx prisma db push --schema=apps/api/prisma/schema.prisma 2>&1 | tail -3
 ok "Database schema is up to date"
 
 # ── 7. Sandbox images ───────────────────────────────
