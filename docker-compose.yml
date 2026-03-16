@@ -116,6 +116,8 @@ services:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
+      browsergrid:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "bun", "--eval", "fetch('http://localhost:4000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 10s

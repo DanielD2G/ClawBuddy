@@ -156,7 +156,13 @@ export const skillService = {
    * (only if they don't already exist).
    */
   async seedBundledSkills() {
-    const skillsDir = join(import.meta.dir ?? process.cwd(), '..', '..', 'skills')
+    // In dev: import.meta.dir = src/services/ → ../../skills = apps/api/skills ✓
+    // In prod bundle: import.meta.dir = dist/ → ../skills = apps/api/skills ✓
+    const baseDir = import.meta.dir ?? process.cwd()
+    const isDist = baseDir.endsWith('/dist') || baseDir.includes('/dist/')
+    const skillsDir = isDist
+      ? join(baseDir, '..', 'skills')
+      : join(baseDir, '..', '..', 'skills')
 
     let files: string[]
     try {
