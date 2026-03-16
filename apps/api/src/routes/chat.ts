@@ -106,81 +106,10 @@ app.post('/chat/sessions/:sessionId/approve', async (c) => {
     }
 
     return createSSEStream(async (emit) => {
-      // Track content block ordering for persistence
-      const orderedBlocks: Array<{ type: 'text'; text: string } | { type: 'tool'; toolIndex: number }> = []
-      let toolCounter = 0
-      const trackingEmit: typeof emit = (event, data) => {
-        if (event === 'content' && (data as { text?: string }).text) {
-          const text = (data as { text: string }).text
-          const last = orderedBlocks[orderedBlocks.length - 1]
-          if (last && last.type === 'text') {
-            last.text += text
-          } else {
-            orderedBlocks.push({ type: 'text', text })
-          }
-        } else if (event === 'tool_start') {
-          orderedBlocks.push({ type: 'tool', toolIndex: toolCounter++ })
-        }
-        emit(event, data)
-      }
+      // Agent loop now saves ChatMessages per-iteration directly
+      const result = await agentService.resumeAgentLoop(sessionId, emit)
 
-      const result = await agentService.resumeAgentLoop(sessionId, trackingEmit)
-
-      if (result.content) {
-        const generatedFiles = result.toolExecutions
-          .filter((te) => te.toolName === 'generate_file' && te.output && !te.error)
-          .map((te) => {
-            try {
-              const parsed = JSON.parse(te.output!)
-              if (parsed.filename && parsed.downloadUrl) {
-                return { name: parsed.filename, url: parsed.downloadUrl, type: 'generated', size: 0 }
-              }
-            } catch { /* not JSON */ }
-            return null
-          })
-          .filter(Boolean)
-
-        const assistantMessage = await prisma.chatMessage.create({
-          data: {
-            sessionId,
-            role: 'assistant',
-            content: result.content,
-            toolCalls: result.toolExecutions.length
-              ? (JSON.parse(JSON.stringify(result.toolExecutions.map((te: { toolName: string; capabilitySlug: string; input: unknown; output?: string; error?: string; exitCode?: number; durationMs?: number }) => ({
-                  name: te.toolName,
-                  capability: te.capabilitySlug,
-                  input: te.input,
-                  output: te.output,
-                  error: te.error,
-                  exitCode: te.exitCode,
-                  durationMs: te.durationMs,
-                })))) as import('@prisma/client').Prisma.InputJsonValue)
-              : undefined,
-            ...(orderedBlocks.length ? { contentBlocks: orderedBlocks as unknown as import('@prisma/client').Prisma.InputJsonValue } : {}),
-            ...(generatedFiles.length ? { attachments: generatedFiles } : {}),
-          },
-        })
-
-        // Link tool executions to the message
-        if (result.toolExecutions.length) {
-          const recentExecutions = await prisma.toolExecution.findMany({
-            where: {
-              chatMessageId: null,
-              createdAt: { gte: new Date(Date.now() - 120_000) },
-            },
-            orderBy: { createdAt: 'desc' },
-            take: result.toolExecutions.length,
-          })
-          if (recentExecutions.length) {
-            await prisma.toolExecution.updateMany({
-              where: { id: { in: recentExecutions.map((e) => e.id) } },
-              data: { chatMessageId: assistantMessage.id },
-            })
-          }
-        }
-
-        emit('done', { messageId: assistantMessage.id, sessionId })
-      }
+      emit('done', { messageId: result.lastMessageId, sessionId })
 
       const sessionData = await prisma.chatSession.findUnique({
         where: { id: sessionId },

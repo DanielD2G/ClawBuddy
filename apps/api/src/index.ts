@@ -7,12 +7,18 @@ import { toolDiscoveryService } from './services/tool-discovery.service.js'
 import { cronService } from './services/cron.service.js'
 import { prisma } from './lib/prisma.js'
 import { browserService } from './services/browser.service.js'
+import { settingsService } from './services/settings.service.js'
 
 // Sync built-in capabilities on startup, then sync skills from MinIO
 capabilityService
   .syncBuiltinCapabilities()
   .then(() => skillService.syncSkillsFromStorage())
-  .then(() => toolDiscoveryService.indexCapabilities())
+  .then(async () => {
+    const settings = await settingsService.get()
+    if (settings.onboardingComplete) {
+      await toolDiscoveryService.indexCapabilities()
+    }
+  })
   .catch((err) => {
     console.error('[Capabilities] Failed to sync capabilities/skills:', err)
   })

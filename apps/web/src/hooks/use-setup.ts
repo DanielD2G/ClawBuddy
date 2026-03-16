@@ -67,6 +67,7 @@ interface SetupSettingsData {
     }
   }
   apiKeys: Record<string, { source: 'env' | 'db' | null; masked: string | null }>
+  browserGridFromEnv?: boolean
 }
 
 export function useSetupSettings() {

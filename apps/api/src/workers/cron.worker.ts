@@ -79,24 +79,11 @@ const worker = new Worker<CronJobData>(
         })
 
         // Run agent headless (no SSE emit, auto-approve tools since no user to decide)
+        // Agent loop saves ChatMessages per-iteration directly to DB
         try {
-          const result = await agentService.runAgentLoop(
+          await agentService.runAgentLoop(
             sessionId, cronJob.prompt, workspaceId, undefined, { autoApprove: true },
           )
-
-          // Save assistant response to the conversation
-          if (result.content) {
-            await prisma.chatMessage.create({
-              data: {
-                sessionId,
-                role: 'assistant',
-                content: result.content,
-                toolCalls: result.toolExecutions?.length
-                  ? JSON.parse(JSON.stringify(result.toolExecutions))
-                  : undefined,
-              },
-            })
-          }
         } catch (agentErr) {
           // Save error as assistant message so the chat shows what happened
           const errMsg = agentErr instanceof Error ? agentErr.message : String(agentErr)
