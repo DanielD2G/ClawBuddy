@@ -22,6 +22,7 @@ import {
   TOOL_RESULT_PROTECTION_WINDOW,
   MIN_PRUNE_SIZE,
   TOKEN_ESTIMATION_DIVISOR,
+  PARALLEL_SAFE_TOOLS,
 } from '../constants.js'
 import { toolDiscoveryService } from './tool-discovery.service.js'
 import type { ToolDefinition } from '../capabilities/types.js'
@@ -675,18 +676,23 @@ export const agentService = {
         toolCalls: response.toolCalls,
       })
 
-      // Execute each tool call
-      for (const toolCall of response.toolCalls) {
-        // Look up capability: check original capabilities first, then discovered ones
-        const matchedCapability = capabilities.find((cap) => {
+      // ── Helper: resolve capability for a tool call ──
+      const resolveCapability = (toolCall: ToolCall) => {
+        const matched = capabilities.find((cap) => {
           const defs = cap.toolDefinitions as Array<{ name: string }>
           return defs?.some((t) => t.name === toolCall.name)
         }) ?? discoveredCapabilities.find((cap) => {
           return cap.toolDefinitions?.some((t) => t.name === toolCall.name)
         })
-        const capabilitySlug = matchedCapability?.slug ?? (toolCall.name === 'discover_tools' ? 'tool-discovery' : 'unknown')
+        return {
+          matchedCapability: matched,
+          capabilitySlug: matched?.slug ?? (toolCall.name === 'discover_tools' ? 'tool-discovery' : 'unknown'),
+        }
+      }
 
-        // In discovery mode, reject tool calls that haven't been discovered yet
+      // ── Helper: run pre-checks (discovery, permission, size) — returns null if OK, or stops the loop ──
+      const preCheckTool = async (toolCall: ToolCall, capabilitySlug: string, matchedCapability: typeof capabilities[0] | undefined) => {
+        // Discovery mode: reject undiscovered tools
         if (useDiscovery && !tools.some((t) => t.name === toolCall.name)) {
           const rejection = `Tool "${toolCall.name}" is not yet available. Call discover_tools first to find and load the appropriate tools for your task.`
           debugLog(`[REJECTED] "${toolCall.name}" — not in available tools (discovery mode)`)
@@ -694,7 +700,7 @@ export const agentService = {
           emit?.('tool_result', { toolName: toolCall.name, error: rejection, exitCode: 1, durationMs: 0 })
           toolExecutionLog.push({ toolName: toolCall.name, capabilitySlug, input: toolCall.arguments, error: rejection, durationMs: 0 })
           messages.push({ role: 'tool', toolCallId: toolCall.id, content: rejection })
-          continue
+          return 'rejected'
         }
 
         // Permission check
@@ -702,7 +708,6 @@ export const agentService = {
         debugLog(`Tool "${toolCall.name}" permission`, { isAllowed, capabilitySlug })
 
         if (!isAllowed && !options?.autoApprove) {
-          // Create approval request
           const approval = await prisma.toolApproval.create({
             data: {
               chatSessionId: sessionId,
@@ -712,57 +717,27 @@ export const agentService = {
               toolCallId: toolCall.id,
             },
           })
+          emit?.('approval_required', { approvalId: approval.id, toolName: toolCall.name, capabilitySlug, input: toolCall.arguments })
 
-          emit?.('approval_required', {
-            approvalId: approval.id,
-            toolName: toolCall.name,
-            capabilitySlug,
-            input: toolCall.arguments,
-          })
-
-          // Serialize state and pause
           const agentState: AgentState = {
-            messages,
-            iteration: i,
-            pendingToolCalls: response.toolCalls,
-            completedToolResults: [],
-            linuxUser,
-            toolExecutionLog,
-            workspaceId,
-            sessionId,
+            messages, iteration: i, pendingToolCalls: response.toolCalls, completedToolResults: [],
+            linuxUser, toolExecutionLog, workspaceId, sessionId,
             discoveredCapabilitySlugs: discoveredCapabilities.map((c) => c.slug),
           }
-
           await prisma.chatSession.update({
             where: { id: sessionId },
-            data: {
-              agentState: JSON.parse(JSON.stringify(agentState)),
-              agentStatus: 'awaiting_approval',
-            },
+            data: { agentState: JSON.parse(JSON.stringify(agentState)), agentStatus: 'awaiting_approval' },
           })
-
-          // Collect all pending approval IDs for this batch
           const pendingApprovals = await prisma.toolApproval.findMany({
             where: { chatSessionId: sessionId, status: 'pending' },
             select: { id: true },
           })
-
-          debugLog('Agent PAUSED — awaiting approval', {
-            pendingCount: pendingApprovals.length,
-            approvalIds: pendingApprovals.map((a) => a.id),
-          })
-
-          emit?.('awaiting_approval', {
-            approvalIds: pendingApprovals.map((a) => a.id),
-          })
-          return {
-            content: accumulatedContent.trim(),
-            toolExecutions: toolExecutionLog,
-            sources: collectedSources.length ? collectedSources : undefined,
-          }
+          debugLog('Agent PAUSED — awaiting approval', { pendingCount: pendingApprovals.length })
+          emit?.('awaiting_approval', { approvalIds: pendingApprovals.map((a) => a.id) })
+          return 'paused'
         }
 
-        // Guard: reject oversized tool call arguments
+        // Size guard
         const sizeRejection = checkToolArgSize(toolCall)
         if (sizeRejection) {
           debugLog(`[BLOCKED] "${toolCall.name}" — args too large`, { size: JSON.stringify(toolCall.arguments).length })
@@ -770,18 +745,17 @@ export const agentService = {
           emit?.('tool_result', { toolName: toolCall.name, error: sizeRejection, exitCode: 1, durationMs: 0 })
           toolExecutionLog.push({ toolName: toolCall.name, capabilitySlug, input: { _blocked: true }, error: sizeRejection, durationMs: 0 })
           messages.push({ role: 'tool', toolCallId: toolCall.id, content: sizeRejection })
-          continue
+          return 'rejected'
         }
 
-        debugLog(`Executing tool "${toolCall.name}"`, {
-          input: JSON.stringify(toolCall.arguments).slice(0, 500),
-        })
+        return 'ok'
+      }
 
-        // Emit tool_start for all tools (including discovery)
+      // ── Helper: execute a single tool ──
+      const executeSingleTool = async (toolCall: ToolCall, capabilitySlug: string, matchedCapability: typeof capabilities[0] | undefined) => {
+        debugLog(`Executing tool "${toolCall.name}"`, { input: JSON.stringify(toolCall.arguments).slice(0, 500) })
         const isDiscoveryTool = toolCall.name === 'discover_tools'
-        if (isDiscoveryTool) {
-          emit?.('thinking', { message: 'Looking for the right tools...' })
-        }
+        if (isDiscoveryTool) emit?.('thinking', { message: 'Looking for the right tools...' })
         emit?.('tool_start', { toolName: toolCall.name, capabilitySlug, input: toolCall.arguments })
 
         const toolStart = Date.now()
@@ -804,123 +778,135 @@ export const agentService = {
           exitCode: result.exitCode,
         })
         logToolResult(toolCall.name, result)
+        return result
+      }
 
-        // Emit tool_result for all tools
-        if (isDiscoveryTool) {
-          // Show a human-readable summary for discovery results
-          let discoveryOutput = result.output || 'No tools discovered'
-          try {
-            const parsed = JSON.parse(result.output ?? '{}')
-            if (parsed.discovered?.length) {
-              discoveryOutput = 'Discovered: ' + parsed.discovered.map((c: { name: string }) => c.name).join(', ')
-            }
-          } catch { /* keep raw output */ }
-          emit?.('tool_result', {
-            toolName: toolCall.name,
-            output: discoveryOutput,
-            durationMs: result.durationMs,
-          })
-        } else {
-          const ssePayload = prepareToolResultForSSE(toolCall.name, result)
-          emit?.('tool_result', {
-            toolName: toolCall.name,
-            ...ssePayload,
-            error: result.error,
-            exitCode: result.exitCode,
-            durationMs: result.durationMs,
-          })
+      // ── Execute tool calls (parallel-safe tools run concurrently) ──
+      // First pass: pre-check all tools, collect those ready to execute
+      type ReadyTool = { toolCall: ToolCall; capabilitySlug: string; matchedCapability: typeof capabilities[0] | undefined }
+      const readyTools: ReadyTool[] = []
+      let paused = false
+
+      for (const toolCall of response.toolCalls) {
+        const { matchedCapability, capabilitySlug } = resolveCapability(toolCall)
+        const checkResult = await preCheckTool(toolCall, capabilitySlug, matchedCapability)
+        if (checkResult === 'paused') {
+          paused = true
+          break
         }
+        if (checkResult === 'rejected') continue
+        readyTools.push({ toolCall, capabilitySlug, matchedCapability })
+      }
 
-        // Collect document sources from search_documents
-        if (result.sources?.length) {
-          for (const s of result.sources) {
-            if (!collectedSources.some((cs) => cs.documentId === s.documentId)) {
-              collectedSources.push(s)
-            }
+      if (paused) {
+        return {
+          content: accumulatedContent.trim(),
+          toolExecutions: toolExecutionLog,
+          sources: collectedSources.length ? collectedSources : undefined,
+        }
+      }
+
+      // Second pass: execute — parallel-safe tools concurrently, others sequentially
+      const parallelBatch = readyTools.filter((t) => PARALLEL_SAFE_TOOLS.has(t.toolCall.name))
+      const sequentialBatch = readyTools.filter((t) => !PARALLEL_SAFE_TOOLS.has(t.toolCall.name))
+
+      // Execute parallel-safe tools concurrently (only worth it for 2+)
+      const executeAndProcess = async (batch: ReadyTool[], parallel: boolean) => {
+        if (batch.length === 0) return
+
+        const results = parallel && batch.length > 1
+          ? await Promise.all(batch.map((t) => executeSingleTool(t.toolCall, t.capabilitySlug, t.matchedCapability)))
+          : []
+
+        for (let idx = 0; idx < batch.length; idx++) {
+          const { toolCall, capabilitySlug } = batch[idx]
+          const result = parallel && batch.length > 1
+            ? results[idx]
+            : await executeSingleTool(toolCall, capabilitySlug, batch[idx].matchedCapability)
+
+          // ── Post-process: SSE events, discovery injection, message push ──
+          const isDiscoveryTool = toolCall.name === 'discover_tools'
+
+          if (isDiscoveryTool) {
+            let discoveryOutput = result.output || 'No tools discovered'
+            try {
+              const parsed = JSON.parse(result.output ?? '{}')
+              if (parsed.discovered?.length) {
+                discoveryOutput = 'Discovered: ' + parsed.discovered.map((c: { name: string }) => c.name).join(', ')
+              }
+            } catch { /* keep raw output */ }
+            emit?.('tool_result', { toolName: toolCall.name, output: discoveryOutput, durationMs: result.durationMs })
+          } else {
+            const ssePayload = prepareToolResultForSSE(toolCall.name, result)
+            emit?.('tool_result', { toolName: toolCall.name, ...ssePayload, error: result.error, exitCode: result.exitCode, durationMs: result.durationMs })
           }
-          emit?.('sources', { sources: collectedSources })
-        }
 
-        // Dynamic tool injection: when discover_tools returns results,
-        // expand the available tools for subsequent LLM calls
-        if (toolCall.name === 'discover_tools' && useDiscovery && result.output) {
-          discoveryCallCount++
-          try {
-            const parsed = JSON.parse(result.output)
-            if (parsed.type === 'discovery_result' && parsed.discovered?.length) {
-              const newCaps: typeof parsed.discovered = []
-              for (const cap of parsed.discovered) {
-                // Skip if already discovered
-                if (discoveredCapabilities.some((dc) => dc.slug === cap.slug)) continue
+          // Collect document sources
+          if (result.sources?.length) {
+            for (const s of result.sources) {
+              if (!collectedSources.some((cs) => cs.documentId === s.documentId)) collectedSources.push(s)
+            }
+            emit?.('sources', { sources: collectedSources })
+          }
 
-                newCaps.push(cap)
-                discoveredCapabilities.push({
-                  slug: cap.slug,
-                  name: cap.name,
-                  toolDefinitions: cap.tools,
-                  systemPrompt: cap.instructions,
-                  networkAccess: cap.networkAccess,
-                  skillType: cap.skillType,
-                })
-
-                // Add tool definitions to available tools
-                for (const tool of cap.tools as ToolDefinition[]) {
-                  if (!tools.some((t) => t.name === tool.name)) {
-                    tools.push({
-                      name: tool.name,
-                      description: tool.description,
-                      parameters: tool.parameters,
-                    })
+          // Dynamic tool injection from discover_tools
+          if (toolCall.name === 'discover_tools' && useDiscovery && result.output) {
+            discoveryCallCount++
+            try {
+              const parsed = JSON.parse(result.output)
+              if (parsed.type === 'discovery_result' && parsed.discovered?.length) {
+                const newCaps: typeof parsed.discovered = []
+                for (const cap of parsed.discovered) {
+                  if (discoveredCapabilities.some((dc) => dc.slug === cap.slug)) continue
+                  newCaps.push(cap)
+                  discoveredCapabilities.push({
+                    slug: cap.slug, name: cap.name, toolDefinitions: cap.tools,
+                    systemPrompt: cap.instructions, networkAccess: cap.networkAccess, skillType: cap.skillType,
+                  })
+                  for (const tool of cap.tools as ToolDefinition[]) {
+                    if (!tools.some((t) => t.name === tool.name)) {
+                      tools.push({ name: tool.name, description: tool.description, parameters: tool.parameters })
+                    }
                   }
                 }
+                if (newCaps.length < parsed.discovered.length) {
+                  result.output = JSON.stringify({ ...parsed, discovered: newCaps })
+                }
+                debugLog('Tools dynamically injected', {
+                  newSlugs: newCaps.map((c: { slug: string }) => c.slug),
+                  skippedDuplicates: parsed.discovered.length - newCaps.length,
+                  totalTools: tools.length,
+                })
               }
-              // Replace output with only NEW discoveries to save context tokens
-              if (newCaps.length < parsed.discovered.length) {
-                result.output = JSON.stringify({ ...parsed, discovered: newCaps })
-              }
-              debugLog('Tools dynamically injected', {
-                newSlugs: newCaps.map((c: { slug: string }) => c.slug),
-                skippedDuplicates: parsed.discovered.length - newCaps.length,
-                totalTools: tools.length,
-              })
-            }
-          } catch {
-            // Discovery output parse failed, continue normally
+            } catch { /* Discovery output parse failed */ }
           }
+
+          toolExecutionLog.push({
+            toolName: toolCall.name, capabilitySlug, input: toolCall.arguments,
+            output: result.output || undefined, error: result.error, exitCode: result.exitCode, durationMs: result.durationMs,
+          })
+
+          // Add tool result to conversation
+          const rawContent = (toolCall.name === 'run_browser_script')
+            ? result.output
+            : result.error ? `Error: ${result.error}\n\n${result.output}` : result.output
+          const isSandboxTool = !NON_SANDBOX_TOOLS.has(toolCall.name)
+          const toolContent = (linuxUser && isSandboxTool)
+            ? await maybeTruncateOutput(rawContent, toolCall.id, workspaceId, linuxUser)
+            : rawContent
+          const messageContent: MessageContent = toolCall.name === 'run_browser_script'
+            ? buildToolResultContent(typeof toolContent === 'string' ? toolContent : toolContent, llm.modelId)
+            : toolContent
+          messages.push({ role: 'tool', toolCallId: toolCall.id, content: messageContent })
         }
-
-        toolExecutionLog.push({
-          toolName: toolCall.name,
-          capabilitySlug,
-          input: toolCall.arguments,
-          output: result.output || undefined,
-          error: result.error,
-          exitCode: result.exitCode,
-          durationMs: result.durationMs,
-        })
-
-        // Add tool result to conversation (truncate large outputs to save context)
-        // For browser scripts, pass output directly to preserve JSON structure for screenshot extraction
-        const rawContent = (toolCall.name === 'run_browser_script')
-          ? result.output
-          : result.error
-            ? `Error: ${result.error}\n\n${result.output}`
-            : result.output
-        // Only truncate sandbox tool outputs — non-sandbox tools (search, memory, web) return full results
-        const isSandboxTool = !NON_SANDBOX_TOOLS.has(toolCall.name)
-        const toolContent = (linuxUser && isSandboxTool)
-          ? await maybeTruncateOutput(rawContent, toolCall.id, workspaceId, linuxUser)
-          : rawContent
-        // For browser scripts, check if result contains screenshot for multimodal handling
-        const messageContent: MessageContent = toolCall.name === 'run_browser_script'
-          ? buildToolResultContent(typeof toolContent === 'string' ? toolContent : toolContent, llm.modelId)
-          : toolContent
-        messages.push({
-          role: 'tool',
-          toolCallId: toolCall.id,
-          content: messageContent,
-        })
       }
+
+      // Execute parallel-safe tools first (concurrently), then sequential ones
+      if (parallelBatch.length > 1) {
+        debugLog('Executing parallel batch', { tools: parallelBatch.map((t) => t.toolCall.name) })
+      }
+      await executeAndProcess(parallelBatch, true)
+      await executeAndProcess(sequentialBatch, false)
     }
 
     debugLog('Agent loop DONE (max iterations reached)', { totalToolExecutions: toolExecutionLog.length })

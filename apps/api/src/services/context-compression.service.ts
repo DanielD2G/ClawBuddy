@@ -110,31 +110,41 @@ export async function compressContext(
     return { summary: existingSummary, recentMessages, compressed: false, lastSummarizedMessageId }
   }
 
-  // Build summarization prompt
+  // Build structured summarization prompt (inspired by Claude Code's compaction)
   const formattedMessages = messagesToSummarize
     .map((m) => `[${m.role}]: ${m.content.slice(0, COMPRESSION_PREVIEW_LEN)}`)
     .join('\n')
 
   const summaryPrompt = [
-    'Summarize this conversation history concisely. Preserve:',
-    '- Key facts, decisions, and conclusions',
-    '- File names, paths, and technical details discussed',
-    '- Tool actions taken and their outcomes',
-    '- User preferences or instructions established',
+    'Create a structured summary of the following conversation messages. Organize into these sections:',
     '',
-    'Be factual and dense. No filler.',
+    '1. **Request & Intent**: The user\'s explicit goals and what they want to accomplish',
+    '2. **Technical Context**: Technologies, frameworks, APIs, and concepts discussed',
+    '3. **Files & Code**: Files examined/modified with brief descriptions of changes or findings',
+    '4. **Errors & Fixes**: Errors encountered and how they were resolved',
+    '5. **Tool Actions**: Tools executed and their key outcomes (omit raw outputs)',
+    '6. **User Instructions**: Direct user preferences, corrections, or constraints stated',
+    '7. **Current State**: What was being worked on at the end of these messages',
+    '8. **Pending**: Any unfinished tasks or next steps mentioned',
+    '',
+    'Rules:',
+    '- Be factual and dense. No filler or hedging.',
+    '- Preserve exact file paths, function names, and error messages.',
+    '- For code changes, describe WHAT changed and WHY, not the full diff.',
+    '- Omit tool outputs that were just informational noise.',
+    '- Skip empty sections.',
     '',
     ...(existingSummary
       ? [`Previous summary to extend:\n${existingSummary}\n`]
       : []),
-    `New messages:\n${formattedMessages}`,
+    `Messages to summarize:\n${formattedMessages}`,
   ].join('\n')
 
   try {
     const llm = await createCompactLLM()
     const response = await llm.chatWithTools(
       [
-        { role: 'system', content: 'You are a conversation summarizer. Output only the summary.' },
+        { role: 'system', content: 'You are a conversation compactor. Analyze the messages chronologically and produce a structured summary. Output ONLY the summary sections, no preamble.' },
         { role: 'user', content: summaryPrompt },
       ] as ChatMessage[],
       { temperature: COMPRESSION_TEMPERATURE, maxTokens: COMPRESSION_MAX_TOKENS },
