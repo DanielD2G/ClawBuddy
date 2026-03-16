@@ -23,7 +23,7 @@ curl -fsSL https://raw.githubusercontent.com/DanielD2G/AgentBuddy/main/bootstrap
 
 This will check Docker, set up environment variables, start all services, and initialize the database. Once done, open **http://localhost:4321** and follow the setup wizard.
 
-> You'll need at least one AI provider API key (OpenAI, Anthropic, or Google Gemini).
+> You'll need at least one AI provider API key (OpenAI, Anthropic, or Google Gemini). See the **[API Keys & OAuth Setup Guide](docs/api-keys-setup.md)** for step-by-step instructions.
 
 ---
 
@@ -197,7 +197,7 @@ For contributors who want to run AgentBuddy in development mode:
 
 - [Bun](https://bun.sh/) v1.3+
 - [Docker](https://docs.docker.com/get-docker/) with Compose
-- An API key for at least one LLM provider
+- An API key for at least one LLM provider ([setup guide](docs/api-keys-setup.md))
 
 ### Steps
 
@@ -211,7 +211,7 @@ bun install
 
 # Set up environment
 cp .env.example .env
-# Edit .env with your API keys
+# Edit .env with your API keys (see docs/api-keys-setup.md)
 
 # Start infrastructure (Postgres, Redis, Qdrant, MinIO, BrowserGrid)
 docker compose up -d
