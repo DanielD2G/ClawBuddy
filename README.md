@@ -5,10 +5,10 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 <p align="center">
-  <img src="img.png" alt="AgentBuddy – Main Chat" width="720" />
+  <img src="docs/images/chat.png" alt="AgentBuddy – Main Chat" width="720" />
 </p>
 <p align="center">
-  <img src="img_1.png" alt="AgentBuddy – Capabilities Overview" width="720" />
+  <img src="docs/images/capabilities.png" alt="AgentBuddy – Capabilities Overview" width="720" />
 </p>
 
 ---
@@ -18,7 +18,7 @@
 One command. That's it.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/DanielD2G/AgentBuddy/main/bootstrap.sh | bash
+curl -fsSL https://raw.githubusercontent.com/DanielD2G/AgentBuddy/main/scripts/bootstrap.sh | bash
 ```
 
 This will check Docker, set up environment variables, start all services, and initialize the database. Once done, open **http://localhost:4321** and follow the setup wizard.

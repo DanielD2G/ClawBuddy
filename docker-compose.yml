@@ -94,7 +94,7 @@ services:
     profiles: ["app"]
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: docker/Dockerfile
       target: api
     ports:
       - "4000:4000"
@@ -129,7 +129,7 @@ services:
     profiles: ["app"]
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: docker/Dockerfile
       target: web
     ports:
       - "4321:80"
