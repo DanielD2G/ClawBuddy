@@ -1,0 +1,187 @@
+import { Worker, type Job } from 'bullmq'
+import { redisConnection } from '../lib/redis.js'
+import { prisma } from '../lib/prisma.js'
+import { storageService } from '../services/storage.service.js'
+import { chunkingService } from '../services/chunking.service.js'
+import { embeddingService } from '../services/embedding.service.js'
+import { searchService } from '../services/search.service.js'
+import { CHUNK_SIZE, CHUNK_OVERLAP, EMBEDDING_DIMENSIONS } from '@agentbuddy/shared'
+import { settingsService } from '../services/settings.service.js'
+import { randomUUID } from 'crypto'
+
+/**
+ * Remove lone surrogates and other characters that break JSON serialization.
+ * Iterates code points to correctly handle surrogate pairs.
+ */
+function sanitizeText(input: string): string {
+  let out = ''
+  for (let i = 0; i < input.length; i++) {
+    const code = input.charCodeAt(i)
+    // High surrogate
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = i + 1 < input.length ? input.charCodeAt(i + 1) : 0
+      // Valid surrogate pair
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        out += input[i] + input[i + 1]
+        i++ // skip low surrogate
+      } else {
+        out += '\ufffd' // lone high surrogate → replacement char
+      }
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      out += '\ufffd' // lone low surrogate → replacement char
+    } else {
+      out += input[i]
+    }
+  }
+  return out
+}
+
+interface IngestionJobData {
+  documentId: string
+  fileUrl: string | null
+}
+
+const QUEUE_NAME = 'document-ingestion'
+
+const worker = new Worker<IngestionJobData>(
+  QUEUE_NAME,
+  async (job: Job<IngestionJobData>) => {
+    const { documentId, fileUrl } = job.data
+    console.log(`[Ingestion] Processing document ${documentId}`)
+
+    // Update status to PROCESSING
+    await prisma.document.update({
+      where: { id: documentId },
+      data: { status: 'PROCESSING', processingStep: 'downloading', processingPct: 0 },
+    })
+
+    try {
+      // 1. Get text content — from MinIO or inline document content
+      let text: string
+      if (fileUrl) {
+        const fileStream = await storageService.download(fileUrl)
+        const chunks_raw: Buffer[] = []
+        // @ts-ignore - ReadableStream from S3
+        for await (const chunk of fileStream as any) {
+          chunks_raw.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk)
+        }
+        text = Buffer.concat(chunks_raw).toString('utf-8')
+      } else {
+        // Inline content (e.g. from save_document tool)
+        const doc = await prisma.document.findUniqueOrThrow({ where: { id: documentId } })
+        text = doc.content ?? ''
+      }
+
+      // Strip characters that break Prisma JSON serialization
+      text = sanitizeText(text)
+
+      if (!text.trim()) {
+        throw new Error('Empty document content')
+      }
+
+      // 2. Split into chunks
+      await prisma.document.update({
+        where: { id: documentId },
+        data: { processingStep: 'chunking', processingPct: 15 },
+      })
+
+      const chunks = await chunkingService.splitText(text, {
+        chunkSize: CHUNK_SIZE,
+        overlap: CHUNK_OVERLAP,
+      })
+
+      console.log(`[Ingestion] Document ${documentId}: ${chunks.length} chunks`)
+
+      // 3. Ensure Qdrant collection exists
+      const embeddingModel = await settingsService.getEmbeddingModel()
+      const dimensions = EMBEDDING_DIMENSIONS[embeddingModel] ?? 1536
+      await searchService.ensureCollection(dimensions)
+
+      // 4. Generate embeddings and store
+      await prisma.document.update({
+        where: { id: documentId },
+        data: { processingStep: 'embedding', processingPct: 25 },
+      })
+
+      const batchSize = 20
+      let totalStored = 0
+
+      for (let i = 0; i < chunks.length; i += batchSize) {
+        const batch = chunks.slice(i, i + batchSize)
+        const embeddings = await embeddingService.embedBatch(batch)
+
+        for (let j = 0; j < batch.length; j++) {
+          const qdrantId = randomUUID()
+          const chunkIndex = i + j
+
+          const document = await prisma.document.findUniqueOrThrow({ where: { id: documentId } })
+
+          // Store in Postgres
+          const safeContent = sanitizeText(batch[j])
+          const chunk = await prisma.documentChunk.create({
+            data: {
+              documentId,
+              content: safeContent,
+              qdrantId,
+              chunkIndex,
+              metadata: { workspaceId: document.workspaceId },
+            },
+          })
+
+          // Store vector in Qdrant — include chunkId and workspaceId for search
+          await searchService.upsert(qdrantId, embeddings[j], {
+            documentId,
+            chunkId: chunk.id,
+            chunkIndex,
+            workspaceId: document.workspaceId,
+            content: safeContent.slice(0, 200), // preview
+          })
+
+          totalStored++
+        }
+
+        // Update progress
+        const pct = Math.round(25 + (totalStored / chunks.length) * 70)
+        await prisma.document.update({
+          where: { id: documentId },
+          data: { processingStep: 'indexing', processingPct: Math.min(pct, 95) },
+        })
+      }
+
+      // 5. Update document status to READY
+      await prisma.document.update({
+        where: { id: documentId },
+        data: {
+          status: 'READY',
+          content: text.slice(0, 10000), // store preview
+          chunkCount: totalStored,
+          processingStep: null,
+          processingPct: 100,
+        },
+      })
+
+      console.log(`[Ingestion] Document ${documentId} ready: ${totalStored} chunks indexed`)
+    } catch (error) {
+      console.error(`[Ingestion] Failed for document ${documentId}:`, error)
+      await prisma.document.update({
+        where: { id: documentId },
+        data: { status: 'FAILED', processingStep: null, processingPct: null },
+      })
+      throw error
+    }
+  },
+  {
+    connection: redisConnection,
+    concurrency: 3,
+  },
+)
+
+worker.on('completed', (job) => {
+  console.log(`[Ingestion] Job ${job.id} completed`)
+})
+
+worker.on('failed', (job, err) => {
+  console.error(`[Ingestion] Job ${job?.id} failed:`, err.message)
+})
+
+export { worker as ingestionWorker }

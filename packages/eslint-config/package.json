@@ -1,0 +1,14 @@
+{
+  "name": "@agentbuddy/eslint-config",
+  "private": true,
+  "main": "base.js",
+  "files": ["base.js", "react.js"],
+  "dependencies": {
+    "@typescript-eslint/eslint-plugin": "^8",
+    "@typescript-eslint/parser": "^8",
+    "eslint-config-prettier": "^10"
+  },
+  "peerDependencies": {
+    "eslint": "^9"
+  }
+}

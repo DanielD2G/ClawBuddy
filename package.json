@@ -1,0 +1,27 @@
+{
+  "name": "agentbuddy",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "bun run db:generate && bun --filter './apps/*' dev",
+    "build": "bun --filter './apps/*' build",
+    "lint": "bun --filter '*' lint",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "type-check": "bun --filter '*' type-check",
+    "clean": "rm -rf node_modules apps/*/dist apps/*/node_modules packages/*/node_modules",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "db:generate": "bun --filter @agentbuddy/api db:generate",
+    "db:push": "bun --filter @agentbuddy/api db:push"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.1",
+    "prettier": "^3",
+    "ws": "^8.19.0"
+  },
+  "packageManager": "bun@1.3.5",
+  "patchedDependencies": {
+    "playwright-core@1.58.2": "patches/playwright-core@1.58.2.patch"
+  }
+}

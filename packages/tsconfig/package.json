@@ -1,0 +1,5 @@
+{
+  "name": "@agentbuddy/tsconfig",
+  "private": true,
+  "files": ["base.json", "react.json", "node.json"]
+}
