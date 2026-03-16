@@ -19,6 +19,9 @@ import {
   MAX_AGENT_DOCUMENTS,
   TOOL_DISCOVERY_THRESHOLD,
   TOOL_DISCOVERY_MAX_CALLS,
+  TOOL_RESULT_PROTECTION_WINDOW,
+  MIN_PRUNE_SIZE,
+  TOKEN_ESTIMATION_DIVISOR,
 } from '../constants.js'
 import { toolDiscoveryService } from './tool-discovery.service.js'
 import type { ToolDefinition } from '../capabilities/types.js'
@@ -161,6 +164,43 @@ function prepareToolResultForSSE(
   } catch { /* not JSON, return as-is */ }
 
   return { output: result.output }
+}
+
+/**
+ * Prune old tool results from the messages array to reduce context size.
+ * Protects the most recent tool outputs (within TOOL_RESULT_PROTECTION_WINDOW tokens)
+ * and replaces older ones with placeholders.
+ */
+function pruneOldToolResults(messages: ChatMessage[], iteration: number): number {
+  if (iteration < 3) return 0
+
+  let recentToolTokens = 0
+  let pruned = 0
+  let foundBoundary = false
+
+  // Walk backward to find the protection boundary
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i]
+    if (msg.role !== 'tool') continue
+    const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
+    const tokens = Math.ceil(content.length / TOKEN_ESTIMATION_DIVISOR)
+
+    if (!foundBoundary) {
+      recentToolTokens += tokens
+      if (recentToolTokens > TOOL_RESULT_PROTECTION_WINDOW) {
+        foundBoundary = true
+      }
+      continue
+    }
+
+    // Beyond protection window — prune if large enough
+    if (content.length <= MIN_PRUNE_SIZE) continue
+    ;(msg as { content: string }).content =
+      `[Tool result cleared — was ${content.length} chars. Re-run the tool if needed.]`
+    pruned++
+  }
+
+  return pruned
 }
 
 export async function recordTokenUsage(
@@ -557,6 +597,12 @@ export const agentService = {
       debugLog(`── Iteration ${i + 1}/${maxIterations} ──`)
       emit?.('thinking', { message: 'Thinking...' })
 
+      // Prune old tool results to reduce context size
+      const prunedCount = pruneOldToolResults(messages, i)
+      if (prunedCount > 0) {
+        debugLog('Pruned old tool results', { prunedCount, iteration: i + 1 })
+      }
+
       logLLMRequest(messages, tools, i + 1)
       const llmStart = Date.now()
       const response = await llm.chatWithTools(messages, { tools })
@@ -731,13 +777,12 @@ export const agentService = {
           input: JSON.stringify(toolCall.arguments).slice(0, 500),
         })
 
-        // Tool discovery is invisible to the user — show as thinking indicator
+        // Emit tool_start for all tools (including discovery)
         const isDiscoveryTool = toolCall.name === 'discover_tools'
         if (isDiscoveryTool) {
           emit?.('thinking', { message: 'Looking for the right tools...' })
-        } else {
-          emit?.('tool_start', { toolName: toolCall.name, capabilitySlug, input: toolCall.arguments })
         }
+        emit?.('tool_start', { toolName: toolCall.name, capabilitySlug, input: toolCall.arguments })
 
         const toolStart = Date.now()
         const result = await toolExecutorService.execute(toolCall, capabilitySlug, {
@@ -760,8 +805,22 @@ export const agentService = {
         })
         logToolResult(toolCall.name, result)
 
-        // Don't emit tool_start/tool_result for discovery — it's a background operation
-        if (!isDiscoveryTool) {
+        // Emit tool_result for all tools
+        if (isDiscoveryTool) {
+          // Show a human-readable summary for discovery results
+          let discoveryOutput = result.output || 'No tools discovered'
+          try {
+            const parsed = JSON.parse(result.output ?? '{}')
+            if (parsed.discovered?.length) {
+              discoveryOutput = 'Discovered: ' + parsed.discovered.map((c: { name: string }) => c.name).join(', ')
+            }
+          } catch { /* keep raw output */ }
+          emit?.('tool_result', {
+            toolName: toolCall.name,
+            output: discoveryOutput,
+            durationMs: result.durationMs,
+          })
+        } else {
           const ssePayload = prepareToolResultForSSE(toolCall.name, result)
           emit?.('tool_result', {
             toolName: toolCall.name,
@@ -789,10 +848,12 @@ export const agentService = {
           try {
             const parsed = JSON.parse(result.output)
             if (parsed.type === 'discovery_result' && parsed.discovered?.length) {
+              const newCaps: typeof parsed.discovered = []
               for (const cap of parsed.discovered) {
                 // Skip if already discovered
                 if (discoveredCapabilities.some((dc) => dc.slug === cap.slug)) continue
 
+                newCaps.push(cap)
                 discoveredCapabilities.push({
                   slug: cap.slug,
                   name: cap.name,
@@ -813,8 +874,13 @@ export const agentService = {
                   }
                 }
               }
+              // Replace output with only NEW discoveries to save context tokens
+              if (newCaps.length < parsed.discovered.length) {
+                result.output = JSON.stringify({ ...parsed, discovered: newCaps })
+              }
               debugLog('Tools dynamically injected', {
-                discovered: parsed.discovered.map((c: { slug: string }) => c.slug),
+                newSlugs: newCaps.map((c: { slug: string }) => c.slug),
+                skippedDuplicates: parsed.discovered.length - newCaps.length,
                 totalTools: tools.length,
               })
             }
@@ -1048,6 +1114,13 @@ export const agentService = {
     const maxIterations = await settingsService.getMaxAgentIterations()
     for (let i = state.iteration; i < maxIterations; i++) {
       emit?.('thinking', { message: 'Thinking...' })
+
+      // Prune old tool results to reduce context size
+      const prunedCount = pruneOldToolResults(messages, i)
+      if (prunedCount > 0) {
+        debugLog('Pruned old tool results (resume)', { prunedCount, iteration: i + 1 })
+      }
+
       logLLMRequest(messages, tools, i + 1)
       const llmStart = Date.now()
       const response = await llm.chatWithTools(messages, { tools })

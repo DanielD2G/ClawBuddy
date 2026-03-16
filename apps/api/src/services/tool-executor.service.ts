@@ -102,13 +102,34 @@ export const toolExecutorService = {
         result = await this.executeSandboxCommand(toolCall, capabilitySlug, context)
       }
 
+      // Extract screenshot from browser tool output before saving
+      let screenshotData: string | null = null
+      let outputForDb = result.output
+      if (toolCall.name === 'run_browser_script' && result.output) {
+        try {
+          const parsed = JSON.parse(result.output)
+          let b64: string | null = null
+          if (parsed?.screenshot && typeof parsed.screenshot === 'string') {
+            b64 = parsed.screenshot
+          } else if (parsed?.screenshot?.type === 'Buffer' && Array.isArray(parsed.screenshot.data)) {
+            b64 = Buffer.from(parsed.screenshot.data).toString('base64')
+          }
+          if (b64) {
+            screenshotData = `data:image/jpeg;base64,${b64}`
+            // Save only the description in output, not the huge base64
+            outputForDb = parsed.description || parsed.content || 'Screenshot captured'
+          }
+        } catch { /* not JSON, keep original output */ }
+      }
+
       // Record execution (sanitize output to strip null bytes)
       await prisma.toolExecution.create({
         data: {
           capabilitySlug,
           toolName: toolCall.name,
           input: JSON.parse(JSON.stringify(toolCall.arguments)) as Prisma.InputJsonValue,
-          output: this.sanitizeText(result.output),
+          output: this.sanitizeText(outputForDb),
+          screenshot: screenshotData,
           error: this.sanitizeText(result.error),
           exitCode: result.exitCode,
           durationMs: result.durationMs,

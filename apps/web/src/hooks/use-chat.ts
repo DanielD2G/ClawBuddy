@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
 import type { ChatSession } from '@/hooks/use-chat-sessions'
-import { POLL_MESSAGES_MS } from '@/constants'
+import { POLL_MESSAGES_MS, POLL_ACTIVE_SESSION_MS } from '@/constants'
 
 const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36)
 
@@ -95,11 +95,20 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
   const [thinkingMessage, setThinkingMessage] = useState<string | null>(null)
   const [pendingApprovals, setPendingApprovals] = useState<PendingApproval[]>([])
   const sessionIdRef = useRef<string | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
+  const streamingRef = useRef(false)
   const onSessionCreatedRef = useRef(onSessionCreated)
   onSessionCreatedRef.current = onSessionCreated
   const queryClient = useQueryClient()
 
   const loadSession = useCallback(async (sessionId: string) => {
+    // Abort any in-flight SSE stream from the previous session
+    if (abortRef.current) {
+      abortRef.current.abort()
+      abortRef.current = null
+    }
+    setIsPending(false)
+    setThinkingMessage(null)
     sessionIdRef.current = sessionId
     try {
       const data = await apiClient.get<{
@@ -108,6 +117,11 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
         pendingApprovals: Array<{ id: string; toolName: string; capabilitySlug: string; input: Record<string, unknown> }>
       }>(`/chat/sessions/${sessionId}/messages`)
       setMessages(data?.messages ?? [])
+      // If agent is still processing, show pending state and poll for updates
+      if (data?.agentStatus === 'running') {
+        setIsPending(true)
+        setThinkingMessage('Processing...')
+      }
       // Restore pending approvals if agent is paused awaiting approval
       if (data?.pendingApprovals?.length) {
         setPendingApprovals(data.pendingApprovals.map((a) => ({
@@ -128,12 +142,14 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
     res: Response,
     assistantId: string,
     onSessionId?: (id: string) => void,
+    signal?: AbortSignal,
   ) => {
     const reader = res.body!.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
 
     while (true) {
+      if (signal?.aborted) break
       const { done, value } = await reader.read()
       if (done) break
 
@@ -323,10 +339,15 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
       ])
 
       try {
+        abortRef.current?.abort()
+        const controller = new AbortController()
+        abortRef.current = controller
+
         const res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
+          signal: controller.signal,
           body: JSON.stringify({
             content,
             workspaceId,
@@ -338,20 +359,19 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
 
         if (!res.ok) throw new Error('Chat request failed')
 
+        streamingRef.current = true
         await processSSEStream(res, assistantId, (sid) => {
           if (sid && !sessionIdRef.current) {
             sessionIdRef.current = sid
             onSessionCreatedRef.current?.(sid)
+            // Refresh sidebar immediately so new session appears (even if stream is aborted later)
+            queryClient.invalidateQueries({ queryKey: ['chat-sessions'] })
           } else if (sid) {
             sessionIdRef.current = sid
           }
-        })
-
-        // Refresh sidebar chat list when a new session was created
-        if (isNewSession) {
-          queryClient.invalidateQueries({ queryKey: ['chat-sessions'] })
-        }
+        }, controller.signal)
       } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') return
         console.error('Chat error:', error)
         setMessages((prev) =>
           prev.map((msg) => {
@@ -360,6 +380,7 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
           }),
         )
       } finally {
+        streamingRef.current = false
         setIsPending(false)
         setThinkingMessage(null)
       }
@@ -376,10 +397,15 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
       setPendingApprovals((prev) => prev.filter((a) => a.approvalId !== approvalId))
 
       try {
+        abortRef.current?.abort()
+        const controller = new AbortController()
+        abortRef.current = controller
+
         const res = await fetch(`/api/chat/sessions/${sessionId}/approve`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
+          signal: controller.signal,
           body: JSON.stringify({ approvalId, decision, allowRule, scope }),
         })
 
@@ -404,23 +430,29 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
             },
           ])
 
-          await processSSEStream(res, assistantId)
+          streamingRef.current = true
+          await processSSEStream(res, assistantId, undefined, controller.signal)
+          streamingRef.current = false
           setIsPending(false)
           setThinkingMessage(null)
         }
         // Otherwise it's JSON (still waiting for more approvals)
       } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') return
         console.error('Approval error:', error)
       }
     },
     [processSSEStream],
   )
 
-  // Poll for new messages every 10s when not streaming (picks up cron-added messages)
+  // Poll for messages — aggressive (1.5s) when agent running but disconnected, normal (10s) otherwise
   useEffect(() => {
+    const pollInterval = (isPending && !streamingRef.current) ? POLL_ACTIVE_SESSION_MS : POLL_MESSAGES_MS
     const interval = setInterval(async () => {
       const sid = sessionIdRef.current
-      if (!sid || isPending) return
+      if (!sid) return
+      // Skip polling if we're actively streaming SSE for this session
+      if (streamingRef.current) return
       try {
         const data = await apiClient.get<{ messages: ChatMessage[]; agentStatus: string; pendingApprovals: unknown[] }>(`/chat/sessions/${sid}/messages`)
         const msgs = data?.messages
@@ -435,17 +467,33 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
               )
               return msgs
             }
+            // Also detect content/tool updates on existing messages
+            const lastNew = msgs[msgs.length - 1]
+            const lastOld = prev[prev.length - 1]
+            if (lastNew && lastOld) {
+              if ((lastNew.content?.length ?? 0) > (lastOld.content?.length ?? 0)) return msgs
+              if ((lastNew.toolExecutions?.length ?? 0) !== (lastOld.toolExecutions?.length ?? 0)) return msgs
+            }
             return prev
           })
+        }
+        // Agent finished — load final messages and stop showing pending
+        if (data?.agentStatus === 'idle' && isPending) {
+          if (msgs && msgs.length > 0) setMessages(msgs)
+          setIsPending(false)
+          setThinkingMessage(null)
+          queryClient.invalidateQueries({ queryKey: ['chat-sessions'] })
         }
       } catch {
         // ignore polling errors
       }
-    }, POLL_MESSAGES_MS)
+    }, pollInterval)
     return () => clearInterval(interval)
   }, [isPending])
 
   const clearMessages = useCallback(() => {
+    abortRef.current?.abort()
+    abortRef.current = null
     setMessages([])
     sessionIdRef.current = null
     setPendingApprovals([])

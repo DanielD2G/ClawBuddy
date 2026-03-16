@@ -201,6 +201,7 @@ model ToolExecution {
   toolName         String
   input            Json
   output           String?         @db.Text
+  screenshot       String?         @db.Text
   error            String?         @db.Text
   exitCode         Int?
   durationMs       Int?

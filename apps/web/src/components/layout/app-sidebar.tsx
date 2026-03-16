@@ -209,9 +209,11 @@ export function AppSidebar() {
                   <span className="truncate group-hover/chat:mr-5">
                     <TypingTitle title={session.title} />
                   </span>
-                  {session.unreadCount > 0 && pathname !== `/chat/${session.id}` && (
+                  {session.agentStatus === 'running' && pathname !== `/chat/${session.id}` ? (
+                    <Spinner className="ml-auto size-3.5 shrink-0" />
+                  ) : session.unreadCount > 0 && pathname !== `/chat/${session.id}` ? (
                     <span className="ml-auto size-2 shrink-0 rounded-full bg-brand/70" />
-                  )}
+                  ) : null}
                 </Link>
                 <button
                   onClick={() => deleteSession.mutate(session.id)}

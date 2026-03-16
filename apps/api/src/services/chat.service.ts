@@ -86,6 +86,7 @@ export const chatService = {
             capabilitySlug: true,
             input: true,
             output: true,
+            screenshot: true,
             error: true,
             exitCode: true,
             durationMs: true,
@@ -191,6 +192,9 @@ export const chatService = {
         where: { id: sessionId },
         data: { agentStatus: 'running' },
       })
+
+      // Auto-title immediately (fire-and-forget, don't wait for agent loop)
+      this._autoTitle(session, sessionId, content)
 
       const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: session.workspaceId! }, select: { autoExecute: true } })
 
@@ -298,9 +302,6 @@ export const chatService = {
 
         emit('done', { messageId: assistantMessage.id, sessionId })
       }
-
-      // Auto-title (fire-and-forget, title comes via polling)
-      this._autoTitle(session, sessionId, content)
     } catch (err) {
       console.error('[ChatService] Agent loop error:', err)
 
@@ -326,6 +327,9 @@ export const chatService = {
     documentIds?: string[],
   ) {
     emit('thinking', { message: 'Searching documents...' })
+
+    // Auto-title immediately (fire-and-forget)
+    this._autoTitle(session, sessionId, content)
 
     const useLightModel = await settingsService.getUseLightModel()
     const llm = useLightModel ? await createLightLLM() : await createLLMProvider()
@@ -413,9 +417,6 @@ export const chatService = {
     })
 
     emit('done', { messageId: assistantMessage.id, sessionId })
-
-    // Auto-title
-    this._autoTitle(session, sessionId, content)
   },
 
   /**
