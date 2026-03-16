@@ -44,6 +44,10 @@ export const SELECTOR_TEXT_MAX_LEN = 40
 export const INPUT_VALUE_MAX_LEN = 100
 export const SCREENSHOT_JPEG_QUALITY = 50
 
+// ── Tool result pruning ─────────────────────────
+export const TOOL_RESULT_PROTECTION_WINDOW = 10_000  // ~40K chars worth of tokens to protect
+export const MIN_PRUNE_SIZE = 200                     // don't prune results smaller than this
+
 // ── Agent ─────────────────────────────────────────
 export const DEFAULT_MAX_AGENT_ITERATIONS = 50
 export const MAX_AGENT_DOCUMENTS = 50

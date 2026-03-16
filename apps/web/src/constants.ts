@@ -2,6 +2,7 @@
 export const POLL_SESSIONS_FAST_MS = 3000        // when sessions have no title
 export const POLL_SESSIONS_NORMAL_MS = 10000
 export const POLL_MESSAGES_MS = 10000
+export const POLL_ACTIVE_SESSION_MS = 1500
 export const POLL_BROWSER_HEALTH_MS = 10000
 export const POLL_BROWSER_SESSIONS_MS = 5000
 export const POLL_CONTAINER_STATUS_MS = 10000

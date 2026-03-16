@@ -56,27 +56,40 @@ export class GeminiLLMProvider implements LLMProvider {
 
     // Build history (all messages except system and last user message)
     const nonSystemMessages = messages.filter((m) => m.role !== 'system')
-    const history = nonSystemMessages.slice(0, -1).map((m) => {
+    const history = nonSystemMessages.slice(0, -1).flatMap((m) => {
       if (m.role === 'tool') {
-        // For multimodal tool results, include inline data parts
+        // Gemini's function role can ONLY contain functionResponse parts — no inlineData.
+        // When tool results include screenshots, split into function + user messages.
         if (typeof m.content !== 'string' && Array.isArray(m.content)) {
-          const parts: Array<Record<string, unknown>> = []
           const textParts = (m.content as ContentBlock[]).filter((b) => b.type === 'text')
           const textResult = textParts.map((b) => (b as { text: string }).text).join('')
-          parts.push({
-            functionResponse: {
-              name: m.toolCallId ?? 'unknown',
-              response: { result: textResult },
+          const imageParts = (m.content as ContentBlock[]).filter((b) => b.type === 'image')
+
+          const msgs: Array<Record<string, unknown>> = [
+            {
+              role: 'function',
+              parts: [{
+                functionResponse: {
+                  name: m.toolCallId ?? 'unknown',
+                  response: { result: textResult },
+                },
+              }],
             },
-          })
-          for (const b of m.content as ContentBlock[]) {
-            if (b.type === 'image') {
-              parts.push({ inlineData: { mimeType: b.source.mediaType, data: b.source.data } })
-            }
+          ]
+          if (imageParts.length > 0) {
+            msgs.push({
+              role: 'user',
+              parts: imageParts.map((b) => ({
+                inlineData: {
+                  mimeType: (b as { source: { mediaType: string; data: string } }).source.mediaType,
+                  data: (b as { source: { mediaType: string; data: string } }).source.data,
+                },
+              })),
+            })
           }
-          return { role: 'function' as const, parts }
+          return msgs
         }
-        return {
+        return [{
           role: 'function' as const,
           parts: [
             {
@@ -86,7 +99,7 @@ export class GeminiLLMProvider implements LLMProvider {
               },
             },
           ],
-        }
+        }]
       }
       if (m.role === 'assistant' && m.toolCalls?.length) {
         // Use raw parts if available (preserves thought_signature for Gemini)
@@ -98,7 +111,7 @@ export class GeminiLLMProvider implements LLMProvider {
           for (const tc of m.toolCalls) {
             parts.push((tc._rawParts ?? { functionCall: { name: tc.name, args: tc.arguments } }) as { functionCall: { name: string; args: Record<string, unknown> } })
           }
-          return { role: 'model' as const, parts }
+          return [{ role: 'model' as const, parts }]
         }
         const parts: Array<{ text: string } | { functionCall: { name: string; args: Record<string, unknown> } }> = []
         if (textContent) parts.push({ text: textContent })
@@ -107,7 +120,7 @@ export class GeminiLLMProvider implements LLMProvider {
             functionCall: { name: tc.name, args: tc.arguments },
           })
         }
-        return { role: 'model' as const, parts }
+        return [{ role: 'model' as const, parts }]
       }
       // Handle multimodal content
       if (typeof m.content !== 'string' && Array.isArray(m.content)) {
@@ -119,15 +132,15 @@ export class GeminiLLMProvider implements LLMProvider {
             parts.push({ text: b.text })
           }
         }
-        return {
+        return [{
           role: m.role === 'assistant' ? ('model' as const) : ('user' as const),
           parts,
-        }
+        }]
       }
-      return {
+      return [{
         role: m.role === 'assistant' ? ('model' as const) : ('user' as const),
         parts: [{ text: m.content as string }],
-      }
+      }]
     })
 
     const lastMessage = nonSystemMessages[nonSystemMessages.length - 1]

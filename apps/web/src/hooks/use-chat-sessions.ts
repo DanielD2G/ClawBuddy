@@ -6,6 +6,7 @@ export interface ChatSession {
   id: string
   workspaceId: string
   title: string | null
+  agentStatus: string
   unreadCount: number
   activeSandbox: boolean
   lastInputTokens: number | null
