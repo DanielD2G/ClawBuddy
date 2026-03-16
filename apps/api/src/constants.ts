@@ -57,7 +57,7 @@ export const DEFAULT_MAX_CONTEXT_TOKENS = 30_000
 export const RECENT_MESSAGES_TO_KEEP = 10
 export const MIN_MESSAGES_FOR_COMPRESSION = 6
 export const COMPRESSION_TEMPERATURE = 0.2
-export const COMPRESSION_MAX_TOKENS = 1000
+export const COMPRESSION_MAX_TOKENS = 2000
 export const TOKEN_ESTIMATION_DIVISOR = 4
 
 // ── Title generation ─────────────────────────────
@@ -90,6 +90,11 @@ export const TOOL_DISCOVERY_COLLECTION = 'agentbuddy_tools'
 export const TOOL_DISCOVERY_EMBEDDING_INSTRUCTIONS_LIMIT = 500
 export const TOOL_DISCOVERY_MAX_CALLS = 3
 export const ALWAYS_ON_CAPABILITY_SLUGS = ['document-search', 'agent-memory', 'bash', 'python']
+
+// ── Parallel tool execution ─────────────────────
+export const PARALLEL_SAFE_TOOLS = new Set([
+  'web_search', 'search_documents', 'discover_tools', 'list_crons',
+])
 
 // ── API key masking ─────────────────────────────
 export const KEY_MASK_THRESHOLD = 8

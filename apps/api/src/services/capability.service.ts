@@ -318,6 +318,10 @@ You can combine multiple tools in a single task. All tools run in the same sandb
 
 When a task benefits from post-processing (formatting, filtering, aggregating), prefer chaining tools over returning raw output.
 
+## Parallel tool calls
+
+When you need to perform multiple INDEPENDENT operations (e.g., several web searches, multiple document lookups), request ALL of them in a single response by including multiple tool calls at once. This runs them in parallel and is much faster than calling them one at a time. Only call tools sequentially when one depends on another's output.
+
 Large tool outputs are automatically saved to files at /workspace/.outputs/.
 When you see a truncated output with a file path, use Bash to read or process the file (e.g., cat, jq, grep, awk) instead of asking the user to re-run the command.
 
