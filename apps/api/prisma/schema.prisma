@@ -1,0 +1,262 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Workspace {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  permissions     Json?
+  color           String?
+  settings        Json?
+  autoExecute     Boolean   @default(false)
+  containerId     String?
+  containerStatus         String    @default("stopped")
+  containerLastActivityAt DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  folders                Folder[]
+  documents              Document[]
+  chatSessions           ChatSession[]
+  workspaceCapabilities  WorkspaceCapability[]
+  sandboxSessions        SandboxSession[]
+}
+
+model Folder {
+  id          String   @id @default(cuid())
+  name        String
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  parentId    String?
+  parent      Folder?   @relation("FolderToFolder", fields: [parentId], references: [id])
+  children    Folder[]  @relation("FolderToFolder")
+  documents   Document[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Document {
+  id              String   @id @default(cuid())
+  title           String
+  workspaceId     String
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  folderId        String?
+  folder          Folder?   @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  status          String    @default("PENDING")
+  type            String
+  fileUrl         String?
+  content         String?   @db.Text
+  chunkCount      Int       @default(0)
+  processingStep  String?
+  processingPct   Int?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  chunks DocumentChunk[]
+}
+
+model DocumentChunk {
+  id         String  @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  content    String   @db.Text
+  qdrantId   String   @unique
+  chunkIndex Int
+  metadata   Json?
+}
+
+model ChatSession {
+  id          String   @id @default(cuid())
+  workspaceId String?
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  title       String?
+  folderScope String[]  @default([])
+  agentState  Json?
+  agentStatus        String   @default("idle")
+  lastReadAt         DateTime?
+  contextSummary     String?   @db.Text
+  contextSummaryUpTo String?
+  lastInputTokens    Int?
+  linuxUser          String?
+  sessionAllowRules  Json?
+  lastMessageAt      DateTime  @default(now())
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  messages        ChatMessage[]
+  sandboxSessions SandboxSession[]
+  toolApprovals   ToolApproval[]
+}
+
+model ChatMessage {
+  id          String      @id @default(cuid())
+  sessionId   String
+  session     ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role        String
+  content     String      @db.Text
+  sources     Json?
+  toolCalls     Json?
+  contentBlocks Json?
+  attachments   Json?
+  createdAt   DateTime    @default(now())
+
+  toolExecutions ToolExecution[]
+}
+
+model AppSettings {
+  id                String   @id @default("singleton")
+  aiProvider        String   @default("openai")
+  aiModel           String?
+  lightModel        String?
+  titleModel        String?
+  compactModel      String?
+  useLightModel     Boolean  @default(true)
+  embeddingProvider String   @default("openai")
+  embeddingModel    String?
+  openaiApiKey        String?  @db.Text
+  geminiApiKey        String?  @db.Text
+  anthropicApiKey     String?  @db.Text
+  onboardingComplete Boolean @default(false)
+  contextLimitTokens Int      @default(30000)
+  browserGridUrl     String?
+  browserGridApiKey  String?  @db.Text
+  browserGridBrowser String?
+  browserModel       String?
+  maxAgentIterations Int      @default(50)
+  updatedAt         DateTime @updatedAt
+}
+
+// ── Capabilities System ─────────────────────────────────────
+
+model Capability {
+  id                 String   @id @default(cuid())
+  slug               String   @unique
+  name               String
+  description        String   @db.Text
+  icon               String?
+  category           String   @default("general")
+  version            String   @default("1.0.0")
+  toolDefinitions    Json
+  systemPrompt       String   @db.Text
+  dockerImage        String?
+  packages           String[] @default([])
+  networkAccess      Boolean  @default(false)
+  configSchema       Json?
+  authType           String?
+  builtin            Boolean  @default(true)
+  globalConfig       Json?
+  skillType          String?
+  installationScript String?  @db.Text
+  source             String   @default("builtin")
+  skillFileKey       String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  workspaceCapabilities WorkspaceCapability[]
+}
+
+model WorkspaceCapability {
+  id           String     @id @default(cuid())
+  workspaceId  String
+  workspace    Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  capabilityId String
+  capability   Capability @relation(fields: [capabilityId], references: [id], onDelete: Cascade)
+  enabled      Boolean    @default(true)
+  config       Json?
+  createdAt    DateTime   @default(now())
+
+  @@unique([workspaceId, capabilityId])
+}
+
+model SandboxSession {
+  id            String       @id @default(cuid())
+  workspaceId   String?
+  workspace     Workspace?   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  chatSessionId String
+  chatSession   ChatSession  @relation(fields: [chatSessionId], references: [id], onDelete: Cascade)
+  containerId   String?
+  status        String       @default("pending")
+  image         String
+  startedAt     DateTime?
+  stoppedAt     DateTime?
+  createdAt     DateTime     @default(now())
+
+  executions ToolExecution[]
+}
+
+model ToolExecution {
+  id               String          @id @default(cuid())
+  sandboxSessionId String?
+  sandboxSession   SandboxSession? @relation(fields: [sandboxSessionId], references: [id], onDelete: SetNull)
+  chatMessageId    String?
+  chatMessage      ChatMessage?    @relation(fields: [chatMessageId], references: [id], onDelete: SetNull)
+  capabilitySlug   String
+  toolName         String
+  input            Json
+  output           String?         @db.Text
+  error            String?         @db.Text
+  exitCode         Int?
+  durationMs       Int?
+  status           String          @default("pending")
+  createdAt        DateTime        @default(now())
+}
+
+model ToolApproval {
+  id             String      @id @default(cuid())
+  chatSessionId  String
+  chatSession    ChatSession @relation(fields: [chatSessionId], references: [id], onDelete: Cascade)
+  toolName       String
+  capabilitySlug String
+  input          Json
+  toolCallId     String
+  status         String      @default("pending")
+  decidedAt      DateTime?
+  createdAt      DateTime    @default(now())
+}
+
+model GlobalSettings {
+  id               String   @id @default("singleton")
+  autoApproveRules Json?
+  updatedAt        DateTime @updatedAt
+}
+
+model TokenUsage {
+  id           String   @id @default(cuid())
+  provider     String
+  model        String
+  inputTokens  Int      @default(0)
+  outputTokens Int      @default(0)
+  totalTokens  Int      @default(0)
+  sessionId    String?
+  date         String   // YYYY-MM-DD for daily aggregation
+  createdAt    DateTime @default(now())
+
+  @@index([date])
+  @@index([provider])
+}
+
+model CronJob {
+  id            String    @id @default(cuid())
+  name          String
+  description   String?   @db.Text
+  schedule      String
+  type          String    @default("internal")
+  handler       String?
+  prompt        String?   @db.Text
+  workspaceId   String?
+  sessionId     String?
+  enabled       Boolean   @default(true)
+  builtin       Boolean   @default(false)
+  lastRunAt     DateTime?
+  lastRunStatus String?
+  lastRunError  String?   @db.Text
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}

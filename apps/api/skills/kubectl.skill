@@ -1,0 +1,37 @@
+{
+  "name": "Kubectl",
+  "slug": "kubectl",
+  "description": "Execute kubectl commands to manage Kubernetes clusters.",
+  "version": "1.0.0",
+  "icon": "Container",
+  "category": "devops",
+  "type": "bash",
+  "networkAccess": true,
+  "instructions": "You can execute kubectl commands to manage Kubernetes clusters. Kubeconfig should be configured in the workspace.",
+  "installation": "ARCH=$(dpkg --print-architecture) && curl -LO \"https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/${ARCH}/kubectl\" && install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl && rm kubectl",
+  "tools": [
+    {
+      "name": "kubectl_command",
+      "description": "Execute a kubectl command. The command should NOT include the \"kubectl\" prefix.",
+      "prefix": "kubectl",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string",
+            "description": "The kubectl command (without the \"kubectl\" prefix), e.g. \"get pods\" or \"describe deployment my-app\""
+          },
+          "timeout": {
+            "type": "number",
+            "description": "Timeout in seconds (default: 30, max: 300)"
+          }
+        },
+        "required": ["command"]
+      }
+    }
+  ],
+  "inputs": {
+    "kubeconfig_b64": "secret",
+    "kube_context": "var"
+  }
+}

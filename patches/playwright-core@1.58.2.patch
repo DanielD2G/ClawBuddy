@@ -1,0 +1,20 @@
+diff --git a/lib/utilsBundle.js b/lib/utilsBundle.js
+index 188aa33465d8f91ca457237873952f966be4272e..e3dfb3f771c6b1df992cdbefd8a35eeda8ad4016 100644
+--- a/lib/utilsBundle.js	
++++ b/lib/utilsBundle.js
+@@ -58,10 +58,11 @@ const program = require("./utilsBundleImpl").program;
+ const ProgramOption = require("./utilsBundleImpl").ProgramOption;
+ const progress = require("./utilsBundleImpl").progress;
+ const SocksProxyAgent = require("./utilsBundleImpl").SocksProxyAgent;
+-const ws = require("./utilsBundleImpl").ws;
+-const wsServer = require("./utilsBundleImpl").wsServer;
+-const wsReceiver = require("./utilsBundleImpl").wsReceiver;
+-const wsSender = require("./utilsBundleImpl").wsSender;
++const _isBun = typeof globalThis.Bun !== 'undefined';
++const ws = _isBun ? require("ws") : require("./utilsBundleImpl").ws;
++const wsServer = _isBun ? require("ws").Server : require("./utilsBundleImpl").wsServer;
++const wsReceiver = _isBun ? require("ws").Receiver : require("./utilsBundleImpl").wsReceiver;
++const wsSender = _isBun ? require("ws").Sender : require("./utilsBundleImpl").wsSender;
+ const yaml = require("./utilsBundleImpl").yaml;
+ function ms(ms2) {
+   if (!isFinite(ms2))
