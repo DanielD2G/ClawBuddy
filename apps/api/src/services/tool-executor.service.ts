@@ -38,6 +38,8 @@ export interface ExecutionResult {
   exitCode?: number
   durationMs: number
   sources?: DocumentSource[]
+  /** ID of the ToolExecution record created in the database */
+  executionId?: string
 }
 
 /**
@@ -123,7 +125,7 @@ export const toolExecutorService = {
       }
 
       // Record execution (sanitize output to strip null bytes)
-      await prisma.toolExecution.create({
+      const execution = await prisma.toolExecution.create({
         data: {
           capabilitySlug,
           toolName: toolCall.name,
@@ -137,13 +139,15 @@ export const toolExecutorService = {
         },
       })
 
-      return result
+      return { ...result, executionId: execution.id }
     } catch (err) {
       const durationMs = Date.now() - startTime
       const error = err instanceof Error ? err.message : String(err)
+      console.error(`[ToolExecutor] Tool "${toolCall.name}" threw:`, err)
 
+      let executionId: string | undefined
       try {
-        await prisma.toolExecution.create({
+        const execution = await prisma.toolExecution.create({
           data: {
             capabilitySlug,
             toolName: toolCall.name,
@@ -153,12 +157,13 @@ export const toolExecutorService = {
             status: 'failed',
           },
         })
+        executionId = execution.id
       } catch {
         // If recording the execution also fails, just log and continue
         console.error(`[ToolExecutor] Failed to record execution error for ${toolCall.name}:`, error)
       }
 
-      return { output: '', error, durationMs }
+      return { output: '', error, durationMs, executionId }
     }
   },
 

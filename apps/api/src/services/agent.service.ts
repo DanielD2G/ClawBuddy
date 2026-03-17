@@ -27,6 +27,16 @@ import {
 import { toolDiscoveryService } from './tool-discovery.service.js'
 import type { ToolDefinition } from '../capabilities/types.js'
 
+/** Strip null bytes from strings before PostgreSQL storage. */
+function stripNulls(s: string): string {
+  // eslint-disable-next-line no-control-regex
+  let result = s.replace(/\x00/g, '')
+  result = result.replace(/\\u0000/g, '')
+  // eslint-disable-next-line no-control-regex
+  result = result.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
+  return result
+}
+
 /** Tools exempt from the argument size guard (they have proper alternatives like sourcePath) */
 const SIZE_GUARD_EXEMPT = new Set(['generate_file', 'save_document', 'search_documents'])
 
@@ -379,6 +389,8 @@ interface AgentResult {
   }>
   sources?: Array<{ documentId: string; documentTitle: string; chunkId: string; chunkIndex: number }>
   messageId?: string
+  /** ID of the last ChatMessage saved during the agent loop */
+  lastMessageId?: string
 }
 
 interface AgentState {
@@ -530,11 +542,13 @@ export const agentService = {
       })),
       { role: 'user', content: userContent },
     ]
+    // Merge consecutive messages with the same role
+    // (Gemini rejects consecutive same-role messages; also consolidates per-iteration assistant messages for LLM)
     const messages: ChatMessage[] = []
     for (const msg of rawMessages) {
       const prev = messages[messages.length - 1]
-      if (prev && prev.role === msg.role && msg.role === 'user') {
-        ;(prev as { content: string }).content += '\n\n' + msg.content
+      if (prev && prev.role === msg.role && (msg.role === 'user' || msg.role === 'assistant')) {
+        ;(prev as { content: string }).content += '\n\n' + getTextContent(msg.content)
       } else {
         messages.push({ ...msg })
       }
@@ -548,6 +562,7 @@ export const agentService = {
     const toolExecutionLog: AgentResult['toolExecutions'] = []
     const collectedSources: NonNullable<AgentResult['sources']> = []
     let accumulatedContent = ''
+    let lastSavedMessageId: string | undefined
 
     // Determine if we need a sandbox
     // In discovery mode, always start sandbox since discovered tools may need it
@@ -656,10 +671,28 @@ export const agentService = {
         })
         emit?.('content', { text: response.content })
         const finalContent = (accumulatedContent + (response.content || '')).trim()
+
+        // Save final assistant message to DB
+        try {
+          const finalMsg = await prisma.chatMessage.create({
+            data: {
+              sessionId,
+              role: 'assistant',
+              content: stripNulls(response.content || ''),
+              ...(collectedSources.length ? { sources: collectedSources } : {}),
+            },
+          })
+          lastSavedMessageId = finalMsg.id
+          debugLog('Saved final message', { messageId: finalMsg.id })
+        } catch (saveErr) {
+          console.error('[Agent] Failed to save final message:', saveErr)
+        }
+
         return {
           content: finalContent,
           toolExecutions: toolExecutionLog,
           sources: collectedSources.length ? collectedSources : undefined,
+          lastMessageId: lastSavedMessageId,
         }
       }
 
@@ -799,16 +832,29 @@ export const agentService = {
       }
 
       if (paused) {
+        // Save the intermediate content before pausing for approval
+        if (response.content?.trim()) {
+          try {
+            const pauseMsg = await prisma.chatMessage.create({
+              data: { sessionId, role: 'assistant', content: stripNulls(response.content) },
+            })
+            lastSavedMessageId = pauseMsg.id
+          } catch { /* best effort */ }
+        }
         return {
           content: accumulatedContent.trim(),
           toolExecutions: toolExecutionLog,
           sources: collectedSources.length ? collectedSources : undefined,
+          lastMessageId: lastSavedMessageId,
         }
       }
 
       // Second pass: execute — parallel-safe tools concurrently, others sequentially
       const parallelBatch = readyTools.filter((t) => PARALLEL_SAFE_TOOLS.has(t.toolCall.name))
       const sequentialBatch = readyTools.filter((t) => !PARALLEL_SAFE_TOOLS.has(t.toolCall.name))
+
+      // Collect execution IDs for this iteration (for DB linking)
+      const iterationExecutionIds: string[] = []
 
       // Execute parallel-safe tools concurrently (only worth it for 2+)
       const executeAndProcess = async (batch: ReadyTool[], parallel: boolean) => {
@@ -885,6 +931,7 @@ export const agentService = {
             toolName: toolCall.name, capabilitySlug, input: toolCall.arguments,
             output: result.output || undefined, error: result.error, exitCode: result.exitCode, durationMs: result.durationMs,
           })
+          if (result.executionId) iterationExecutionIds.push(result.executionId)
 
           // Add tool result to conversation
           const rawContent = (toolCall.name === 'run_browser_script')
@@ -907,6 +954,69 @@ export const agentService = {
       }
       await executeAndProcess(parallelBatch, true)
       await executeAndProcess(sequentialBatch, false)
+
+      // ── Per-iteration DB persistence: save this iteration's assistant message ──
+      try {
+        const iterContent = response.content || ''
+        const allIterTools = [...readyTools]
+        // Also include rejected tools from pre-check that were logged
+        const iterToolCalls = allIterTools.map((rt) => ({
+          name: rt.toolCall.name,
+          capability: rt.capabilitySlug,
+          input: rt.toolCall.arguments,
+        }))
+
+        // Build contentBlocks for THIS iteration
+        const iterBlocks: Array<{ type: 'text'; text: string } | { type: 'tool'; toolIndex: number }> = []
+        if (iterContent.trim()) {
+          iterBlocks.push({ type: 'text', text: iterContent })
+        }
+        for (let t = 0; t < allIterTools.length; t++) {
+          iterBlocks.push({ type: 'tool', toolIndex: t })
+        }
+
+        // Extract generated file attachments for this iteration
+        const iterGeneratedFiles = toolExecutionLog
+          .slice(-allIterTools.length)
+          .filter((te) => te.toolName === 'generate_file' && te.output && !te.error)
+          .map((te) => {
+            try {
+              const parsed = JSON.parse(te.output!)
+              if (parsed.filename && parsed.downloadUrl) {
+                return { name: parsed.filename, url: parsed.downloadUrl, storageKey: '', type: 'generated', size: 0 }
+              }
+            } catch { /* not JSON */ }
+            return null
+          })
+          .filter(Boolean)
+
+        const iterMsg = await prisma.chatMessage.create({
+          data: {
+            sessionId,
+            role: 'assistant',
+            content: stripNulls(iterContent),
+            toolCalls: iterToolCalls.length
+              ? (JSON.parse(stripNulls(JSON.stringify(iterToolCalls))) as Prisma.InputJsonValue)
+              : undefined,
+            ...(iterBlocks.length ? { contentBlocks: iterBlocks as unknown as Prisma.InputJsonValue } : {}),
+            ...(iterGeneratedFiles.length ? { attachments: iterGeneratedFiles } : {}),
+            ...(collectedSources.length ? { sources: collectedSources } : {}),
+          },
+        })
+        lastSavedMessageId = iterMsg.id
+
+        // Link ToolExecution records directly by their IDs
+        if (iterationExecutionIds.length) {
+          await prisma.toolExecution.updateMany({
+            where: { id: { in: iterationExecutionIds } },
+            data: { chatMessageId: iterMsg.id },
+          })
+        }
+
+        debugLog('Saved iteration message', { messageId: iterMsg.id, toolCount: allIterTools.length, executionIds: iterationExecutionIds.length })
+      } catch (saveErr) {
+        console.error('[Agent] Failed to save iteration message:', saveErr)
+      }
     }
 
     debugLog('Agent loop DONE (max iterations reached)', { totalToolExecutions: toolExecutionLog.length })
@@ -915,10 +1025,19 @@ export const agentService = {
       'I reached the maximum number of tool-calling iterations. Here is what I found so far based on the tool outputs above.'
     emit?.('content', { text: maxIterContent })
 
+    // Save max-iterations message to DB
+    try {
+      const maxIterMsg = await prisma.chatMessage.create({
+        data: { sessionId, role: 'assistant', content: stripNulls(maxIterContent) },
+      })
+      lastSavedMessageId = maxIterMsg.id
+    } catch { /* best effort */ }
+
     return {
       content: (accumulatedContent + maxIterContent).trim(),
       toolExecutions: toolExecutionLog,
       sources: collectedSources.length ? collectedSources : undefined,
+      lastMessageId: lastSavedMessageId,
     }
   },
 
@@ -967,6 +1086,7 @@ export const agentService = {
 
     const { messages, toolExecutionLog, workspaceId, linuxUser } = state
     const collectedSourcesResume: NonNullable<AgentResult['sources']> = []
+    let lastSavedMessageId: string | undefined
 
     // Check if any tool was denied — if so, stop immediately
     const hasDenied = state.pendingToolCalls.some((tc) => {
@@ -993,10 +1113,18 @@ export const agentService = {
       const rejectionContent = `Action skipped — ${deniedNames.join(', ')} was not approved.`
       emit?.('content', { text: rejectionContent })
 
+      try {
+        const deniedMsg = await prisma.chatMessage.create({
+          data: { sessionId, role: 'assistant', content: stripNulls(rejectionContent) },
+        })
+        lastSavedMessageId = deniedMsg.id
+      } catch { /* best effort */ }
+
       return {
         content: rejectionContent,
         toolExecutions: toolExecutionLog,
         sources: collectedSourcesResume.length ? collectedSourcesResume : undefined,
+        lastMessageId: lastSavedMessageId,
       }
     }
 
@@ -1004,6 +1132,7 @@ export const agentService = {
     const resumeCapabilities = await capabilityService.getEnabledCapabilitiesForWorkspace(workspaceId)
 
     // Process approved tool calls
+    const resumeExecutionIds: string[] = []
     for (const toolCall of state.pendingToolCalls) {
       const approval = approvals.find((a) => a.toolCallId === toolCall.id)
       const resumeMatchedCap = resumeCapabilities.find((cap) => {
@@ -1051,6 +1180,7 @@ export const agentService = {
         exitCode: result.exitCode,
         durationMs: result.durationMs,
       })
+      if (result.executionId) resumeExecutionIds.push(result.executionId)
 
       // Truncate large sandbox outputs to save context
       // For browser scripts, pass output directly to preserve JSON structure for screenshot extraction
@@ -1068,6 +1198,38 @@ export const agentService = {
         toolCallId: toolCall.id,
         content: toolContent,
       })
+    }
+
+    // Save the approved tool calls as a ChatMessage (these are the tools that were awaiting approval)
+    if (state.pendingToolCalls.length > 0) {
+      try {
+        const approvedToolCalls = state.pendingToolCalls.map((tc) => ({
+          name: tc.name,
+          capability: approvals.find((a) => a.toolCallId === tc.id)?.capabilitySlug ?? 'unknown',
+          input: tc.arguments,
+        }))
+        const approvedBlocks: Array<{ type: 'tool'; toolIndex: number }> = state.pendingToolCalls.map((_, idx) => ({
+          type: 'tool' as const, toolIndex: idx,
+        }))
+        const approvedMsg = await prisma.chatMessage.create({
+          data: {
+            sessionId,
+            role: 'assistant',
+            content: '',
+            toolCalls: JSON.parse(JSON.stringify(approvedToolCalls)) as Prisma.InputJsonValue,
+            contentBlocks: approvedBlocks as unknown as Prisma.InputJsonValue,
+          },
+        })
+        lastSavedMessageId = approvedMsg.id
+        if (resumeExecutionIds.length) {
+          await prisma.toolExecution.updateMany({
+            where: { id: { in: resumeExecutionIds } },
+            data: { chatMessageId: approvedMsg.id },
+          })
+        }
+      } catch (saveErr) {
+        console.error('[Agent] Failed to save approved tools message:', saveErr)
+      }
     }
 
     // LLM needed below for multimodal handling
@@ -1144,6 +1306,19 @@ export const agentService = {
       if (response.finishReason === 'stop' || !response.toolCalls?.length) {
         emit?.('content', { text: response.content })
 
+        // Save final message
+        try {
+          const finalMsg = await prisma.chatMessage.create({
+            data: {
+              sessionId,
+              role: 'assistant',
+              content: stripNulls(response.content || ''),
+              ...(collectedSourcesResume.length ? { sources: collectedSourcesResume } : {}),
+            },
+          })
+          lastSavedMessageId = finalMsg.id
+        } catch { /* best effort */ }
+
         await prisma.chatSession.update({
           where: { id: sessionId },
           data: { agentStatus: 'idle' },
@@ -1153,6 +1328,7 @@ export const agentService = {
           content: response.content,
           toolExecutions: toolExecutionLog,
           sources: collectedSourcesResume.length ? collectedSourcesResume : undefined,
+          lastMessageId: lastSavedMessageId,
         }
       }
 
@@ -1167,6 +1343,7 @@ export const agentService = {
         toolCalls: response.toolCalls,
       })
 
+      const resumeLoopExecIds: string[] = []
       for (const toolCall of response.toolCalls) {
         const matchedCap = capabilities.find((cap) => {
           const defs = cap.toolDefinitions as Array<{ name: string }>
@@ -1217,7 +1394,7 @@ export const agentService = {
           })
 
           emit?.('awaiting_approval', { approvalIds: pending.map((a) => a.id) })
-          return { content: '', toolExecutions: toolExecutionLog, sources: collectedSourcesResume.length ? collectedSourcesResume : undefined }
+          return { content: '', toolExecutions: toolExecutionLog, sources: collectedSourcesResume.length ? collectedSourcesResume : undefined, lastMessageId: lastSavedMessageId }
         }
 
         // Guard: reject oversized tool call arguments
@@ -1280,6 +1457,7 @@ export const agentService = {
           exitCode: result.exitCode,
           durationMs: result.durationMs,
         })
+        if (result.executionId) resumeLoopExecIds.push(result.executionId)
 
         // Truncate large outputs to save context
         // For browser scripts, pass output directly to preserve JSON structure for screenshot extraction
@@ -1303,6 +1481,38 @@ export const agentService = {
           content: resumeMessageContent,
         })
       }
+
+      // ── Per-iteration DB persistence (resume loop) ──
+      try {
+        const iterContent = response.content || ''
+        const iterToolCalls = response.toolCalls.map((tc) => {
+          const cap = capabilities.find((c) => (c.toolDefinitions as Array<{ name: string }>)?.some((t) => t.name === tc.name))
+          return { name: tc.name, capability: cap?.slug ?? 'unknown', input: tc.arguments }
+        })
+        const iterBlocks: Array<{ type: 'text'; text: string } | { type: 'tool'; toolIndex: number }> = []
+        if (iterContent.trim()) iterBlocks.push({ type: 'text', text: iterContent })
+        for (let t = 0; t < response.toolCalls.length; t++) {
+          iterBlocks.push({ type: 'tool', toolIndex: t })
+        }
+        const iterMsg = await prisma.chatMessage.create({
+          data: {
+            sessionId,
+            role: 'assistant',
+            content: stripNulls(iterContent),
+            toolCalls: iterToolCalls.length ? (JSON.parse(stripNulls(JSON.stringify(iterToolCalls))) as Prisma.InputJsonValue) : undefined,
+            ...(iterBlocks.length ? { contentBlocks: iterBlocks as unknown as Prisma.InputJsonValue } : {}),
+          },
+        })
+        lastSavedMessageId = iterMsg.id
+        if (resumeLoopExecIds.length) {
+          await prisma.toolExecution.updateMany({
+            where: { id: { in: resumeLoopExecIds } },
+            data: { chatMessageId: iterMsg.id },
+          })
+        }
+      } catch (saveErr) {
+        console.error('[Agent] Failed to save resume iteration message:', saveErr)
+      }
     }
 
     await prisma.chatSession.update({
@@ -1314,7 +1524,14 @@ export const agentService = {
       'I reached the maximum number of tool-calling iterations. Here is what I found so far.'
     emit?.('content', { text: maxIterContent })
 
-    return { content: maxIterContent, toolExecutions: toolExecutionLog, sources: collectedSourcesResume.length ? collectedSourcesResume : undefined }
+    try {
+      const maxMsg = await prisma.chatMessage.create({
+        data: { sessionId, role: 'assistant', content: stripNulls(maxIterContent) },
+      })
+      lastSavedMessageId = maxMsg.id
+    } catch { /* best effort */ }
+
+    return { content: maxIterContent, toolExecutions: toolExecutionLog, sources: collectedSourcesResume.length ? collectedSourcesResume : undefined, lastMessageId: lastSavedMessageId }
   },
 
   /**

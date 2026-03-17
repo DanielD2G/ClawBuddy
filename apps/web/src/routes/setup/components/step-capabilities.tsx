@@ -24,6 +24,7 @@ interface StepCapabilitiesProps {
   hasConfigStep: boolean
   browserGridUrl: string
   onBrowserGridUrlChange: (url: string) => void
+  browserGridFromEnv: boolean
 }
 
 export function StepCapabilities({
@@ -37,6 +38,7 @@ export function StepCapabilities({
   hasConfigStep,
   browserGridUrl,
   onBrowserGridUrlChange,
+  browserGridFromEnv,
 }: StepCapabilitiesProps) {
   // Slugs that require Google OAuth env vars
   const OAUTH_GOOGLE_SLUGS = ['google-workspace']
@@ -101,7 +103,7 @@ export function StepCapabilities({
                 <div className="flex-1">
                   <div className="text-sm font-medium">{cap.name}</div>
                   <div className="text-xs text-muted-foreground">{cap.description}</div>
-                  {isSelected && cap.slug === 'browser-automation' && (
+                  {isSelected && cap.slug === 'browser-automation' && !browserGridFromEnv && (
                     <div className="mt-2 ml-7">
                       <Input
                         placeholder="http://localhost:9090"

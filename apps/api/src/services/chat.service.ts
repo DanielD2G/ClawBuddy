@@ -1,5 +1,4 @@
 import { prisma } from '../lib/prisma.js'
-import type { Prisma } from '@prisma/client'
 import { createLLMProvider, createLightLLM, createTitleLLM } from '../providers/index.js'
 import { recordTokenUsage } from './agent.service.js'
 import { settingsService } from './settings.service.js'
@@ -10,26 +9,12 @@ import { capabilityService } from './capability.service.js'
 import type { SSEEmit } from '../lib/sse.js'
 import {
   CHAT_TITLE_MAX_LEN,
-  RECENT_EXECUTION_WINDOW_MS,
   TITLE_TEMPERATURE,
   TITLE_MAX_TOKENS,
   SEARCH_RESULTS_LIMIT,
 } from '../constants.js'
 
-/**
- * Aggressively strip null bytes from strings before PostgreSQL storage.
- * Handles raw null bytes, JSON-escaped \u0000, and Unicode escape sequences.
- */
-function stripNulls(s: string): string {
-  // eslint-disable-next-line no-control-regex
-  let result = s.replace(/\x00/g, '')
-  // JSON.stringify encodes null bytes as the literal 6-char sequence \u0000
-  result = result.replace(/\\u0000/g, '')
-  // Also strip any remaining control chars except \n, \r, \t
-  // eslint-disable-next-line no-control-regex
-  result = result.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
-  return result
-}
+
 
 export const chatService = {
   async createSession(data: { workspaceId: string; title?: string }) {
@@ -198,110 +183,18 @@ export const chatService = {
 
       const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: session.workspaceId! }, select: { autoExecute: true } })
 
-      // Wrap emit to track content block ordering for persistence
-      const orderedBlocks: Array<{ type: 'text'; text: string } | { type: 'tool'; toolIndex: number }> = []
-      let toolCounter = 0
-      const trackingEmit: SSEEmit = (event, data) => {
-        if (event === 'content' && (data as { text?: string }).text) {
-          const text = (data as { text: string }).text
-          const last = orderedBlocks[orderedBlocks.length - 1]
-          if (last && last.type === 'text') {
-            last.text += text
-          } else {
-            orderedBlocks.push({ type: 'text', text })
-          }
-        } else if (event === 'tool_start') {
-          orderedBlocks.push({ type: 'tool', toolIndex: toolCounter++ })
-        }
-        emit(event, data)
-      }
-
-      const result = await agentService.runAgentLoop(sessionId, content, session.workspaceId!, trackingEmit, {
+      // Agent loop now saves ChatMessages per-iteration directly — no tracking wrapper needed
+      const result = await agentService.runAgentLoop(sessionId, content, session.workspaceId!, emit, {
         autoApprove: workspace.autoExecute,
         mentionedSlugs,
       })
 
-      // Save assistant message with tool execution data (only if we have content)
-      if (result.content) {
-        const sanitizedContent = stripNulls(result.content)
-        const sanitizedToolCalls = result.toolExecutions.length
-          ? (JSON.parse(stripNulls(JSON.stringify(result.toolExecutions.map((te) => ({
-              name: te.toolName,
-              capability: te.capabilitySlug,
-              input: te.input,
-              output: te.output,
-              error: te.error,
-              exitCode: te.exitCode,
-              durationMs: te.durationMs,
-            }))))) as Prisma.InputJsonValue)
-          : undefined
+      await prisma.chatSession.update({
+        where: { id: sessionId },
+        data: { agentStatus: 'idle' },
+      })
 
-        // Extract file attachments from generate_file tool results
-        const generatedFiles = result.toolExecutions
-          .filter((te) => te.toolName === 'generate_file' && te.output && !te.error)
-          .map((te) => {
-            try {
-              const parsed = JSON.parse(te.output!)
-              if (parsed.filename && parsed.downloadUrl) {
-                return { name: parsed.filename, url: parsed.downloadUrl, storageKey: '', type: 'generated', size: 0 }
-              }
-            } catch { /* not JSON */ }
-            return null
-          })
-          .filter(Boolean)
-
-        let assistantMessage: { id: string }
-        try {
-          assistantMessage = await prisma.chatMessage.create({
-            data: {
-              sessionId,
-              role: 'assistant',
-              content: sanitizedContent,
-              toolCalls: sanitizedToolCalls,
-              ...(orderedBlocks.length ? { contentBlocks: orderedBlocks as unknown as Prisma.InputJsonValue } : {}),
-              ...(generatedFiles.length ? { attachments: generatedFiles } : {}),
-              ...(result.sources?.length ? { sources: result.sources } : {}),
-            },
-          })
-        } catch (dbErr) {
-          // Last resort: strip ALL non-printable chars and save without tool data
-          console.error('[ChatService] Failed to save assistant message, retrying stripped:', dbErr)
-          // eslint-disable-next-line no-control-regex
-          const ultraStripped = sanitizedContent.replace(/[^\x20-\x7E\n\r\t\u00A0-\uFFFF]/g, '')
-          assistantMessage = await prisma.chatMessage.create({
-            data: {
-              sessionId,
-              role: 'assistant',
-              content: ultraStripped || '(Message could not be saved due to encoding issues)',
-            },
-          })
-        }
-
-        // Link tool executions to the message
-        if (result.toolExecutions.length) {
-          const recentExecutions = await prisma.toolExecution.findMany({
-            where: {
-              chatMessageId: null,
-              createdAt: { gte: new Date(Date.now() - RECENT_EXECUTION_WINDOW_MS) },
-            },
-            orderBy: { createdAt: 'desc' },
-            take: result.toolExecutions.length,
-          })
-          if (recentExecutions.length) {
-            await prisma.toolExecution.updateMany({
-              where: { id: { in: recentExecutions.map((e) => e.id) } },
-              data: { chatMessageId: assistantMessage.id },
-            })
-          }
-        }
-
-        await prisma.chatSession.update({
-          where: { id: sessionId },
-          data: { agentStatus: 'idle' },
-        })
-
-        emit('done', { messageId: assistantMessage.id, sessionId })
-      }
+      emit('done', { messageId: result.lastMessageId, sessionId })
     } catch (err) {
       console.error('[ChatService] Agent loop error:', err)
 

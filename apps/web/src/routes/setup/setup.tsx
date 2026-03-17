@@ -3,7 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom'
 import { useSetupStatus, useSetupSettings, useCompleteSetup, useSetupCapabilities } from '@/hooks/use-setup'
 import { useActiveWorkspace } from '@/providers/workspace-provider'
 import { Spinner } from '@/components/ui/spinner'
-import { Sparkles, Key, Brain, MessageSquare, FolderOpen, Puzzle, Container, Settings } from 'lucide-react'
+import { Sparkles, Key, Brain, MessageSquare, FolderOpen, Puzzle, Container, ShieldCheck, Settings } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
@@ -19,6 +19,7 @@ import { StepWorkspace } from './components/step-workspace'
 import { StepCapabilities } from './components/step-capabilities'
 import { StepDockerImages } from './components/step-docker'
 import { StepConfigure } from './components/step-configure'
+import { StepPreflight } from './components/step-preflight'
 
 const ALL_STEPS = [
   { label: 'Welcome', icon: Sparkles },
@@ -28,6 +29,7 @@ const ALL_STEPS = [
   { label: 'Workspace', icon: FolderOpen },
   { label: 'Capabilities', icon: Puzzle },
   { label: 'Docker', icon: Container },
+  { label: 'Preflight', icon: ShieldCheck },
   { label: 'Configure', icon: Settings },
 ]
 
@@ -76,7 +78,7 @@ export function SetupPage() {
 
   if (!data) return null
 
-  const { providers, apiKeys } = data
+  const { providers, apiKeys, browserGridFromEnv } = data
   const hasEmbeddingKey = providers.available.embedding.length > 0
 
   // Capabilities that need config and are selected (exclude OAuth capabilities — configured post-setup via OAuth flow)
@@ -181,14 +183,25 @@ export function SetupPage() {
             hasConfigStep={true}
             browserGridUrl={browserGridUrl}
             onBrowserGridUrlChange={setBrowserGridUrl}
+            browserGridFromEnv={browserGridFromEnv ?? false}
           />
         )}
         {step === 6 && (
           <StepDockerImages
             onBack={() => setStep(5)}
+            onNext={() => setStep(7)}
+            isCompleting={false}
+            hasConfigStep={true}
+          />
+        )}
+        {step === 7 && (
+          <StepPreflight
+            capabilities={selectedCapabilities}
+            browserGridUrl={browserGridUrl}
+            onBack={() => setStep(6)}
             onNext={() => {
               if (hasConfigStep) {
-                setStep(7)
+                setStep(8)
               } else {
                 handleComplete()
               }
@@ -197,14 +210,14 @@ export function SetupPage() {
             hasConfigStep={hasConfigStep}
           />
         )}
-        {step === 7 && (
+        {step === 8 && (
           <StepConfigure
             capsNeedingConfig={capsNeedingConfig}
             configs={capabilityConfigs}
             onConfigChange={(slug, config) => {
               setCapabilityConfigs((prev) => ({ ...prev, [slug]: config }))
             }}
-            onBack={() => setStep(6)}
+            onBack={() => setStep(7)}
             onComplete={handleComplete}
             isCompleting={completeSetup.isPending}
           />

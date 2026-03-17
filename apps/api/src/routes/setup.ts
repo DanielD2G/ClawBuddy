@@ -2,9 +2,17 @@ import { Hono } from 'hono'
 import { settingsService, MODEL_CATALOG } from '../services/settings.service.js'
 import { searchService } from '../services/search.service.js'
 import { capabilityService } from '../services/capability.service.js'
+import { toolDiscoveryService } from '../services/tool-discovery.service.js'
 import { prisma } from '../lib/prisma.js'
 import { EMBEDDING_DIMENSIONS } from '@agentbuddy/shared'
 import { imageBuilderService } from '../services/image-builder.service.js'
+import { qdrant } from '../lib/qdrant.js'
+import { s3 } from '../lib/s3.js'
+import { embeddingService } from '../services/embedding.service.js'
+import { env } from '../env.js'
+import { TOOL_DISCOVERY_COLLECTION } from '../constants.js'
+import { ListBucketsCommand } from '@aws-sdk/client-s3'
+import Docker from 'dockerode'
 
 const app = new Hono()
 
@@ -49,6 +57,7 @@ app.get('/settings', async (c) => {
         models: MODEL_CATALOG,
       },
       apiKeys,
+      browserGridFromEnv: !!process.env.BROWSER_GRID_URL,
     },
   })
 })
@@ -268,6 +277,231 @@ app.get('/pull-images/status', (c) => {
   return c.json({ success: true, data: overallStatus() })
 })
 
+// ── Preflight checks ──────────────────────────────
+app.post('/preflight', async (c) => {
+  const blocked = await requireSetupIncomplete(c)
+  if (blocked) return blocked
+
+  const body = await c.req.json()
+  const { capabilities, browserGridUrl } = body as {
+    capabilities?: string[]
+    browserGridUrl?: string
+  }
+  const selectedCaps = new Set(capabilities ?? [])
+
+  const settings = await settingsService.get()
+
+  interface CheckResult {
+    name: string
+    status: 'pass' | 'fail' | 'skip'
+    message: string
+    durationMs: number
+  }
+
+  const checks: CheckResult[] = []
+
+  async function runCheck(
+    name: string,
+    fn: () => Promise<{ status: 'pass' | 'fail'; message: string }>,
+    condition = true,
+  ) {
+    if (!condition) {
+      checks.push({ name, status: 'skip', message: 'Not configured', durationMs: 0 })
+      return
+    }
+    const start = Date.now()
+    try {
+      const result = await fn()
+      checks.push({ name, ...result, durationMs: Date.now() - start })
+    } catch (err) {
+      checks.push({
+        name,
+        status: 'fail',
+        message: err instanceof Error ? err.message : String(err),
+        durationMs: Date.now() - start,
+      })
+    }
+  }
+
+  // 1. AI Provider API Key — make a lightweight LLM call
+  await runCheck('AI Provider API Key', async () => {
+    const provider = settings.aiProvider
+    const apiKey = await settingsService.getApiKey(provider)
+    if (!apiKey) return { status: 'fail', message: `No API key for ${provider}` }
+
+    const { createLLMProvider } = await import('../providers/index.js')
+    const llm = await createLLMProvider()
+    await llm.chat([{ role: 'user', content: 'Say ok' }], { maxTokens: 5, temperature: 0 })
+    return { status: 'pass', message: `${provider} key is valid` }
+  })
+
+  // 2. Embedding Provider API Key — generate a test embedding
+  await runCheck('Embedding Provider', async () => {
+    const provider = settings.embeddingProvider
+    const apiKey = await settingsService.getApiKey(provider)
+    if (!apiKey) return { status: 'fail', message: `No API key for ${provider}` }
+
+    const vector = await embeddingService.embed('preflight test')
+    const embeddingModel = settings.embeddingModel ?? 'unknown'
+    const expectedDimensions = EMBEDDING_DIMENSIONS[embeddingModel]
+    if (expectedDimensions && vector.length !== expectedDimensions) {
+      return {
+        status: 'fail',
+        message: `Dimension mismatch: model ${embeddingModel} returned ${vector.length}d, expected ${expectedDimensions}d`,
+      }
+    }
+    return { status: 'pass', message: `${provider} (${embeddingModel}) — ${vector.length}d vectors` }
+  })
+
+  // 3. Qdrant connectivity
+  await runCheck('Qdrant', async () => {
+    const collections = await qdrant.getCollections()
+    return { status: 'pass', message: `Connected — ${collections.collections.length} collections` }
+  })
+
+  // 4. S3 / MinIO connectivity
+  await runCheck('Object Storage (S3)', async () => {
+    const result = await s3.send(new ListBucketsCommand({}))
+    const bucketNames = (result.Buckets ?? []).map((b) => b.Name)
+    const hasBucket = bucketNames.includes(env.MINIO_BUCKET)
+    return {
+      status: 'pass',
+      message: hasBucket
+        ? `Connected — bucket "${env.MINIO_BUCKET}" exists`
+        : `Connected — bucket "${env.MINIO_BUCKET}" will be created`,
+    }
+  })
+
+  // 5. Google OAuth (if configured)
+  await runCheck(
+    'Google OAuth',
+    async () => {
+      const creds = await settingsService.getGoogleCredentials()
+      if (!creds) return { status: 'fail', message: 'Credentials not found' }
+
+      const res = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          code: 'test_dummy_code',
+          client_id: creds.clientId,
+          client_secret: creds.clientSecret,
+          redirect_uri: 'http://localhost',
+          grant_type: 'authorization_code',
+        }),
+      })
+      const data = (await res.json()) as { error?: string }
+      if (data.error === 'invalid_client') {
+        return { status: 'fail', message: 'Invalid Client ID or Client Secret' }
+      }
+      // invalid_grant or redirect_uri_mismatch means credentials are valid
+      return { status: 'pass', message: 'Client credentials are valid' }
+    },
+    settingsService.isGoogleOAuthConfigured(),
+  )
+
+  // 6. BrowserGrid (if selected)
+  await runCheck(
+    'BrowserGrid',
+    async () => {
+      const url = process.env.BROWSER_GRID_URL || browserGridUrl || 'http://localhost:9090'
+      const res = await fetch(`${url}/api/health`, {
+        signal: AbortSignal.timeout(5000),
+      })
+      if (!res.ok) return { status: 'fail', message: `Health check returned ${res.status}` }
+      return { status: 'pass', message: `Reachable at ${url}` }
+    },
+    selectedCaps.has('browser-automation'),
+  )
+
+  // 7. Docker — verify daemon is accessible
+  await runCheck('Docker', async () => {
+    const docker = new Docker()
+    const info = await docker.info()
+    return { status: 'pass', message: `Docker ${info.ServerVersion} — ${info.Containers} containers` }
+  })
+
+  // 8. Sandbox image — verify base image exists
+  await runCheck('Sandbox Base Image', async () => {
+    const docker = new Docker()
+    try {
+      const img = await docker.getImage('agentbuddy-sandbox-base').inspect()
+      const sizeMB = Math.round((img.Size ?? 0) / 1024 / 1024)
+      return { status: 'pass', message: `Image ready (${sizeMB}MB)` }
+    } catch {
+      return { status: 'fail', message: 'Base image not found — build it in the Docker step' }
+    }
+  })
+
+  // 9. Sandbox spin-up test — create and immediately destroy a test container
+  await runCheck('Sandbox Spin-up', async () => {
+    const docker = new Docker()
+    let image = 'agentbuddy-sandbox-base'
+    try {
+      await docker.getImage(image).inspect()
+    } catch {
+      image = 'ubuntu:22.04'
+      try {
+        await docker.getImage(image).inspect()
+      } catch {
+        return { status: 'fail', message: 'No sandbox image available to test' }
+      }
+    }
+
+    const container = await docker.createContainer({
+      Image: image,
+      Cmd: ['echo', 'preflight-ok'],
+      HostConfig: {
+        Memory: 64 * 1024 * 1024,
+        NanoCpus: 500_000_000,
+        NetworkMode: 'none',
+        AutoRemove: true,
+      },
+      Labels: { 'agentbuddy.type': 'preflight-test' },
+    })
+    await container.start()
+    const { StatusCode } = await container.wait()
+    // AutoRemove handles cleanup
+    if (StatusCode !== 0) {
+      return { status: 'fail', message: `Container exited with code ${StatusCode}` }
+    }
+    return { status: 'pass', message: 'Container started and executed successfully' }
+  })
+
+  // 10. Tool Discovery index — check Qdrant collection has the right dimensions (skip during initial setup)
+  await runCheck(
+    'Tool Discovery Index',
+    async () => {
+      try {
+        const info = await qdrant.getCollection(TOOL_DISCOVERY_COLLECTION)
+        const size = (info.config.params.vectors as { size: number }).size
+        const points = info.points_count
+
+        // Verify dimensions match the configured embedding model
+        const embeddingModel = settings.embeddingModel ?? 'unknown'
+        const expectedDimensions = EMBEDDING_DIMENSIONS[embeddingModel]
+        if (expectedDimensions && size !== expectedDimensions) {
+          return {
+            status: 'fail',
+            message: `Dimension mismatch: collection has ${size}d but model ${embeddingModel} produces ${expectedDimensions}d — restart the API to re-index`,
+          }
+        }
+        return { status: 'pass', message: `${points} capabilities indexed (${size}d vectors)` }
+      } catch {
+        return { status: 'fail', message: `Collection "${TOOL_DISCOVERY_COLLECTION}" not found — restart the API to create it` }
+      }
+    },
+    settings.onboardingComplete,
+  )
+
+  const allPassed = checks.every((c) => c.status === 'pass' || c.status === 'skip')
+
+  return c.json({
+    success: true,
+    data: { checks, allPassed },
+  })
+})
+
 app.post('/complete', async (c) => {
   const blocked = await requireSetupIncomplete(c)
   if (blocked) return blocked
@@ -316,6 +550,13 @@ app.post('/complete', async (c) => {
 
   // Enable base capabilities on the workspace
   const baseSlugs = ['document-search', 'bash', 'agent-memory', 'cron-management', 'python']
+
+  // Auto-enable capabilities whose required API key is available
+  for (const [slug, provider] of Object.entries(capabilityService.REQUIRES_API_KEY)) {
+    const key = await settingsService.getApiKey(provider)
+    if (key && !baseSlugs.includes(slug)) baseSlugs.push(slug)
+  }
+
   for (const slug of baseSlugs) {
     try {
       await capabilityService.enableCapability(workspace.id, slug)
@@ -336,6 +577,11 @@ app.post('/complete', async (c) => {
       }
     }
   }
+
+  // Index capabilities with the user's chosen embedding model (non-blocking)
+  toolDiscoveryService.indexCapabilities().catch((err) => {
+    console.error('[Setup] Failed to index capabilities:', err)
+  })
 
   return c.json({
     success: true,
