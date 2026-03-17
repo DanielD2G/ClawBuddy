@@ -16,6 +16,7 @@ import {
   SANDBOX_TIMEOUT_EXIT_CODE,
   SANDBOX_STOP_TIMEOUT_S,
 } from '../constants.js'
+import { stripNullBytes } from '../lib/sanitize.js'
 
 interface ExecResult {
   stdout: string
@@ -327,9 +328,8 @@ export const sandboxService = {
             // Fallback
           }
 
-          // eslint-disable-next-line no-control-regex
-          const rawStdout = Buffer.concat(stdoutChunks).toString('utf-8').replace(/\x00/g, '').trim().slice(0, EXEC_OUTPUT_MAX_BYTES)
-          const rawStderr = Buffer.concat(stderrChunks).toString('utf-8').replace(/\x00/g, '').trim().slice(0, EXEC_OUTPUT_MAX_BYTES)
+          const rawStdout = stripNullBytes(Buffer.concat(stdoutChunks).toString('utf-8')).trim().slice(0, EXEC_OUTPUT_MAX_BYTES)
+          const rawStderr = stripNullBytes(Buffer.concat(stderrChunks).toString('utf-8')).trim().slice(0, EXEC_OUTPUT_MAX_BYTES)
 
           resolve({
             stdout: rawStdout,

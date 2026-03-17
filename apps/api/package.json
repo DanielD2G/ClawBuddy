@@ -24,7 +24,7 @@
     "@prisma/client": "^6",
     "@qdrant/js-client-rest": "^1",
     "@types/tar-stream": "^3.1.4",
-    "browser-grid": "file:../../libs/browsergrid/sdk/typescript",
+    "browsergrid-sdk": "^0.1.0",
     "bullmq": "^5",
     "dockerode": "^4.0.9",
     "hono": "^4",
@@ -36,7 +36,7 @@
   },
   "devDependencies": {
     "@agentbuddy/tsconfig": "workspace:*",
-    "@types/bun": "latest",
+    "@types/bun": "^1.2.0",
     "@types/dockerode": "^4.0.1",
     "prisma": "^6",
     "typescript": "^5"

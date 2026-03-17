@@ -79,7 +79,7 @@ Upload documents (PDF, Markdown, Word, text, HTML, CSV, JSON) and search them se
 
 ### Browser Automation
 
-Powered by [BrowserGrid](libs/browsergrid/) — an open-source multi-browser automation grid with anti-detection capabilities:
+Powered by [BrowserGrid](https://github.com/DanielD2G/BrowserGrid) — an open-source multi-browser automation grid with anti-detection capabilities:
 
 - **Three browser engines**: Camoufox (deepest anti-detection), Chromium, Firefox
 - **Fingerprint injection**: Each session gets a unique, consistent fingerprint that passes CreepJS and BrowserScan
@@ -177,7 +177,7 @@ Long conversations are automatically compressed — old messages get summarized 
 
 ## BrowserGrid
 
-[BrowserGrid](libs/browsergrid/) is an open-source multi-browser automation grid. It provides managed browser sessions with anti-detection capabilities, usable standalone or integrated into any project.
+[BrowserGrid](https://github.com/DanielD2G/BrowserGrid) is an open-source multi-browser automation grid. It provides managed browser sessions with anti-detection capabilities, usable standalone or integrated into any project.
 
 **Key features:**
 - **Camoufox** — C++ level fingerprint spoofing (canvas, WebGL, fonts, navigator, screen, timezone)

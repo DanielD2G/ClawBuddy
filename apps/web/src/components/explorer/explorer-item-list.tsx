@@ -155,7 +155,7 @@ export function ExplorerItemList({
             Files
           </p>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-            {documents.map((doc: any) => (
+            {documents.map((doc) => (
               <Card
                 key={doc.id}
                 draggable

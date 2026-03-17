@@ -40,6 +40,8 @@ model Folder {
   documents   Document[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+
+  @@index([workspaceId])
 }
 
 model Document {
@@ -60,6 +62,8 @@ model Document {
   updatedAt       DateTime  @updatedAt
 
   chunks DocumentChunk[]
+
+  @@index([workspaceId])
 }
 
 model DocumentChunk {
@@ -70,6 +74,8 @@ model DocumentChunk {
   qdrantId   String   @unique
   chunkIndex Int
   metadata   Json?
+
+  @@index([documentId])
 }
 
 model ChatSession {
@@ -108,6 +114,8 @@ model ChatMessage {
   createdAt   DateTime    @default(now())
 
   toolExecutions ToolExecution[]
+
+  @@index([sessionId])
 }
 
 model AppSettings {
@@ -189,6 +197,8 @@ model SandboxSession {
   createdAt     DateTime     @default(now())
 
   executions ToolExecution[]
+
+  @@index([chatSessionId])
 }
 
 model ToolExecution {
@@ -207,6 +217,8 @@ model ToolExecution {
   durationMs       Int?
   status           String          @default("pending")
   createdAt        DateTime        @default(now())
+
+  @@index([chatMessageId])
 }
 
 model ToolApproval {
@@ -220,6 +232,8 @@ model ToolApproval {
   status         String      @default("pending")
   decidedAt      DateTime?
   createdAt      DateTime    @default(now())
+
+  @@index([chatSessionId])
 }
 
 model GlobalSettings {
