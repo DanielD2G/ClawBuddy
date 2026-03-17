@@ -19,6 +19,8 @@ import {
   MAX_AGENT_DOCUMENTS,
   TOOL_DISCOVERY_THRESHOLD,
   TOOL_DISCOVERY_MAX_CALLS,
+  ALWAYS_ON_CAPABILITY_SLUGS,
+  PREFLIGHT_DISCOVERY_SCORE_THRESHOLD,
   TOOL_RESULT_PROTECTION_WINDOW,
   MIN_PRUNE_SIZE,
   TOKEN_ESTIMATION_DIVISOR,
@@ -419,6 +421,36 @@ export const agentService = {
         loadedTools: tools.map((t) => t.name),
         alwaysOnSlugs: ctx.alwaysOnSlugs,
       })
+
+      // Pre-flight discovery: search for relevant tools based on the user's message
+      const enabledSlugs = capabilities
+        .map((c) => c.slug)
+        .filter((slug) => !ALWAYS_ON_CAPABILITY_SLUGS.includes(slug))
+      const preflightResults = await toolDiscoveryService.search(userContent, enabledSlugs, PREFLIGHT_DISCOVERY_SCORE_THRESHOLD)
+      if (preflightResults.length) {
+        for (const cap of preflightResults) {
+          discoveredCapabilities.push({
+            slug: cap.slug,
+            name: cap.name,
+            toolDefinitions: cap.tools,
+            systemPrompt: cap.instructions,
+            networkAccess: cap.networkAccess,
+            skillType: cap.skillType,
+          })
+          for (const tool of cap.tools) {
+            if (!tools.some((t) => t.name === tool.name)) {
+              tools.push({ name: tool.name, description: tool.description, parameters: tool.parameters })
+            }
+          }
+        }
+        const capPrompts = preflightResults.map((c) => `## ${c.name}\n${c.instructions}`).join('\n\n')
+        systemPrompt += `\n\n${capPrompts}`
+        discoveryCallCount++
+        debugLog('Pre-flight discovery loaded', {
+          slugs: preflightResults.map((c) => c.slug),
+          toolsAdded: preflightResults.flatMap((c) => c.tools.map((t) => t.name)),
+        })
+      }
     } else {
       tools = capabilityService.buildToolDefinitions(capabilities)
       systemPrompt = capabilityService.buildSystemPrompt(capabilities)

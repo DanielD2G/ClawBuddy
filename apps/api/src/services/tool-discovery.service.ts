@@ -155,7 +155,7 @@ export const toolDiscoveryService = {
    * Search for relevant capabilities based on a natural language query.
    * Filters results to only include capabilities enabled for the workspace.
    */
-  async search(query: string, enabledSlugs: string[]): Promise<DiscoveredCapability[]> {
+  async search(query: string, enabledSlugs: string[], scoreThreshold = 0.3): Promise<DiscoveredCapability[]> {
     const queryVector = await embeddingService.embed(query)
 
     // Search with a higher limit to account for post-filtering
@@ -163,7 +163,7 @@ export const toolDiscoveryService = {
       vector: queryVector,
       limit: TOOL_DISCOVERY_TOP_K * 3,
       with_payload: true,
-      score_threshold: 0.3,
+      score_threshold: scoreThreshold,
     })
 
     console.log(`[ToolDiscovery] Search "${query.slice(0, 80)}" returned ${results.length} results:`,
