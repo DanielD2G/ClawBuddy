@@ -218,6 +218,7 @@ export function AppSidebar() {
                 <button
                   onClick={() => deleteSession.mutate(session.id)}
                   title="Delete chat"
+                  aria-label="Delete chat"
                   className="absolute right-1.5 top-1/2 -translate-y-1/2 hidden size-5 items-center justify-center rounded-md text-sidebar-foreground/40 hover:text-destructive group-hover/chat:flex"
                 >
                   <Trash2 className="size-3" />

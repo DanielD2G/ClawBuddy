@@ -64,6 +64,8 @@ export interface Document {
   fileUrl?: string | null
   content?: string | null
   chunkCount: number
+  processingStep?: string | null
+  processingPct?: number | null
   createdAt: Date
   updatedAt: Date
 }
@@ -79,10 +81,11 @@ export interface DocumentChunk {
 
 export interface ChatSession {
   id: string
-  workspaceId: string
-  userId: string
+  workspaceId?: string | null
   title?: string | null
   folderScope: string[]
+  agentStatus: string
+  lastMessageAt: Date
   createdAt: Date
   updatedAt: Date
 }

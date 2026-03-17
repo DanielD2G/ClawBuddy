@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client'
 import { prisma } from '../lib/prisma.js'
 import { createLLMProvider, createLightLLM, createTitleLLM } from '../providers/index.js'
 import { recordTokenUsage } from './agent.service.js'
@@ -25,22 +26,40 @@ export const chatService = {
     const sessions = await prisma.chatSession.findMany({
       orderBy: { lastMessageAt: 'desc' },
     })
-    return Promise.all(sessions.map(async (s) => {
-      const [unreadCount, activeSandboxCount] = await Promise.all([
-        prisma.chatMessage.count({
-          where: {
-            sessionId: s.id,
-            createdAt: { gt: s.lastReadAt ?? s.updatedAt },
-          },
-        }),
-        prisma.sandboxSession.count({
-          where: {
-            chatSessionId: s.id,
-            status: 'running',
-          },
-        }),
-      ])
-      return { ...s, unreadCount, activeSandbox: activeSandboxCount > 0 }
+    const sessionIds = sessions.map((s) => s.id)
+    if (sessionIds.length === 0) return []
+
+    // Build per-session unread thresholds for a single batched query
+    const thresholds = sessions.map((s) => ({
+      id: s.id,
+      since: s.lastReadAt ?? s.updatedAt,
+    }))
+
+    const [unreadRows, sandboxCounts] = await Promise.all([
+      prisma.$queryRaw<Array<{ sessionId: string; count: bigint }>>`
+        SELECT m."sessionId", COUNT(*)::bigint AS count
+        FROM "ChatMessage" m
+        JOIN (VALUES ${Prisma.join(
+          thresholds.map((t) => Prisma.sql`(${t.id}::text, ${t.since}::timestamp)`),
+        )}) AS t(id, since)
+        ON m."sessionId" = t.id AND m."createdAt" > t.since
+        WHERE m."sessionId" IN (${Prisma.join(sessionIds)})
+        GROUP BY m."sessionId"
+      `,
+      prisma.sandboxSession.groupBy({
+        by: ['chatSessionId'],
+        where: { chatSessionId: { in: sessionIds }, status: 'running' },
+        _count: { id: true },
+      }),
+    ])
+
+    const unreadMap = new Map(unreadRows.map((r) => [r.sessionId, Number(r.count)]))
+    const sandboxMap = new Map(sandboxCounts.map((c) => [c.chatSessionId, c._count.id]))
+
+    return sessions.map((s) => ({
+      ...s,
+      unreadCount: unreadMap.get(s.id) ?? 0,
+      activeSandbox: (sandboxMap.get(s.id) ?? 0) > 0,
     }))
   },
 

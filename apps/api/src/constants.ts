@@ -27,8 +27,8 @@ export const SANDBOX_PID_LIMIT = 100
 export const SANDBOX_TIMEOUT_EXIT_CODE = 124
 
 // ── Truncation ────────────────────────────────────
-export const OUTPUT_TRUNCATE_THRESHOLD = 1500
-export const TOOL_ARG_SIZE_LIMIT = 5000
+export const OUTPUT_TRUNCATE_THRESHOLD = 20_000
+export const TOOL_ARG_SIZE_LIMIT = 10_000
 export const LARGE_TOOL_ARG_THRESHOLD = 2000
 export const CHAT_TITLE_MAX_LEN = 50
 export const COMPRESSION_PREVIEW_LEN = 2000
@@ -53,7 +53,7 @@ export const DEFAULT_MAX_AGENT_ITERATIONS = 50
 export const MAX_AGENT_DOCUMENTS = 50
 
 // ── Context compression ──────────────────────────
-export const DEFAULT_MAX_CONTEXT_TOKENS = 30_000
+export const DEFAULT_MAX_CONTEXT_TOKENS = 80_000
 export const RECENT_MESSAGES_TO_KEEP = 10
 export const MIN_MESSAGES_FOR_COMPRESSION = 6
 export const COMPRESSION_TEMPERATURE = 0.2
@@ -102,6 +102,6 @@ export const KEY_MASK_THRESHOLD = 8
 // ── Settings validation ─────────────────────────
 export const MIN_CONTEXT_LIMIT_TOKENS = 5000
 export const MAX_CONTEXT_LIMIT_TOKENS = 200000
-export const DEFAULT_CONTEXT_LIMIT_TOKENS = 30000
+export const DEFAULT_CONTEXT_LIMIT_TOKENS = 80000
 export const DEFAULT_BROWSER_GRID_URL = 'http://localhost:9090'
 export const DEFAULT_BROWSER_TYPE = 'camoufox'

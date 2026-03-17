@@ -115,85 +115,66 @@ app.get('/admin/conversations', async (c) => {
 // ── Settings ─────────────────────────────────────────────
 
 app.get('/admin/settings', async (c) => {
-  try {
-    const settings = await settingsService.get()
-    const available = await settingsService.getAvailableProviders()
-    const apiKeys = await settingsService.getMaskedKeys()
+  const settings = await settingsService.get()
+  const available = await settingsService.getAvailableProviders()
+  const apiKeys = await settingsService.getMaskedKeys()
 
-    return c.json({
-      success: true,
-      data: {
-        providers: {
-          active: {
-            llm: settings.aiProvider,
-            llmModel: settings.aiModel,
-            embedding: settings.embeddingProvider,
-            embeddingModel: settings.embeddingModel,
-          },
-          available,
-          models: MODEL_CATALOG,
-        },
-        apiKeys,
-        onboardingComplete: settings.onboardingComplete,
-      },
-    })
-  } catch (error) {
-    return c.json({ success: false, error: 'Failed to get admin settings' }, 500)
-  }
-})
-
-app.patch('/admin/settings', async (c) => {
-  try {
-    const body = await c.req.json()
-    const settings = await settingsService.update({
-      aiProvider: body.llm,
-      aiModel: body.llmModel,
-      embeddingProvider: body.embedding,
-      embeddingModel: body.embeddingModel,
-    })
-    return c.json({
-      success: true,
-      data: {
+  return c.json({
+    success: true,
+    data: {
+      providers: {
         active: {
           llm: settings.aiProvider,
           llmModel: settings.aiModel,
           embedding: settings.embeddingProvider,
           embeddingModel: settings.embeddingModel,
         },
+        available,
+        models: MODEL_CATALOG,
       },
-    })
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to update settings'
-    return c.json({ success: false, error: message }, 400)
-  }
+      apiKeys,
+      onboardingComplete: settings.onboardingComplete,
+    },
+  })
+})
+
+app.patch('/admin/settings', async (c) => {
+  const body = await c.req.json()
+  const settings = await settingsService.update({
+    aiProvider: body.llm,
+    aiModel: body.llmModel,
+    embeddingProvider: body.embedding,
+    embeddingModel: body.embeddingModel,
+  })
+  return c.json({
+    success: true,
+    data: {
+      active: {
+        llm: settings.aiProvider,
+        llmModel: settings.aiModel,
+        embedding: settings.embeddingProvider,
+        embeddingModel: settings.embeddingModel,
+      },
+    },
+  })
 })
 
 app.put('/admin/api-keys/:provider', async (c) => {
-  try {
-    const { provider } = c.req.param()
-    const { key } = await c.req.json()
-    if (!key || typeof key !== 'string') {
-      return c.json({ success: false, error: 'key is required' }, 400)
-    }
-    await settingsService.setApiKey(provider, key)
-    const apiKeys = await settingsService.getMaskedKeys()
-    return c.json({ success: true, data: { apiKeys } })
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to set API key'
-    return c.json({ success: false, error: message }, 400)
+  const { provider } = c.req.param()
+  const { key } = await c.req.json()
+  if (!key || typeof key !== 'string') {
+    return c.json({ success: false, error: 'key is required' }, 400)
   }
+  await settingsService.setApiKey(provider, key)
+  const apiKeys = await settingsService.getMaskedKeys()
+  return c.json({ success: true, data: { apiKeys } })
 })
 
 app.delete('/admin/api-keys/:provider', async (c) => {
-  try {
-    const { provider } = c.req.param()
-    await settingsService.removeApiKey(provider)
-    const apiKeys = await settingsService.getMaskedKeys()
-    return c.json({ success: true, data: { apiKeys } })
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to remove API key'
-    return c.json({ success: false, error: message }, 400)
-  }
+  const { provider } = c.req.param()
+  await settingsService.removeApiKey(provider)
+  const apiKeys = await settingsService.getMaskedKeys()
+  return c.json({ success: true, data: { apiKeys } })
 })
 
 // ── Permissions (Global Auto-Approve Rules) ─────────────

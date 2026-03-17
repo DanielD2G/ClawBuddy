@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { streamSSE } from 'hono/streaming'
 import { skillService } from '../services/skill.service.js'
 import { imageBuilderService } from '../services/image-builder.service.js'
+import { sandboxService } from '../services/sandbox.service.js'
 
 const app = new Hono()
 
@@ -96,6 +97,10 @@ app.post('/skills/rebuild-image', async (c) => {
       const tag = await imageBuilderService.getOrBuildImage(workspaceId, (line) => {
         stream.writeSSE({ event: 'build_log', data: line })
       })
+
+      // Stop the running container so the next execution uses the new image
+      await stream.writeSSE({ event: 'build_log', data: 'Stopping workspace container...' })
+      await sandboxService.stopWorkspaceContainer(workspaceId).catch(() => {})
 
       await stream.writeSSE({
         event: 'complete',

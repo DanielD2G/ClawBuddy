@@ -6,9 +6,6 @@ WORKDIR /app
 # Copy dependency manifests
 COPY package.json bun.lock ./
 COPY patches/ patches/
-COPY libs/browsergrid/sdk/typescript/ libs/browsergrid/sdk/typescript/
-# Build the BrowserGrid SDK (dist/ is not committed to git)
-RUN cd libs/browsergrid/sdk/typescript && bun install && bun run build; exit 0
 COPY apps/api/package.json apps/api/package.json
 COPY apps/web/package.json apps/web/package.json
 COPY packages/shared/package.json packages/shared/package.json
