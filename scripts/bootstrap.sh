@@ -12,21 +12,19 @@ ok()    { echo -e "${GREEN}[OK]${NC}    $*"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 fail()  { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
 
-REPO_URL="https://github.com/DanielD2G/AgentBuddy.git"
+RAW_BASE="https://raw.githubusercontent.com/DanielD2G/AgentBuddy/main"
 
-# If running via curl pipe (no local repo), clone first
+# ── 0. Create project directory ───────────────────
 if [[ ! -f "docker-compose.yml" ]]; then
-  info "Cloning AgentBuddy..."
-  if ! command -v git &>/dev/null; then
-    fail "git is required. Install it first."
-  fi
-  git clone "$REPO_URL" AgentBuddy
-  cd AgentBuddy
-else
-  cd "$(dirname "$0")"
+  mkdir -p AgentBuddy && cd AgentBuddy
+  info "Downloading docker-compose.yml..."
+  curl -fsSL "$RAW_BASE/docker-compose.yml" -o docker-compose.yml
+  info "Downloading .env.example..."
+  curl -fsSL "$RAW_BASE/.env.example" -o .env.example
+  ok "Files downloaded"
 fi
 
-# ── 1. Check Docker ──────────────────────────────────
+# ── 1. Check Docker ──────────────────────────────
 info "Checking Docker..."
 
 if ! command -v docker &>/dev/null; then
@@ -67,7 +65,7 @@ fi
 
 ok "Docker $(docker --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+') + Compose $(docker compose version --short)"
 
-# ── 2. Check ports ───────────────────────────────────
+# ── 2. Check ports ───────────────────────────────
 info "Checking ports..."
 
 PORTS=(4321 4000 5433 6333 6334 6380 9000 9001 9090)
@@ -85,7 +83,7 @@ fi
 
 ok "All required ports are free"
 
-# ── 3. Setup .env ────────────────────────────────────
+# ── 3. Setup .env ────────────────────────────────
 info "Setting up environment..."
 
 if [[ ! -f .env ]]; then
@@ -120,11 +118,11 @@ else
   fi
 fi
 
-# ── 4. Build & start ────────────────────────────────
-info "Building and starting services..."
-docker compose --profile app up --build -d
+# ── 4. Pull & start ─────────────────────────────
+info "Pulling images and starting services..."
+docker compose up -d
 
-# ── 5. Wait for health ──────────────────────────────
+# ── 5. Wait for health ──────────────────────────
 info "Waiting for API to be healthy..."
 
 TIMEOUT=120
@@ -149,24 +147,7 @@ else
   ok "API is healthy"
 fi
 
-# ── 6. Push DB schema ───────────────────────────────
-info "Pushing database schema..."
-docker compose exec api bunx prisma db push --schema=apps/api/prisma/schema.prisma 2>&1 | tail -3
-ok "Database schema is up to date"
-
-# ── 7. Sandbox images ───────────────────────────────
-echo ""
-read -rp "$(echo -e "${CYAN}[?]${NC}   Build sandbox images for code execution? (y/N) ")" BUILD_SANDBOX
-
-if [[ "$BUILD_SANDBOX" =~ ^[Yy]$ ]]; then
-  info "Building sandbox images (this may take a few minutes)..."
-  make build-sandbox-images
-  ok "Sandbox images built"
-else
-  info "Skipping sandbox images. Run 'make build-sandbox-images' later if needed."
-fi
-
-# ── 8. Done ─────────────────────────────────────────
+# ── 6. Done ──────────────────────────────────────
 echo ""
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${GREEN}  AgentBuddy is running!${NC}"
@@ -174,7 +155,6 @@ echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━
 echo ""
 echo -e "  Web app:       ${CYAN}http://localhost:4321${NC}"
 echo -e "  API:           ${CYAN}http://localhost:4000${NC}"
-echo -e "  API docs:      ${CYAN}http://localhost:4000/api/docs${NC}"
 echo -e "  MinIO console: ${CYAN}http://localhost:9001${NC}"
 echo ""
 echo -e "  Logs:  docker compose logs -f"
