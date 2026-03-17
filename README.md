@@ -21,7 +21,7 @@ One command. That's it.
 curl -fsSL https://raw.githubusercontent.com/DanielD2G/AgentBuddy/main/scripts/bootstrap.sh | bash
 ```
 
-This will check Docker, set up environment variables, start all services, and initialize the database. Once done, open **http://localhost:4321** and follow the setup wizard.
+This downloads the compose file, pulls pre-built images from GHCR, and starts all services. Once done, open **http://localhost:4321** and follow the setup wizard.
 
 > You'll need at least one AI provider API key (OpenAI, Anthropic, or Google Gemini). See the **[API Keys & OAuth Setup Guide](docs/api-keys-setup.md)** for step-by-step instructions.
 
@@ -214,13 +214,13 @@ cp .env.example .env
 # Edit .env with your API keys (see docs/api-keys-setup.md)
 
 # Start infrastructure (Postgres, Redis, Qdrant, MinIO, BrowserGrid)
-docker compose up -d
+make docker-up
 
 # Push database schema
-cd apps/api && bunx prisma db push && cd ../..
+make db-push
 
 # Start dev servers (API + Web)
-bun dev
+make dev
 ```
 
 ### Build Sandbox Images
