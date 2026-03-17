@@ -59,7 +59,7 @@ CMD ["sh", "-c", "PRISMA_BIN=$(find node_modules -path '*/prisma/build/index.js'
 # ── Stage 5: Web runtime (nginx) ─────────────────────
 FROM nginx:alpine AS web
 
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=web-build /app/apps/web/dist /usr/share/nginx/html
 
 EXPOSE 80
