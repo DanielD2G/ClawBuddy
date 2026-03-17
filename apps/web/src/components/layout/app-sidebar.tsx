@@ -10,6 +10,7 @@ import {
   Check,
   Play,
   Square,
+  Send,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -205,7 +206,11 @@ export function AppSidebar() {
                     session.activeSandbox && 'ring-1 ring-brand',
                   )}
                 >
-                  <MessageSquare className="size-4 shrink-0 opacity-60" />
+                  {session.source === 'telegram' ? (
+                    <Send className="size-4 shrink-0 opacity-60" />
+                  ) : (
+                    <MessageSquare className="size-4 shrink-0 opacity-60" />
+                  )}
                   <span className="truncate group-hover/chat:mr-5">
                     <TypingTitle title={session.title} />
                   </span>

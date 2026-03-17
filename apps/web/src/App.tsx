@@ -13,6 +13,7 @@ import { CapabilitiesSettingsPage } from '@/routes/settings/capabilities'
 import { CronSettingsPage } from '@/routes/settings/cron'
 import { DataSettingsPage } from '@/routes/settings/data'
 import { BrowserSettingsPage } from '@/routes/settings/browser'
+import { ChannelsSettingsPage } from '@/routes/settings/channels'
 
 export function App() {
   return (
@@ -38,6 +39,7 @@ export function App() {
             <Route path="cron" element={<CronSettingsPage />} />
             <Route path="data" element={<DataSettingsPage />} />
             <Route path="browser" element={<BrowserSettingsPage />} />
+            <Route path="channels" element={<ChannelsSettingsPage />} />
           </Route>
         </Route>
       </Route>
