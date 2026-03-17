@@ -1,19 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
 import { POLL_DOCUMENT_STATUS_MS } from '@/constants'
+import type { Document as SharedDocument, DocumentStatus, DocumentType } from '@agentbuddy/shared'
 
-export interface Document {
-  id: string
-  title: string
-  workspaceId: string
-  folderId: string | null
-  status: string
-  type: string
-  content: string | null
-  fileUrl: string | null
-  chunkCount: number
-  processingStep: string | null
-  processingPct: number | null
+/** Serialized Document as returned by the API (dates as ISO strings, enums as their string values) */
+export type Document = Omit<SharedDocument, 'createdAt' | 'updatedAt' | 'status' | 'type'> & {
+  status: `${DocumentStatus}`
+  type: `${DocumentType}`
   createdAt: string
   updatedAt: string
 }

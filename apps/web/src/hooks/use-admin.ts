@@ -38,10 +38,10 @@ interface PaginatedParams {
   page?: number
   limit?: number
   search?: string
+  [key: string]: string | number | boolean | undefined
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function buildQuery(params: any) {
+function buildQuery(params: Record<string, string | number | boolean | undefined>) {
   const parts: string[] = []
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== '') parts.push(`${key}=${encodeURIComponent(String(value))}`)

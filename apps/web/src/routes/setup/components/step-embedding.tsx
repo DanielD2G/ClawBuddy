@@ -9,10 +9,11 @@ import {
 } from '@/components/ui/select'
 import { ChevronRight, ChevronLeft } from 'lucide-react'
 import { PROVIDER_LABELS } from '@/constants'
+import type { ProvidersData } from '@/hooks/use-providers'
 
 interface StepEmbeddingProps {
-  providers: any
-  onUpdate: (data: any) => void
+  providers: ProvidersData
+  onUpdate: (data: { embedding?: string; embeddingModel?: string }) => void
   isUpdating: boolean
   onBack: () => void
   onNext: () => void

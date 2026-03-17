@@ -54,6 +54,8 @@ function computeAllowRule(approval: PendingApproval): string {
   }
 }
 
+const APPROVAL_OPTIONS = ['Yes', 'Yes, always in this session', 'Yes, always', 'No, skip this action']
+
 export interface ApprovalInputBarProps {
   approvals: PendingApproval[]
   onDecision: (approvalId: string, decision: 'approved' | 'denied', allowRule?: string, scope?: 'session' | 'global') => void
@@ -61,7 +63,6 @@ export interface ApprovalInputBarProps {
 
 export function ApprovalInputBar({ approvals, onDecision }: ApprovalInputBarProps) {
   const [selectedIndex, setSelectedIndex] = useState(0)
-  const options = ['Yes', 'Yes, always in this session', 'Yes, always', 'No, skip this action']
 
   const handleSubmit = useCallback(() => {
     const allowRule = approvals.length === 1 ? computeAllowRule(approvals[0]) : undefined
@@ -80,10 +81,10 @@ export function ApprovalInputBar({ approvals, onDecision }: ApprovalInputBarProp
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'ArrowUp') {
         e.preventDefault()
-        setSelectedIndex(prev => (prev - 1 + options.length) % options.length)
+        setSelectedIndex(prev => (prev - 1 + APPROVAL_OPTIONS.length) % APPROVAL_OPTIONS.length)
       } else if (e.key === 'ArrowDown') {
         e.preventDefault()
-        setSelectedIndex(prev => (prev + 1) % options.length)
+        setSelectedIndex(prev => (prev + 1) % APPROVAL_OPTIONS.length)
       } else if (e.key === 'Enter') {
         e.preventDefault()
         handleSubmit()
@@ -94,7 +95,7 @@ export function ApprovalInputBar({ approvals, onDecision }: ApprovalInputBarProp
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [options.length, handleSubmit, approvals, onDecision])
+  }, [handleSubmit, approvals, onDecision])
 
   const preview = approvals.length === 1 ? getApprovalPreview(approvals[0]) : ''
   const rulePreview = approvals.length === 1 ? computeAllowRule(approvals[0]) : null
@@ -129,7 +130,7 @@ export function ApprovalInputBar({ approvals, onDecision }: ApprovalInputBarProp
 
       {/* Options */}
       <div className="space-y-1">
-        {options.map((option, i) => (
+        {APPROVAL_OPTIONS.map((option, i) => (
           <button
             key={option}
             type="button"

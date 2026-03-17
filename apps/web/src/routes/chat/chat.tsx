@@ -198,15 +198,18 @@ export function ChatPage() {
             </div>
           )}
 
-          <div className="flex flex-col gap-6">
-            {messages.map((msg) => {
+          <div className="flex flex-col">
+            {messages.map((msg, idx) => {
+              const prevMsg = idx > 0 ? messages[idx - 1] : null
+              const isConsecutiveAssistant = msg.role === 'assistant' && prevMsg?.role === 'assistant'
+
               const isCronMessage = msg.role === 'user' && msg.content.startsWith('[Cron:')
               const cronName = isCronMessage
                 ? msg.content.match(/^\[Cron:\s*([^\]]+)\]/)?.[1] ?? 'Cron'
                 : null
 
               return (
-              <div key={msg.id}>
+              <article key={msg.id} className={isConsecutiveAssistant ? '' : idx > 0 ? 'mt-4' : ''}>
                 {isCronMessage ? (
                   <div className="flex items-center gap-3 py-1">
                     <div className="h-px flex-1 bg-border/60" />
@@ -227,9 +230,9 @@ export function ChatPage() {
                       </div>
                       {msg.attachments && msg.attachments.length > 0 && (
                         <div className="mt-1.5 flex flex-wrap justify-end gap-1.5">
-                          {msg.attachments.map((att, i) => (
+                          {msg.attachments.map((att) => (
                             <a
-                              key={i}
+                              key={att.storageKey ?? att.url}
                               href={att.url}
                               download={att.name}
                               className="inline-flex items-center gap-1.5 rounded-lg border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
@@ -247,11 +250,11 @@ export function ChatPage() {
                     {/* Render content blocks in order (interleaved tool executions + text) */}
                     {getContentBlocks(msg).map((block, i) => (
                       block.type === 'tool' && block.tool.toolName !== 'search_documents' ? (
-                        <div key={`block-${i}`} className="mb-2">
+                        <div key={block.tool.id ?? `tool-${i}`} className="mb-2">
                           <ToolExecutionBlock execution={block.tool} />
                         </div>
                       ) : block.type === 'text' && block.text.trim() ? (
-                        <div key={`block-${i}`}>
+                        <div key={`text-${i}`}>
                           {block.text.startsWith('Action skipped') ? (
                             <div className="flex items-center gap-2 rounded-lg border border-muted bg-muted/30 px-3 py-2 text-sm text-muted-foreground mb-2">
                               <X className="size-3.5 shrink-0" />
@@ -285,9 +288,9 @@ export function ChatPage() {
                     {/* File attachments from assistant (generated files) */}
                     {msg.attachments && msg.attachments.length > 0 && (
                       <div className="mt-3 flex flex-wrap gap-1.5">
-                        {msg.attachments.map((att, i) => (
+                        {msg.attachments.map((att) => (
                           <a
-                            key={i}
+                            key={att.storageKey ?? att.url}
                             href={att.url}
                             download={att.name}
                             className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
@@ -328,7 +331,7 @@ export function ChatPage() {
                     })()}
                   </div>
                 )}
-              </div>
+              </article>
               )
             })}
 
@@ -371,6 +374,7 @@ export function ChatPage() {
         <div className="relative">
           <button
             onClick={scrollToBottom}
+            aria-label="Scroll to bottom"
             className="absolute -top-12 left-1/2 -translate-x-1/2 flex size-8 items-center justify-center rounded-full border bg-background shadow-md transition-colors hover:bg-muted"
           >
             <ArrowDown className="size-4" />
@@ -390,7 +394,7 @@ export function ChatPage() {
                 <div className="flex flex-wrap gap-1.5 mb-2">
                   {pendingFiles.map((f, i) => (
                     <span
-                      key={i}
+                      key={f.storageKey ?? f.url}
                       className="inline-flex items-center gap-1.5 rounded-lg border bg-muted/50 px-2.5 py-1 text-xs"
                     >
                       <Paperclip className="size-3 text-muted-foreground" />
@@ -451,6 +455,7 @@ export function ChatPage() {
                       disabled={uploading}
                       className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground transition-colors"
                       title="Attach file"
+                      aria-label="Attach files"
                     >
                       {uploading ? (
                         <Loader2 className="size-4 animate-spin" />

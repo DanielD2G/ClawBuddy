@@ -8,33 +8,7 @@ import { searchService } from '../services/search.service.js'
 import { CHUNK_SIZE, CHUNK_OVERLAP, EMBEDDING_DIMENSIONS } from '@agentbuddy/shared'
 import { settingsService } from '../services/settings.service.js'
 import { randomUUID } from 'crypto'
-
-/**
- * Remove lone surrogates and other characters that break JSON serialization.
- * Iterates code points to correctly handle surrogate pairs.
- */
-function sanitizeText(input: string): string {
-  let out = ''
-  for (let i = 0; i < input.length; i++) {
-    const code = input.charCodeAt(i)
-    // High surrogate
-    if (code >= 0xd800 && code <= 0xdbff) {
-      const next = i + 1 < input.length ? input.charCodeAt(i + 1) : 0
-      // Valid surrogate pair
-      if (next >= 0xdc00 && next <= 0xdfff) {
-        out += input[i] + input[i + 1]
-        i++ // skip low surrogate
-      } else {
-        out += '\ufffd' // lone high surrogate → replacement char
-      }
-    } else if (code >= 0xdc00 && code <= 0xdfff) {
-      out += '\ufffd' // lone low surrogate → replacement char
-    } else {
-      out += input[i]
-    }
-  }
-  return out
-}
+import { sanitizeSurrogates } from '../lib/sanitize.js'
 
 interface IngestionJobData {
   documentId: string
@@ -73,7 +47,7 @@ const worker = new Worker<IngestionJobData>(
       }
 
       // Strip characters that break Prisma JSON serialization
-      text = sanitizeText(text)
+      text = sanitizeSurrogates(text)
 
       if (!text.trim()) {
         throw new Error('Empty document content')
@@ -106,6 +80,10 @@ const worker = new Worker<IngestionJobData>(
       const batchSize = 20
       let totalStored = 0
 
+      // Fetch document once for workspaceId (instead of per-chunk)
+      const document = await prisma.document.findUniqueOrThrow({ where: { id: documentId } })
+      const workspaceId = workspaceId
+
       for (let i = 0; i < chunks.length; i += batchSize) {
         const batch = chunks.slice(i, i + batchSize)
         const embeddings = await embeddingService.embedBatch(batch)
@@ -114,17 +92,15 @@ const worker = new Worker<IngestionJobData>(
           const qdrantId = randomUUID()
           const chunkIndex = i + j
 
-          const document = await prisma.document.findUniqueOrThrow({ where: { id: documentId } })
-
           // Store in Postgres
-          const safeContent = sanitizeText(batch[j])
+          const safeContent = sanitizeSurrogates(batch[j])
           const chunk = await prisma.documentChunk.create({
             data: {
               documentId,
               content: safeContent,
               qdrantId,
               chunkIndex,
-              metadata: { workspaceId: document.workspaceId },
+              metadata: { workspaceId: workspaceId },
             },
           })
 
@@ -133,7 +109,7 @@ const worker = new Worker<IngestionJobData>(
             documentId,
             chunkId: chunk.id,
             chunkIndex,
-            workspaceId: document.workspaceId,
+            workspaceId: workspaceId,
             content: safeContent.slice(0, 200), // preview
           })
 

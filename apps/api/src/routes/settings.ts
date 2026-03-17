@@ -5,76 +5,63 @@ import { prisma } from '../lib/prisma.js'
 const app = new Hono()
 
 app.get('/settings/providers', async (c) => {
-  try {
-    const settings = await settingsService.get()
-    const available = await settingsService.getAvailableProviders()
-    return c.json({
-      success: true,
-      data: {
-        available,
-        active: {
-          llm: settings.aiProvider,
-          llmModel: settings.aiModel,
-          embedding: settings.embeddingProvider,
-          embeddingModel: settings.embeddingModel,
-        },
+  const settings = await settingsService.get()
+  const available = await settingsService.getAvailableProviders()
+  return c.json({
+    success: true,
+    data: {
+      available,
+      active: {
+        llm: settings.aiProvider,
+        llmModel: settings.aiModel,
+        embedding: settings.embeddingProvider,
+        embeddingModel: settings.embeddingModel,
       },
-    })
-  } catch (error) {
-    return c.json({ success: false, error: 'Failed to get provider settings' }, 500)
-  }
+    },
+  })
 })
 
 // Model configuration
 app.get('/settings/models', async (c) => {
-  try {
-    const [provider, primary, light, title, compact, embeddingModel, useLightModel, contextLimitTokens, maxAgentIterations] = await Promise.all([
-      settingsService.getAIProvider(),
-      settingsService.getAIModel(),
-      settingsService.getLightModel(),
-      settingsService.getTitleModel(),
-      settingsService.getCompactModel(),
-      settingsService.getEmbeddingModel(),
-      settingsService.getUseLightModel(),
-      settingsService.getContextLimitTokens(),
-      settingsService.getMaxAgentIterations(),
-    ])
-    return c.json({
-      success: true,
-      data: {
-        provider,
-        models: { primary, light, title, compact },
-        embeddingModel,
-        useLightModel,
-        contextLimitTokens,
-        maxAgentIterations,
-        catalog: MODEL_CATALOG.llm[provider] ?? [],
-      },
-    })
-  } catch (error) {
-    return c.json({ success: false, error: 'Failed to get model settings' }, 500)
-  }
+  const [provider, primary, light, title, compact, embeddingModel, useLightModel, contextLimitTokens, maxAgentIterations] = await Promise.all([
+    settingsService.getAIProvider(),
+    settingsService.getAIModel(),
+    settingsService.getLightModel(),
+    settingsService.getTitleModel(),
+    settingsService.getCompactModel(),
+    settingsService.getEmbeddingModel(),
+    settingsService.getUseLightModel(),
+    settingsService.getContextLimitTokens(),
+    settingsService.getMaxAgentIterations(),
+  ])
+  return c.json({
+    success: true,
+    data: {
+      provider,
+      models: { primary, light, title, compact },
+      embeddingModel,
+      useLightModel,
+      contextLimitTokens,
+      maxAgentIterations,
+      catalog: MODEL_CATALOG.llm[provider] ?? [],
+    },
+  })
 })
 
 app.patch('/settings/models', async (c) => {
-  try {
-    const body = await c.req.json()
-    const updateData: Record<string, unknown> = {}
+  const body = await c.req.json()
+  const updateData: Record<string, unknown> = {}
 
-    if (body.primary !== undefined) updateData.aiModel = body.primary
-    if (body.light !== undefined) updateData.lightModel = body.light
-    if (body.title !== undefined) updateData.titleModel = body.title
-    if (body.compact !== undefined) updateData.compactModel = body.compact
-    if (body.useLightModel !== undefined) updateData.useLightModel = body.useLightModel
-    if (body.contextLimitTokens !== undefined) updateData.contextLimitTokens = body.contextLimitTokens
-    if (body.maxAgentIterations !== undefined) updateData.maxAgentIterations = body.maxAgentIterations
+  if (body.primary !== undefined) updateData.aiModel = body.primary
+  if (body.light !== undefined) updateData.lightModel = body.light
+  if (body.title !== undefined) updateData.titleModel = body.title
+  if (body.compact !== undefined) updateData.compactModel = body.compact
+  if (body.useLightModel !== undefined) updateData.useLightModel = body.useLightModel
+  if (body.contextLimitTokens !== undefined) updateData.contextLimitTokens = body.contextLimitTokens
+  if (body.maxAgentIterations !== undefined) updateData.maxAgentIterations = body.maxAgentIterations
 
-    await settingsService.update(updateData as Parameters<typeof settingsService.update>[0])
-    return c.json({ success: true })
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : 'Failed to update model settings'
-    return c.json({ success: false, error: msg }, 400)
-  }
+  await settingsService.update(updateData as Parameters<typeof settingsService.update>[0])
+  return c.json({ success: true })
 })
 
 // Token usage stats

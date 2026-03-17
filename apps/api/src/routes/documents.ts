@@ -2,6 +2,8 @@ import { Hono } from 'hono'
 import { prisma } from '../lib/prisma.js'
 import { storageService } from '../services/storage.service.js'
 import { ingestionService } from '../services/ingestion.service.js'
+import { createDocumentSchema } from '@agentbuddy/shared'
+import { sanitizeFileName } from '../lib/sanitize.js'
 
 const app = new Hono()
 
@@ -18,8 +20,7 @@ app.get('/workspaces/:workspaceId/documents', async (c) => {
   const { workspaceId } = c.req.param()
   const folderIdParam = c.req.query('folderId')
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const where: any = { workspaceId }
+  const where: { workspaceId: string; folderId?: string | null } = { workspaceId }
   if (folderIdParam !== undefined) {
     where.folderId = folderIdParam === 'null' ? null : folderIdParam
   }
@@ -54,7 +55,7 @@ app.post('/workspaces/:workspaceId/documents', async (c) => {
     }
     const docType = typeMap[ext] ?? 'TXT'
 
-    const key = `documents/${workspaceId}/${Date.now()}-${file.name}`
+    const key = `documents/${workspaceId}/${Date.now()}-${sanitizeFileName(file.name)}`
     const buffer = Buffer.from(await file.arrayBuffer())
     await storageService.upload(key, buffer, file.type)
 
@@ -76,14 +77,18 @@ app.post('/workspaces/:workspaceId/documents', async (c) => {
 
   // JSON body — create document with inline content
   const body = await c.req.json()
+  const parsed = createDocumentSchema.safeParse(body)
+  if (!parsed.success) {
+    return c.json({ success: false, error: parsed.error.issues[0]?.message ?? 'Invalid input' }, 400)
+  }
   const document = await prisma.document.create({
     data: {
-      title: body.title,
+      title: parsed.data.title,
       workspaceId,
-      type: body.type ?? 'TXT',
+      type: parsed.data.type ?? 'TXT',
       status: 'READY',
-      content: body.content ?? null,
-      folderId: body.folderId ?? null,
+      content: parsed.data.content ?? null,
+      folderId: parsed.data.folderId ?? null,
     },
   })
 
