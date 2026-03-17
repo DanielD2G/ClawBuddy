@@ -1,13 +1,13 @@
 import { qdrant } from '../lib/qdrant.js'
 import { QDRANT_COLLECTION_NAME } from '@agentbuddy/shared'
+import type { Schemas } from '@qdrant/js-client-rest'
 
 export const searchService = {
   async search(
     queryVector: number[],
     options?: { limit?: number; workspaceId?: string; documentIds?: string[] }
   ) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const must: any[] = []
+    const must: Schemas['Condition'][] = []
     if (options?.workspaceId) {
       must.push({ key: 'workspaceId', match: { value: options.workspaceId } })
     }

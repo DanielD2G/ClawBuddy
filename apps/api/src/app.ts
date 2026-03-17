@@ -3,6 +3,7 @@ import { swaggerUI } from '@hono/swagger-ui'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 import { errorHandler } from './middleware/error-handler.js'
+import { env } from './env.js'
 import workspaceRoutes from './routes/workspaces.js'
 import folderRoutes from './routes/folders.js'
 import documentRoutes from './routes/documents.js'
@@ -22,7 +23,10 @@ import browserRoutes from './routes/browser.js'
 const app = new OpenAPIHono()
 
 // Global middleware
-app.use('*', cors())
+app.use('*', cors({
+  origin: env.APP_URL,
+  credentials: true,
+}))
 app.use('*', logger())
 
 // Error handler

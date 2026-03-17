@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import { settingsService, MODEL_CATALOG } from '../services/settings.service.js'
 import { searchService } from '../services/search.service.js'
 import { capabilityService } from '../services/capability.service.js'
@@ -17,7 +18,7 @@ import Docker from 'dockerode'
 const app = new Hono()
 
 // Guard: reject if onboarding already done
-async function requireSetupIncomplete(c: any): Promise<Response | null> {
+async function requireSetupIncomplete(c: Context): Promise<Response | null> {
   const settings = await settingsService.get()
   if (settings.onboardingComplete) {
     return c.json({ success: false, error: 'Setup already completed' }, 400)

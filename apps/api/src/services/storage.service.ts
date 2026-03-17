@@ -8,12 +8,12 @@ import { s3 } from '../lib/s3.js'
 import { env } from '../env.js'
 
 export const storageService = {
-  async upload(key: string, body: Buffer | ReadableStream, contentType: string) {
+  async upload(key: string, body: Buffer, contentType: string) {
     await s3.send(
       new PutObjectCommand({
         Bucket: env.MINIO_BUCKET,
         Key: key,
-        Body: body as any,
+        Body: body,
         ContentType: contentType,
       })
     )

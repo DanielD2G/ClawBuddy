@@ -34,4 +34,8 @@ export const apiClient = {
   put: <T>(path: string, body?: unknown) => request<T>('PUT', path, body),
   patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, body),
   delete: <T>(path: string) => request<T>('DELETE', path),
+  /** Fire-and-forget request — no error handling, no response parsing. */
+  fireAndForget: (method: string, path: string) => {
+    fetch(`${BASE_URL}${path}`, { method, credentials: 'include' }).catch(() => {})
+  },
 }

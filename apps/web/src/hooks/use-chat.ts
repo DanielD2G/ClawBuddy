@@ -460,8 +460,7 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
           setMessages((prev) => {
             if (msgs.length > prev.length) {
               // Mark as read — optimistically clear badge without refetching (avoids sidebar reordering)
-              fetch(`/api/chat/sessions/${sid}/read`, { method: 'POST', credentials: 'include' })
-                .catch(() => {})
+              apiClient.fireAndForget('POST', `/chat/sessions/${sid}/read`)
               queryClient.setQueryData<ChatSession[]>(['chat-sessions'], (old) =>
                 old?.map((s) => s.id === sid ? { ...s, unreadCount: 0 } : s),
               )

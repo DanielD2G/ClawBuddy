@@ -26,16 +26,8 @@ import {
 } from '../constants.js'
 import { toolDiscoveryService } from './tool-discovery.service.js'
 import type { ToolDefinition } from '../capabilities/types.js'
-
-/** Strip null bytes from strings before PostgreSQL storage. */
-function stripNulls(s: string): string {
-  // eslint-disable-next-line no-control-regex
-  let result = s.replace(/\x00/g, '')
-  result = result.replace(/\\u0000/g, '')
-  // eslint-disable-next-line no-control-regex
-  result = result.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
-  return result
-}
+import { stripNullBytes } from '../lib/sanitize.js'
+import { extractScreenshotBase64 } from '../lib/screenshot.js'
 
 /** Tools exempt from the argument size guard (they have proper alternatives like sourcePath) */
 const SIZE_GUARD_EXEMPT = new Set(['generate_file', 'save_document', 'search_documents'])
@@ -55,35 +47,21 @@ const VISION_MODELS = new Set([
  * Returns ContentBlock[] if screenshot found and model supports vision, otherwise returns the text string.
  */
 function buildToolResultContent(output: string, modelId: string): MessageContent {
-  // Check if the output looks like it contains a screenshot JSON result
-  try {
-    const parsed = JSON.parse(output)
-    let screenshotB64: string | null = null
+  const { screenshotB64, description } = extractScreenshotBase64(output)
 
-    if (parsed?.screenshot && typeof parsed.screenshot === 'string') {
-      screenshotB64 = parsed.screenshot
-    } else if (parsed?.screenshot?.type === 'Buffer' && Array.isArray(parsed.screenshot.data)) {
-      screenshotB64 = Buffer.from(parsed.screenshot.data).toString('base64')
-    }
-
-    if (screenshotB64) {
-      if (VISION_MODELS.has(modelId)) {
-        const blocks: ContentBlock[] = []
-        const description = parsed.description || parsed.content
-        if (description) {
-          blocks.push({ type: 'text', text: String(description) })
-        }
-        blocks.push({
-          type: 'image',
-          source: { type: 'base64', mediaType: 'image/jpeg', data: screenshotB64 },
-        })
-        return blocks
+  if (screenshotB64) {
+    if (VISION_MODELS.has(modelId)) {
+      const blocks: ContentBlock[] = []
+      if (description) {
+        blocks.push({ type: 'text', text: String(description) })
       }
-      // Model doesn't support vision — return text only
-      return parsed.description ?? 'Screenshot captured but the current model does not support vision.'
+      blocks.push({
+        type: 'image',
+        source: { type: 'base64', mediaType: 'image/jpeg', data: screenshotB64 },
+      })
+      return blocks
     }
-  } catch {
-    // Not JSON, return as-is
+    return description ?? 'Screenshot captured but the current model does not support vision.'
   }
   return output
 }
@@ -98,12 +76,12 @@ function checkToolArgSize(toolCall: { name: string; arguments: Record<string, un
   if (typeof commandArg !== 'string' || commandArg.length <= TOOL_ARG_SIZE_LIMIT) return null
 
   const sizeKB = Math.round(commandArg.length / 1000)
-  return `[BLOCKED] Your ${toolCall.name} call contains ${sizeKB}KB of inline data (limit: 5KB). ` +
-    `Do NOT embed large data in commands. Instead:\n` +
-    `1. The data is already saved in /workspace/.outputs/ from the previous tool output\n` +
-    `2. Write a script that reads from that file path (e.g. cat /workspace/.outputs/file.txt | jq ...)\n` +
-    `3. For generate_file, use the sourcePath parameter to reference the sandbox file\n\n` +
-    `This command was NOT executed. Rewrite it to reference files instead of embedding data.`
+  return `[BLOCKED] ${toolCall.name} contains ${sizeKB}KB inline data (limit: 10KB). ` +
+    `Reference files instead of embedding data:\n` +
+    `1. Previous outputs are saved in /workspace/.outputs/ — read from there\n` +
+    `2. Write a script that processes the file (e.g. cat /workspace/.outputs/<id>.txt | jq ...)\n` +
+    `3. For generate_file, use sourcePath to reference the sandbox file\n\n` +
+    `Command was NOT executed. Rewrite to reference files.`
 }
 
 /**
@@ -132,7 +110,11 @@ async function maybeTruncateOutput(
     return output
   }
 
-  const preview = output.slice(0, OUTPUT_TRUNCATE_THRESHOLD)
+  const headSize = Math.floor(OUTPUT_TRUNCATE_THRESHOLD * 0.6)
+  const tailSize = OUTPUT_TRUNCATE_THRESHOLD - headSize
+  const head = output.slice(0, headSize)
+  const tail = output.slice(-tailSize)
+  const preview = `${head}\n\n... [TRUNCATED — ${output.length - headSize - tailSize} chars omitted] ...\n\n${tail}`
   return `${preview}\n\n⚠️ OUTPUT TRUNCATED (${output.length} chars) — full result saved to ${filename}\nIMPORTANT: Do NOT re-run this command. Use \`cat ${filename}\` or pipe through jq/grep/awk to process the saved file.\nDo NOT embed or echo the data — reference the file path directly.`
 }
 
@@ -150,29 +132,18 @@ function prepareToolResultForSSE(
     return { output: result.output }
   }
 
-  try {
-    const parsed = JSON.parse(result.output)
-    let b64: string | null = null
+  const { screenshotB64, description } = extractScreenshotBase64(result.output)
 
-    if (parsed?.screenshot && typeof parsed.screenshot === 'string') {
-      b64 = parsed.screenshot
-    } else if (parsed?.screenshot?.type === 'Buffer' && Array.isArray(parsed.screenshot.data)) {
-      // Handle Buffer-serialized screenshots (fallback)
-      b64 = Buffer.from(parsed.screenshot.data).toString('base64')
+  if (screenshotB64) {
+    if (screenshotB64.length > MAX_SCREENSHOT_SSE_SIZE) {
+      return { output: description || 'Screenshot captured (too large to display)' }
     }
-
-    if (b64) {
-      // If image is too large, skip sending it via SSE to prevent crashes
-      if (b64.length > MAX_SCREENSHOT_SSE_SIZE) {
-        return { output: parsed.description || parsed.content || 'Screenshot captured (too large to display)' }
-      }
-      const description = parsed.description || parsed.content || 'Screenshot captured'
-      return {
-        output: typeof description === 'string' ? description : 'Screenshot captured',
-        screenshot: `data:image/jpeg;base64,${b64}`,
-      }
+    const desc = description || 'Screenshot captured'
+    return {
+      output: typeof desc === 'string' ? desc : 'Screenshot captured',
+      screenshot: `data:image/jpeg;base64,${screenshotB64}`,
     }
-  } catch { /* not JSON, return as-is */ }
+  }
 
   return { output: result.output }
 }
@@ -678,7 +649,7 @@ export const agentService = {
             data: {
               sessionId,
               role: 'assistant',
-              content: stripNulls(response.content || ''),
+              content: stripNullBytes(response.content || ''),
               ...(collectedSources.length ? { sources: collectedSources } : {}),
             },
           })
@@ -836,7 +807,7 @@ export const agentService = {
         if (response.content?.trim()) {
           try {
             const pauseMsg = await prisma.chatMessage.create({
-              data: { sessionId, role: 'assistant', content: stripNulls(response.content) },
+              data: { sessionId, role: 'assistant', content: stripNullBytes(response.content) },
             })
             lastSavedMessageId = pauseMsg.id
           } catch { /* best effort */ }
@@ -994,9 +965,9 @@ export const agentService = {
           data: {
             sessionId,
             role: 'assistant',
-            content: stripNulls(iterContent),
+            content: stripNullBytes(iterContent),
             toolCalls: iterToolCalls.length
-              ? (JSON.parse(stripNulls(JSON.stringify(iterToolCalls))) as Prisma.InputJsonValue)
+              ? (JSON.parse(stripNullBytes(JSON.stringify(iterToolCalls))) as Prisma.InputJsonValue)
               : undefined,
             ...(iterBlocks.length ? { contentBlocks: iterBlocks as unknown as Prisma.InputJsonValue } : {}),
             ...(iterGeneratedFiles.length ? { attachments: iterGeneratedFiles } : {}),
@@ -1028,7 +999,7 @@ export const agentService = {
     // Save max-iterations message to DB
     try {
       const maxIterMsg = await prisma.chatMessage.create({
-        data: { sessionId, role: 'assistant', content: stripNulls(maxIterContent) },
+        data: { sessionId, role: 'assistant', content: stripNullBytes(maxIterContent) },
       })
       lastSavedMessageId = maxIterMsg.id
     } catch { /* best effort */ }
@@ -1115,7 +1086,7 @@ export const agentService = {
 
       try {
         const deniedMsg = await prisma.chatMessage.create({
-          data: { sessionId, role: 'assistant', content: stripNulls(rejectionContent) },
+          data: { sessionId, role: 'assistant', content: stripNullBytes(rejectionContent) },
         })
         lastSavedMessageId = deniedMsg.id
       } catch { /* best effort */ }
@@ -1312,7 +1283,7 @@ export const agentService = {
             data: {
               sessionId,
               role: 'assistant',
-              content: stripNulls(response.content || ''),
+              content: stripNullBytes(response.content || ''),
               ...(collectedSourcesResume.length ? { sources: collectedSourcesResume } : {}),
             },
           })
@@ -1498,8 +1469,8 @@ export const agentService = {
           data: {
             sessionId,
             role: 'assistant',
-            content: stripNulls(iterContent),
-            toolCalls: iterToolCalls.length ? (JSON.parse(stripNulls(JSON.stringify(iterToolCalls))) as Prisma.InputJsonValue) : undefined,
+            content: stripNullBytes(iterContent),
+            toolCalls: iterToolCalls.length ? (JSON.parse(stripNullBytes(JSON.stringify(iterToolCalls))) as Prisma.InputJsonValue) : undefined,
             ...(iterBlocks.length ? { contentBlocks: iterBlocks as unknown as Prisma.InputJsonValue } : {}),
           },
         })
@@ -1526,7 +1497,7 @@ export const agentService = {
 
     try {
       const maxMsg = await prisma.chatMessage.create({
-        data: { sessionId, role: 'assistant', content: stripNulls(maxIterContent) },
+        data: { sessionId, role: 'assistant', content: stripNullBytes(maxIterContent) },
       })
       lastSavedMessageId = maxMsg.id
     } catch { /* best effort */ }

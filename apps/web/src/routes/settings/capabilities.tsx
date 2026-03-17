@@ -117,19 +117,156 @@ const TYPE_COLORS: Record<string, string> = {
 }
 
 export function CapabilitiesSettingsPage() {
+  const { activeWorkspaceId } = useActiveWorkspace()
+  const [rebuildState, setRebuildState] = useState<{
+    status: 'idle' | 'building' | 'success' | 'error'
+    logs: string[]
+    error?: string
+  }>({ status: 'idle', logs: [] })
+  const [showRebuildDialog, setShowRebuildDialog] = useState(false)
+  const rebuildLogsRef = useRef<HTMLDivElement>(null)
+
+  const triggerRebuild = useCallback(async () => {
+    if (!activeWorkspaceId) return
+    setRebuildState({ status: 'building', logs: [] })
+    setShowRebuildDialog(true)
+
+    try {
+      const res = await fetch('/api/skills/rebuild-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ workspaceId: activeWorkspaceId }),
+      })
+
+      const reader = res.body?.getReader()
+      const decoder = new TextDecoder()
+      if (!reader) {
+        setRebuildState({ status: 'error', logs: [], error: 'No response stream' })
+        return
+      }
+
+      let buffer = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (line.startsWith('data:')) {
+            const data = line.slice(5).trim()
+            if (data) {
+              try {
+                const parsed = JSON.parse(data)
+                if (parsed.success === true) {
+                  setRebuildState((s) => ({
+                    ...s,
+                    status: 'success',
+                    logs: [...s.logs, `Image built: ${parsed.image}`],
+                  }))
+                } else if (parsed.success === false) {
+                  setRebuildState((s) => ({
+                    ...s,
+                    status: 'error',
+                    error: parsed.error,
+                  }))
+                }
+              } catch {
+                setRebuildState((s) => ({
+                  ...s,
+                  logs: [...s.logs, data],
+                }))
+              }
+            }
+          }
+        }
+      }
+    } catch (err) {
+      setRebuildState({
+        status: 'error',
+        logs: [],
+        error: err instanceof Error ? err.message : 'Rebuild failed',
+      })
+    }
+  }, [activeWorkspaceId])
+
+  useEffect(() => {
+    if (rebuildLogsRef.current) {
+      rebuildLogsRef.current.scrollTop = rebuildLogsRef.current.scrollHeight
+    }
+  }, [rebuildState.logs])
+
+  const closeRebuildDialog = () => {
+    setShowRebuildDialog(false)
+    setRebuildState({ status: 'idle', logs: [] })
+  }
+
   return (
     <div className="space-y-8">
-      <CapabilitiesGrid />
+      <CapabilitiesGrid onCapabilityToggled={triggerRebuild} />
       <GlobalPermissions />
 
       <div className="border-t pt-8">
-        <InstalledSkills />
+        <InstalledSkills onRebuild={triggerRebuild} rebuildStatus={rebuildState.status} />
       </div>
+
+      {/* Rebuild Progress Dialog */}
+      <Dialog open={showRebuildDialog} onOpenChange={closeRebuildDialog}>
+        <DialogContent className="max-w-3xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {rebuildState.status === 'building' && (
+                <>
+                  <Loader2 className="size-5 animate-spin text-blue-500" />
+                  Building Image...
+                </>
+              )}
+              {rebuildState.status === 'success' && (
+                <>
+                  <CheckCircle2 className="size-5 text-green-500" />
+                  Build Complete
+                </>
+              )}
+              {rebuildState.status === 'error' && (
+                <>
+                  <XCircle className="size-5 text-destructive" />
+                  Build Failed
+                </>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+
+          {rebuildState.error && (
+            <p className="text-sm text-destructive">{rebuildState.error}</p>
+          )}
+
+          {rebuildState.logs.length > 0 && (
+            <div ref={rebuildLogsRef} className="h-96 overflow-auto rounded-md border bg-muted/50 p-3">
+              <pre className="text-xs font-mono whitespace-pre-wrap">
+                {rebuildState.logs.join('\n')}
+              </pre>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant={rebuildState.status === 'error' ? 'destructive' : 'default'}
+              onClick={closeRebuildDialog}
+              disabled={rebuildState.status === 'building'}
+            >
+              {rebuildState.status === 'building' ? 'Please wait...' : 'Close'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
 
-function CapabilitiesGrid() {
+function CapabilitiesGrid({ onCapabilityToggled }: { onCapabilityToggled: () => void }) {
   const { activeWorkspaceId } = useActiveWorkspace()
   const [searchParams, setSearchParams] = useSearchParams()
 
@@ -189,7 +326,7 @@ function CapabilitiesGrid() {
           </h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {caps.map((cap) => (
-              <CapabilityCard key={cap.id} capability={cap} googleOAuthConfigured={googleOAuthConfigured} />
+              <CapabilityCard key={cap.id} capability={cap} googleOAuthConfigured={googleOAuthConfigured} onCapabilityToggled={onCapabilityToggled} />
             ))}
           </div>
         </div>
@@ -198,7 +335,7 @@ function CapabilitiesGrid() {
   )
 }
 
-function CapabilityCard({ capability, googleOAuthConfigured }: { capability: WorkspaceCapability; googleOAuthConfigured: boolean }) {
+function CapabilityCard({ capability, googleOAuthConfigured, onCapabilityToggled }: { capability: WorkspaceCapability; googleOAuthConfigured: boolean; onCapabilityToggled: () => void }) {
   const [expanded, setExpanded] = useState(false)
   const [configOpen, setConfigOpen] = useState(false)
   const queryClient = useQueryClient()
@@ -214,7 +351,10 @@ function CapabilityCard({ capability, googleOAuthConfigured }: { capability: Wor
   const toggleMutation = useMutation({
     mutationFn: (data: { enabled: boolean; config?: Record<string, unknown> }) =>
       apiClient.put(`/workspaces/${activeWorkspaceId}/capabilities/${capability.slug}`, data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['workspace-capabilities', activeWorkspaceId] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workspace-capabilities', activeWorkspaceId] })
+      onCapabilityToggled()
+    },
   })
 
   const configMutation = useMutation({
@@ -223,6 +363,7 @@ function CapabilityCard({ capability, googleOAuthConfigured }: { capability: Wor
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workspace-capabilities', activeWorkspaceId] })
       setConfigOpen(false)
+      onCapabilityToggled()
     },
   })
 
@@ -561,9 +702,8 @@ function GlobalPermissions() {
   )
 }
 
-function InstalledSkills() {
+function InstalledSkills({ onRebuild, rebuildStatus }: { onRebuild: () => void; rebuildStatus: string }) {
   const queryClient = useQueryClient()
-  const { activeWorkspaceId } = useActiveWorkspace()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploadState, setUploadState] = useState<{
     status: 'idle' | 'uploading' | 'building' | 'success' | 'error'
@@ -581,73 +721,6 @@ function InstalledSkills() {
     mutationFn: (slug: string) => apiClient.delete(`/skills/${slug}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-skills'] }),
   })
-
-  const handleRebuild = useCallback(async () => {
-    if (!activeWorkspaceId) return
-    setUploadState({ status: 'building', logs: [] })
-    setShowUploadDialog(true)
-
-    try {
-      const res = await fetch('/api/skills/rebuild-image', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ workspaceId: activeWorkspaceId }),
-      })
-
-      const reader = res.body?.getReader()
-      const decoder = new TextDecoder()
-      if (!reader) {
-        setUploadState({ status: 'error', logs: [], error: 'No response stream' })
-        return
-      }
-
-      let buffer = ''
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-
-        for (const line of lines) {
-          if (line.startsWith('data:')) {
-            const data = line.slice(5).trim()
-            if (data) {
-              try {
-                const parsed = JSON.parse(data)
-                if (parsed.success === true) {
-                  setUploadState((s) => ({
-                    ...s,
-                    status: 'success',
-                    logs: [...s.logs, `Image built: ${parsed.image}`],
-                  }))
-                } else if (parsed.success === false) {
-                  setUploadState((s) => ({
-                    ...s,
-                    status: 'error',
-                    error: parsed.error,
-                  }))
-                }
-              } catch {
-                setUploadState((s) => ({
-                  ...s,
-                  logs: [...s.logs, data],
-                }))
-              }
-            }
-          }
-        }
-      }
-    } catch (err) {
-      setUploadState({
-        status: 'error',
-        logs: [],
-        error: err instanceof Error ? err.message : 'Rebuild failed',
-      })
-    }
-  }, [activeWorkspaceId])
 
   const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -782,10 +855,10 @@ function InstalledSkills() {
           <Button
             variant="outline"
             size="sm"
-            onClick={handleRebuild}
-            disabled={uploadState.status === 'building'}
+            onClick={onRebuild}
+            disabled={rebuildStatus === 'building'}
           >
-            {uploadState.status === 'building' ? (
+            {rebuildStatus === 'building' ? (
               <Loader2 className="size-4 animate-spin" />
             ) : (
               <RefreshCw className="size-4" />
@@ -889,7 +962,7 @@ function InstalledSkills() {
         </div>
       )}
 
-      {/* Upload Progress Dialog */}
+      {/* Upload Progress Dialog (skill file uploads only) */}
       <Dialog open={showUploadDialog} onOpenChange={closeDialog}>
         <DialogContent className="max-w-3xl max-h-[80vh]">
           <DialogHeader>

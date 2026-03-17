@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import { Plus, FolderOpen, ArrowRight, Trash2 } from 'lucide-react'
-import { useWorkspaces, useCreateWorkspace, useDeleteWorkspace } from '@/hooks/use-workspaces'
+import { useWorkspaces, useCreateWorkspace, useDeleteWorkspace, type Workspace } from '@/hooks/use-workspaces'
 import { useActiveWorkspace } from '@/providers/workspace-provider'
 import { toast } from 'sonner'
 import { WORKSPACE_COLORS } from '@/constants'
@@ -111,7 +111,7 @@ export function WorkspacesPage() {
 
       {!isLoading && workspaces && workspaces.length > 0 && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {workspaces.map((ws: any) => (
+          {workspaces.map((ws: Workspace) => (
             <Card key={ws.id} className="group relative hover:border-brand/50 transition-colors">
               <Link to={`/workspaces/${ws.id}`} className="block">
                 <CardHeader>

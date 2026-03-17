@@ -1,4 +1,4 @@
-import { BrowserGrid } from 'browser-grid'
+import { BrowserGrid } from 'browsergrid-sdk'
 import type { Page, BrowserContext } from 'playwright-core'
 import { settingsService } from './settings.service.js'
 import {

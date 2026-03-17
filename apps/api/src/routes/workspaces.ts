@@ -65,31 +65,22 @@ app.delete('/:id', async (c) => {
 
 app.get('/:id/capabilities', async (c) => {
   const { id } = c.req.param()
-  try {
-    const capabilities = await capabilityService.getWorkspaceCapabilitySettings(id)
-    return c.json({ success: true, data: capabilities })
-  } catch {
-    return c.json({ success: false, error: 'Failed to get capabilities' }, 500)
-  }
+  const capabilities = await capabilityService.getWorkspaceCapabilitySettings(id)
+  return c.json({ success: true, data: capabilities })
 })
 
 app.put('/:id/capabilities/:capabilitySlug', async (c) => {
   const { id, capabilitySlug } = c.req.param()
   const body = await c.req.json()
-  try {
-    if (body.enabled) {
-      await capabilityService.enableCapability(id, capabilitySlug, body.config)
-    } else {
-      const capability = await prisma.capability.findUnique({ where: { slug: capabilitySlug } })
-      if (capability) {
-        await capabilityService.disableCapability(id, capability.id)
-      }
+  if (body.enabled) {
+    await capabilityService.enableCapability(id, capabilitySlug, body.config)
+  } else {
+    const capability = await prisma.capability.findUnique({ where: { slug: capabilitySlug } })
+    if (capability) {
+      await capabilityService.disableCapability(id, capability.id)
     }
-    return c.json({ success: true })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to update capability'
-    return c.json({ success: false, error: message }, 400)
   }
+  return c.json({ success: true })
 })
 
 app.delete('/:id/capabilities/:capabilityId', async (c) => {
@@ -108,44 +99,30 @@ app.delete('/:id/capabilities/:capabilityId', async (c) => {
 
 app.get('/:id/container/status', async (c) => {
   const { id } = c.req.param()
-  try {
-    const status = await sandboxService.getWorkspaceContainerStatus(id)
-    return c.json({ success: true, data: status })
-  } catch {
-    return c.json({ success: false, error: 'Failed to get container status' }, 500)
-  }
+  const status = await sandboxService.getWorkspaceContainerStatus(id)
+  return c.json({ success: true, data: status })
 })
 
 app.post('/:id/container/start', async (c) => {
   const { id } = c.req.param()
-  try {
-    const configEnvVars = await capabilityService.getDecryptedCapabilityConfigsForWorkspace(id)
-    const mergedEnvVars: Record<string, string> = {}
-    for (const envMap of configEnvVars.values()) {
-      Object.assign(mergedEnvVars, envMap)
-    }
-
-    const containerId = await sandboxService.getOrCreateWorkspaceContainer(
-      id,
-      { networkAccess: true },
-      Object.keys(mergedEnvVars).length ? mergedEnvVars : undefined,
-    )
-    return c.json({ success: true, data: { containerId, status: 'running' } })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to start container'
-    return c.json({ success: false, error: message }, 500)
+  const configEnvVars = await capabilityService.getDecryptedCapabilityConfigsForWorkspace(id)
+  const mergedEnvVars: Record<string, string> = {}
+  for (const envMap of configEnvVars.values()) {
+    Object.assign(mergedEnvVars, envMap)
   }
+
+  const containerId = await sandboxService.getOrCreateWorkspaceContainer(
+    id,
+    { networkAccess: true },
+    Object.keys(mergedEnvVars).length ? mergedEnvVars : undefined,
+  )
+  return c.json({ success: true, data: { containerId, status: 'running' } })
 })
 
 app.post('/:id/container/stop', async (c) => {
   const { id } = c.req.param()
-  try {
-    await sandboxService.stopWorkspaceContainer(id)
-    return c.json({ success: true, data: { status: 'stopped' } })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to stop container'
-    return c.json({ success: false, error: message }, 500)
-  }
+  await sandboxService.stopWorkspaceContainer(id)
+  return c.json({ success: true, data: { status: 'stopped' } })
 })
 
 export default app

@@ -11,6 +11,8 @@ import { browserService } from './browser.service.js'
 import type { ToolCall } from '../providers/llm.interface.js'
 import { SEARCH_RESULTS_LIMIT, ALWAYS_ON_CAPABILITY_SLUGS } from '../constants.js'
 import { toolDiscoveryService } from './tool-discovery.service.js'
+import { stripNullBytes, stripNullBytesOrNull } from '../lib/sanitize.js'
+import { extractScreenshotBase64 } from '../lib/screenshot.js'
 
 interface ExecutionContext {
   workspaceId: string
@@ -60,15 +62,6 @@ export const NON_SANDBOX_TOOLS = new Set([
 
 export const toolExecutorService = {
   /**
-   * Strip null bytes (0x00) that PostgreSQL TEXT columns reject.
-   */
-  sanitizeText(text: string | null | undefined): string | null {
-    if (!text) return null
-    // eslint-disable-next-line no-control-regex
-    return text.replace(/\x00/g, '').replace(/\\u0000/g, '')
-  },
-
-  /**
    * Execute a tool call, routing to the appropriate handler.
    */
   async execute(
@@ -108,20 +101,11 @@ export const toolExecutorService = {
       let screenshotData: string | null = null
       let outputForDb = result.output
       if (toolCall.name === 'run_browser_script' && result.output) {
-        try {
-          const parsed = JSON.parse(result.output)
-          let b64: string | null = null
-          if (parsed?.screenshot && typeof parsed.screenshot === 'string') {
-            b64 = parsed.screenshot
-          } else if (parsed?.screenshot?.type === 'Buffer' && Array.isArray(parsed.screenshot.data)) {
-            b64 = Buffer.from(parsed.screenshot.data).toString('base64')
-          }
-          if (b64) {
-            screenshotData = `data:image/jpeg;base64,${b64}`
-            // Save only the description in output, not the huge base64
-            outputForDb = parsed.description || parsed.content || 'Screenshot captured'
-          }
-        } catch { /* not JSON, keep original output */ }
+        const { screenshotB64, description } = extractScreenshotBase64(result.output)
+        if (screenshotB64) {
+          screenshotData = `data:image/jpeg;base64,${screenshotB64}`
+          outputForDb = description || 'Screenshot captured'
+        }
       }
 
       // Record execution (sanitize output to strip null bytes)
@@ -130,9 +114,9 @@ export const toolExecutorService = {
           capabilitySlug,
           toolName: toolCall.name,
           input: JSON.parse(JSON.stringify(toolCall.arguments)) as Prisma.InputJsonValue,
-          output: this.sanitizeText(outputForDb),
+          output: stripNullBytesOrNull(outputForDb),
           screenshot: screenshotData,
-          error: this.sanitizeText(result.error),
+          error: stripNullBytesOrNull(result.error),
           exitCode: result.exitCode,
           durationMs: result.durationMs,
           status: result.error ? 'failed' : 'completed',
@@ -152,7 +136,7 @@ export const toolExecutorService = {
             capabilitySlug,
             toolName: toolCall.name,
             input: JSON.parse(JSON.stringify(toolCall.arguments)) as Prisma.InputJsonValue,
-            error: this.sanitizeText(error),
+            error: stripNullBytesOrNull(error),
             durationMs,
             status: 'failed',
           },
@@ -311,9 +295,8 @@ export const toolExecutorService = {
     )
 
     // Sanitize output to strip null bytes that break PostgreSQL and JSON
-    const sanitize = (s: string) => s.replace(/\x00/g, '')
-    const stdout = result.stdout ? sanitize(result.stdout) : ''
-    const stderr = result.stderr ? sanitize(result.stderr) : ''
+    const stdout = result.stdout ? stripNullBytes(result.stdout) : ''
+    const stderr = result.stderr ? stripNullBytes(result.stderr) : ''
 
     const output = [
       stdout ? `stdout:\n${stdout}` : '',

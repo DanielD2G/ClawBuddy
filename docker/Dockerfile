@@ -6,7 +6,6 @@ WORKDIR /app
 # Copy dependency manifests
 COPY package.json bun.lock ./
 COPY patches/ patches/
-COPY libs/browsergrid/sdk/typescript/ libs/browsergrid/sdk/typescript/
 COPY apps/api/package.json apps/api/package.json
 COPY apps/web/package.json apps/web/package.json
 COPY packages/shared/package.json packages/shared/package.json

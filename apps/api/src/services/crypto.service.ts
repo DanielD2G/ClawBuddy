@@ -2,7 +2,7 @@ import { scryptSync, randomBytes, createCipheriv, createDecipheriv } from 'crypt
 import { env } from '../env.js'
 
 const ALGORITHM = 'aes-256-gcm'
-const SALT = 'agentbuddy-api-key-encryption'
+const SALT = process.env.ENCRYPTION_SALT || 'agentbuddy-api-key-encryption'
 
 // Derive key once at startup
 const key = scryptSync(env.ENCRYPTION_SECRET, SALT, 32)

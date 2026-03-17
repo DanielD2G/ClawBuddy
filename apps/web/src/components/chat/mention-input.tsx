@@ -30,13 +30,10 @@ export function MentionInput({
   documents,
   folders,
 }: MentionInputProps) {
-  const readyDocuments = documents
-  const enabledCapabilities = capabilities
-
   const fileItems = useMemo<FileItem[]>(() => [
     ...folders.map((f) => ({ kind: 'folder' as const, id: f.id, label: f.name })),
-    ...readyDocuments.map((d) => ({ kind: 'document' as const, id: d.id, label: d.title })),
-  ], [folders, readyDocuments])
+    ...documents.map((d) => ({ kind: 'document' as const, id: d.id, label: d.title })),
+  ], [folders, documents])
 
   const [showPopover, setShowPopover] = useState(false)
   const [filter, setFilter] = useState('')
@@ -54,7 +51,7 @@ export function MentionInput({
   // Track mentioned documents by scanning the value for @title patterns
   useEffect(() => {
     const ids: string[] = []
-    for (const doc of readyDocuments) {
+    for (const doc of documents) {
       if (value.includes(`@${doc.title}`)) {
         ids.push(doc.id)
       }
@@ -63,15 +60,15 @@ export function MentionInput({
       if (prev.length === ids.length && prev.every((id, i) => id === ids[i])) return prev
       return ids
     })
-  }, [value, readyDocuments])
+  }, [value, documents])
 
   const filteredTools = useMemo(() =>
-    enabledCapabilities.filter(
+    capabilities.filter(
       (c) =>
         c.slug.includes(filter.toLowerCase()) ||
         c.name.toLowerCase().includes(filter.toLowerCase()),
     ),
-    [enabledCapabilities, filter],
+    [capabilities, filter],
   )
 
   const filteredFiles = useMemo(() =>
@@ -200,7 +197,7 @@ export function MentionInput({
   const highlightedSegments = useMemo(() => {
     if (!value) return null
 
-    const toolSlugs = new Set(enabledCapabilities.map((c) => c.slug))
+    const toolSlugs = new Set(capabilities.map((c) => c.slug))
     const fileLabels = new Set(fileItems.map((f) => f.label))
 
     // Build a regex that matches /slug or @label
@@ -231,7 +228,7 @@ export function MentionInput({
 
     if (parts.every((p) => !p.highlighted)) return null
     return parts
-  }, [value, enabledCapabilities, fileItems])
+  }, [value, capabilities, fileItems])
 
   return (
     <div className="relative flex-1">

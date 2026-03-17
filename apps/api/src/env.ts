@@ -12,6 +12,9 @@ const envSchema = z.object({
   // Encryption secret for API key storage
   ENCRYPTION_SECRET: z.string().min(16, 'ENCRYPTION_SECRET must be at least 16 characters'),
 
+  // App URL (used for CORS and OAuth redirects)
+  APP_URL: z.string().default('http://localhost:5173'),
+
   // AI providers
   AI_PROVIDER: z.enum(['openai', 'gemini', 'claude']).default('openai'),
   EMBEDDING_PROVIDER: z.enum(['openai', 'gemini']).default('openai'),
@@ -22,6 +25,13 @@ const envSchema = z.object({
   // Google OAuth (for Google Workspace integration)
   GOOGLE_CLIENT_ID: z.string().default(''),
   GOOGLE_CLIENT_SECRET: z.string().default(''),
+
+  // Browser grid
+  BROWSER_GRID_URL: z.string().default(''),
+  BROWSER_GRID_API_KEY: z.string().default(''),
+
+  // Debug flags
+  DEBUG_AGENT: z.string().default(''),
 })
 
 export const env = envSchema.parse(process.env)
