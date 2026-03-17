@@ -42,19 +42,21 @@ clean: ## Remove node_modules, dist, .turbo
 
 # ─── Docker / Infrastructure ──────────────────────────────
 
+DEV_COMPOSE := docker compose -f docker-compose.dev.yml
+
 docker-up: ## Start infrastructure (Postgres, Redis, Qdrant, MinIO, BrowserGrid)
-	docker compose --profile infra up -d
+	$(DEV_COMPOSE) --profile infra up -d
 
 docker-down: ## Stop all containers
-	docker compose down
+	$(DEV_COMPOSE) down
 
 docker-restart: docker-down docker-up ## Restart all containers
 
 docker-logs: ## Tail container logs
-	docker compose logs -f
+	$(DEV_COMPOSE) logs -f
 
 docker-reset: ## Stop containers and remove volumes (⚠️ destroys data)
-	docker compose down -v
+	$(DEV_COMPOSE) down -v
 
 # ─── Database ─────────────────────────────────────────────
 

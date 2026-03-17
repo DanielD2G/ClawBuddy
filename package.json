@@ -10,8 +10,8 @@
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "type-check": "bun --filter '*' type-check",
     "clean": "rm -rf node_modules apps/*/dist apps/*/node_modules packages/*/node_modules",
-    "docker:up": "docker compose up -d",
-    "docker:down": "docker compose down",
+    "docker:up": "docker compose -f docker-compose.dev.yml --profile infra up -d",
+    "docker:down": "docker compose -f docker-compose.dev.yml down",
     "db:generate": "bun --filter @agentbuddy/api db:generate",
     "db:push": "bun --filter @agentbuddy/api db:push"
   },
