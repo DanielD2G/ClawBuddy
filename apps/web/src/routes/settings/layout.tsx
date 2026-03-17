@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
-import { Settings, Puzzle, Clock, Database, Globe } from 'lucide-react'
+import { Settings, Puzzle, Clock, Database, Globe, Send } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const navItems = [
@@ -27,6 +27,11 @@ const navItems = [
     label: 'Browser',
     icon: Globe,
     href: '/settings/browser',
+  },
+  {
+    label: 'Channels',
+    icon: Send,
+    href: '/settings/channels',
   },
 ]
 

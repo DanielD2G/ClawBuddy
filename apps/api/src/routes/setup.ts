@@ -508,7 +508,7 @@ app.post('/complete', async (c) => {
   if (blocked) return blocked
 
   const body = await c.req.json()
-  const { capabilities, capabilityConfigs, workspaceName, workspaceColor } = body
+  const { capabilities, capabilityConfigs, workspaceName, workspaceColor, telegramBotToken } = body
 
   const settings = await settingsService.get()
 
@@ -577,6 +577,17 @@ app.post('/complete', async (c) => {
         // Capability may not exist yet if sync hasn't run
       }
     }
+  }
+
+  // Create Telegram channel if token provided (disabled by default)
+  if (telegramBotToken && typeof telegramBotToken === 'string') {
+    const { channelService } = await import('../services/channel.service.js')
+    await channelService.create({
+      workspaceId: workspace.id,
+      type: 'telegram',
+      name: 'Telegram',
+      config: { botToken: telegramBotToken },
+    })
   }
 
   // Index capabilities with the user's chosen embedding model (non-blocking)
