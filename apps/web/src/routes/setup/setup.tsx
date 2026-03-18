@@ -3,7 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom'
 import { useSetupStatus, useSetupSettings, useCompleteSetup, useSetupCapabilities } from '@/hooks/use-setup'
 import { useActiveWorkspace } from '@/providers/workspace-provider'
 import { Spinner } from '@/components/ui/spinner'
-import { Sparkles, Key, Brain, MessageSquare, FolderOpen, Puzzle, Container, ShieldCheck, Settings } from 'lucide-react'
+import { Sparkles, Key, Brain, MessageSquare, FolderOpen, Puzzle, Container, ShieldCheck, Settings, Send } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
@@ -20,6 +20,7 @@ import { StepCapabilities } from './components/step-capabilities'
 import { StepDockerImages } from './components/step-docker'
 import { StepConfigure } from './components/step-configure'
 import { StepPreflight } from './components/step-preflight'
+import { StepChannels } from './components/step-channels'
 
 const ALL_STEPS = [
   { label: 'Welcome', icon: Sparkles },
@@ -28,6 +29,7 @@ const ALL_STEPS = [
   { label: 'Chat', icon: MessageSquare },
   { label: 'Workspace', icon: FolderOpen },
   { label: 'Capabilities', icon: Puzzle },
+  { label: 'Channels', icon: Send },
   { label: 'Docker', icon: Container },
   { label: 'Preflight', icon: ShieldCheck },
   { label: 'Configure', icon: Settings },
@@ -41,6 +43,8 @@ export function SetupPage() {
   const [workspaceName, setWorkspaceName] = useState('Default')
   const [workspaceColor, setWorkspaceColor] = useState(WORKSPACE_COLORS[0])
   const [browserGridUrl, setBrowserGridUrl] = useState('http://localhost:9090')
+  const [telegramEnabled, setTelegramEnabled] = useState(false)
+  const [telegramToken, setTelegramToken] = useState('')
   const { setActiveWorkspace } = useActiveWorkspace()
   const navigate = useNavigate()
   // Sync picked workspace color to CSS --brand variable in real time
@@ -102,6 +106,7 @@ export function SetupPage() {
         capabilityConfigs: configs,
         workspaceName,
         workspaceColor,
+        ...(telegramEnabled && telegramToken.trim() ? { telegramBotToken: telegramToken.trim() } : {}),
       })
       if (result.workspace) {
         setActiveWorkspace(result.workspace)
@@ -187,21 +192,31 @@ export function SetupPage() {
           />
         )}
         {step === 6 && (
-          <StepDockerImages
+          <StepChannels
+            telegramEnabled={telegramEnabled}
+            telegramToken={telegramToken}
+            onTelegramEnabledChange={setTelegramEnabled}
+            onTelegramTokenChange={setTelegramToken}
             onBack={() => setStep(5)}
             onNext={() => setStep(7)}
+          />
+        )}
+        {step === 7 && (
+          <StepDockerImages
+            onBack={() => setStep(6)}
+            onNext={() => setStep(8)}
             isCompleting={false}
             hasConfigStep={true}
           />
         )}
-        {step === 7 && (
+        {step === 8 && (
           <StepPreflight
             capabilities={selectedCapabilities}
             browserGridUrl={browserGridUrl}
-            onBack={() => setStep(6)}
+            onBack={() => setStep(7)}
             onNext={() => {
               if (hasConfigStep) {
-                setStep(8)
+                setStep(9)
               } else {
                 handleComplete()
               }
@@ -210,14 +225,14 @@ export function SetupPage() {
             hasConfigStep={hasConfigStep}
           />
         )}
-        {step === 8 && (
+        {step === 9 && (
           <StepConfigure
             capsNeedingConfig={capsNeedingConfig}
             configs={capabilityConfigs}
             onConfigChange={(slug, config) => {
               setCapabilityConfigs((prev) => ({ ...prev, [slug]: config }))
             }}
-            onBack={() => setStep(7)}
+            onBack={() => setStep(8)}
             onComplete={handleComplete}
             isCompleting={completeSetup.isPending}
           />
