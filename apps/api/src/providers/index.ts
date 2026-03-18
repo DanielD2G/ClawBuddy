@@ -25,7 +25,7 @@ export async function createEmbeddingProvider(): Promise<EmbeddingProvider> {
 
 async function createLLMForModel(model: string): Promise<LLMProvider> {
   // Infer provider from the model name; fall back to the global aiProvider setting
-  const provider = inferProviderFromModel(model) ?? await settingsService.getAIProvider()
+  const provider = inferProviderFromModel(model) ?? (await settingsService.getAIProvider())
   const apiKey = await settingsService.getApiKey(provider)
   if (!apiKey) throw new Error(`No API key configured for AI provider: ${provider}`)
 
@@ -47,25 +47,17 @@ async function createLLMForModel(model: string): Promise<LLMProvider> {
   }
 }
 
-export async function createLLMProvider(): Promise<LLMProvider> {
-  const model = await settingsService.getAIModel()
-  return createLLMForModel(model)
+function llmFactory(getModel: () => Promise<string>): () => Promise<LLMProvider> {
+  return () => getModel().then(createLLMForModel)
 }
 
-export async function createLightLLM(): Promise<LLMProvider> {
-  const model = await settingsService.getLightModel()
-  return createLLMForModel(model)
-}
-
-export async function createTitleLLM(): Promise<LLMProvider> {
-  const model = await settingsService.getTitleModel()
-  return createLLMForModel(model)
-}
-
-export async function createCompactLLM(): Promise<LLMProvider> {
-  const model = await settingsService.getCompactModel()
-  return createLLMForModel(model)
-}
+export const createLLMProvider = llmFactory(() => settingsService.getAIModel())
+export const createLightLLM = llmFactory(() => settingsService.getLightModel())
+export const createTitleLLM = llmFactory(() => settingsService.getTitleModel())
+export const createCompactLLM = llmFactory(() => settingsService.getCompactModel())
+export const createExploreLLM = llmFactory(() => settingsService.getExploreModel())
+export const createExecuteLLM = llmFactory(() => settingsService.getExecuteModel())
+export const createMediumLLM = llmFactory(() => settingsService.getMediumModel())
 
 export type { EmbeddingProvider } from './embeddings.interface.js'
 export type {

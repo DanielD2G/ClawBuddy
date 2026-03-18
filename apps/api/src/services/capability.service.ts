@@ -78,6 +78,27 @@ export const capabilityService = {
         },
       })
     }
+
+    // Auto-enable core capabilities that must always be on for every workspace
+    const alwaysEnabledSlugs = ['sub-agent-delegation']
+    const workspaces = await prisma.workspace.findMany({ select: { id: true } })
+    const alwaysEnabledCaps = await prisma.capability.findMany({
+      where: { slug: { in: alwaysEnabledSlugs } },
+      select: { id: true },
+    })
+    if (alwaysEnabledCaps.length && workspaces.length) {
+      await prisma.$transaction(
+        workspaces.flatMap((ws) =>
+          alwaysEnabledCaps.map((cap) =>
+            prisma.workspaceCapability.upsert({
+              where: { workspaceId_capabilityId: { workspaceId: ws.id, capabilityId: cap.id } },
+              create: { workspaceId: ws.id, capabilityId: cap.id, enabled: true },
+              update: { enabled: true },
+            }),
+          ),
+        ),
+      )
+    }
   },
 
   /**
@@ -106,7 +127,9 @@ export const capabilityService = {
    * Get decrypted env vars for workspace-scoped capabilities.
    * Merges global config with workspace overrides.
    */
-  async getDecryptedCapabilityConfigsForWorkspace(workspaceId: string): Promise<Map<string, Record<string, string>>> {
+  async getDecryptedCapabilityConfigsForWorkspace(
+    workspaceId: string,
+  ): Promise<Map<string, Record<string, string>>> {
     const capabilities = await this.getEnabledCapabilitiesForWorkspace(workspaceId)
     const result = new Map<string, Record<string, string>>()
 
@@ -136,6 +159,9 @@ export const capabilityService = {
   /**
    * Get all workspace capabilities (enabled and disabled) for management.
    */
+  /** Capability slugs that are always enabled and hidden from the management UI */
+  HIDDEN_CAPABILITY_SLUGS: ['sub-agent-delegation'] as string[],
+
   async getWorkspaceCapabilitySettings(workspaceId: string) {
     const [allCapabilities, workspaceCapabilities] = await Promise.all([
       prisma.capability.findMany({ orderBy: { category: 'asc' } }),
@@ -144,18 +170,20 @@ export const capabilityService = {
 
     const wcMap = new Map(workspaceCapabilities.map((wc) => [wc.capabilityId, wc]))
 
-    return allCapabilities.map((cap) => {
-      const wc = wcMap.get(cap.id)
-      const schema = cap.configSchema as ConfigFieldDefinition[] | null
-      const rawConfig = (wc?.config ?? null) as Record<string, unknown> | null
-      const maskedConfig = schema && rawConfig ? maskConfigFields(schema, rawConfig) : rawConfig
-      return {
-        ...cap,
-        enabled: wc?.enabled ?? false,
-        config: maskedConfig,
-        workspaceCapabilityId: wc?.id ?? null,
-      }
-    })
+    return allCapabilities
+      .filter((cap) => !this.HIDDEN_CAPABILITY_SLUGS.includes(cap.slug))
+      .map((cap) => {
+        const wc = wcMap.get(cap.id)
+        const schema = cap.configSchema as ConfigFieldDefinition[] | null
+        const rawConfig = (wc?.config ?? null) as Record<string, unknown> | null
+        const maskedConfig = schema && rawConfig ? maskConfigFields(schema, rawConfig) : rawConfig
+        return {
+          ...cap,
+          enabled: wc?.enabled ?? false,
+          config: maskedConfig,
+          workspaceCapabilityId: wc?.id ?? null,
+        }
+      })
   },
 
   /**
@@ -179,7 +207,11 @@ export const capabilityService = {
         where: { workspaceId_capabilityId: { workspaceId, capabilityId: capability.id } },
       })
       if (existing?.config) {
-        processedConfig = mergeWithExistingConfig(schema, config, existing.config as Record<string, unknown>)
+        processedConfig = mergeWithExistingConfig(
+          schema,
+          config,
+          existing.config as Record<string, unknown>,
+        )
       }
 
       // Encrypt password fields
@@ -221,7 +253,11 @@ export const capabilityService = {
   /**
    * Update config for a workspace capability.
    */
-  async updateCapabilityConfig(workspaceId: string, capabilityId: string, config: Record<string, unknown>) {
+  async updateCapabilityConfig(
+    workspaceId: string,
+    capabilityId: string,
+    config: Record<string, unknown>,
+  ) {
     const capability = await prisma.capability.findUniqueOrThrow({ where: { id: capabilityId } })
     const schema = capability.configSchema as ConfigFieldDefinition[] | null
 
@@ -238,7 +274,11 @@ export const capabilityService = {
         where: { workspaceId_capabilityId: { workspaceId, capabilityId } },
       })
       if (existing?.config) {
-        processedConfig = mergeWithExistingConfig(schema, config, existing.config as Record<string, unknown>)
+        processedConfig = mergeWithExistingConfig(
+          schema,
+          config,
+          existing.config as Record<string, unknown>,
+        )
       }
 
       processedConfig = encryptConfigFields(schema, processedConfig)
@@ -288,15 +328,28 @@ export const capabilityService = {
   /**
    * Build combined system prompt from enabled capabilities.
    */
-  buildSystemPrompt(capabilities: Array<{ systemPrompt: string; name: string }>, timezone?: string): string {
+  buildSystemPrompt(
+    capabilities: Array<{ systemPrompt: string; name: string }>,
+    timezone?: string,
+  ): string {
     const now = new Date()
     const tz = timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
     const locationParts = tz.split('/')
-    const location = locationParts.length >= 2
-      ? locationParts.slice(1).join(', ').replace(/_/g, ' ')
-      : tz
-    const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: tz })
-    const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: tz })
+    const location =
+      locationParts.length >= 2 ? locationParts.slice(1).join(', ').replace(/_/g, ' ') : tz
+    const dateStr = now.toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      timeZone: tz,
+    })
+    const timeStr = now.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: tz,
+    })
 
     const base = `You are a helpful AI assistant with access to tools.
 
@@ -371,5 +424,4 @@ If a tool call returns an error:
     }
     return null
   },
-
 }

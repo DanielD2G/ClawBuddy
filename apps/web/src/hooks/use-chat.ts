@@ -27,9 +27,21 @@ export interface ChatAttachment {
   url: string
 }
 
+export type SubAgentRole = 'explore' | 'analyze' | 'execute'
+
+export interface SubAgentData {
+  role: SubAgentRole
+  task: string
+  tools: ToolExecutionData[]
+  summary?: string
+  status: string
+  durationMs?: number
+}
+
 export type ContentBlock =
   | { type: 'text'; text: string }
   | { type: 'tool'; tool: ToolExecutionData }
+  | { type: 'sub_agent'; subAgent: SubAgentData }
 
 export interface ChatMessage {
   id: string
@@ -165,6 +177,10 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
           continue
         }
 
+        const updateAssistant = (updater: (msg: ChatMessage) => ChatMessage) => {
+          setMessages((prev) => prev.map((msg) => (msg.id === assistantId ? updater(msg) : msg)))
+        }
+
         switch (event) {
           case 'session':
             onSessionId?.(parsed.sessionId as string)
@@ -174,9 +190,36 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
             setThinkingMessage(parsed.message as string)
             break
 
+          case 'sub_agent_start': {
+            setThinkingMessage(null)
+            const subAgentBlock: SubAgentData = {
+              role: parsed.role as SubAgentRole,
+              task: parsed.task as string,
+              tools: [],
+              status: 'running',
+            }
+            updateAssistant((msg) => ({
+              ...msg,
+              contentBlocks: [...(msg.contentBlocks ?? []), { type: 'sub_agent' as const, subAgent: subAgentBlock }],
+            }))
+            break
+          }
+
+          case 'sub_agent_done': {
+            updateAssistant((msg) => {
+              const blocks = [...(msg.contentBlocks ?? [])]
+              const idx = blocks.findLastIndex((b) => b.type === 'sub_agent' && b.subAgent.status === 'running')
+              if (idx >= 0) {
+                const block = blocks[idx] as ContentBlock & { type: 'sub_agent' }
+                blocks[idx] = { ...block, subAgent: { ...block.subAgent, status: 'completed', summary: parsed.summary as string } }
+              }
+              return { ...msg, contentBlocks: blocks }
+            })
+            break
+          }
+
           case 'tool_start': {
             setThinkingMessage(null)
-            // Sandbox is now running — refresh container status in sidebar
             queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'container'] })
             const toolData: ToolExecutionData = {
               toolName: parsed.toolName as string,
@@ -184,16 +227,23 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
               input: parsed.input as Record<string, unknown>,
               status: 'running',
             }
-            setMessages((prev) =>
-              prev.map((msg) => {
-                if (msg.id !== assistantId) return msg
-                return {
-                  ...msg,
-                  toolExecutions: [...(msg.toolExecutions ?? []), toolData],
-                  contentBlocks: [...(msg.contentBlocks ?? []), { type: 'tool' as const, tool: toolData }],
+            if (parsed.subAgent) {
+              updateAssistant((msg) => {
+                const blocks = [...(msg.contentBlocks ?? [])]
+                const idx = blocks.findLastIndex((b) => b.type === 'sub_agent' && b.subAgent.status === 'running')
+                if (idx >= 0) {
+                  const block = blocks[idx] as ContentBlock & { type: 'sub_agent' }
+                  blocks[idx] = { ...block, subAgent: { ...block.subAgent, tools: [...block.subAgent.tools, toolData] } }
                 }
-              }),
-            )
+                return { ...msg, contentBlocks: blocks }
+              })
+            } else {
+              updateAssistant((msg) => ({
+                ...msg,
+                toolExecutions: [...(msg.toolExecutions ?? []), toolData],
+                contentBlocks: [...(msg.contentBlocks ?? []), { type: 'tool' as const, tool: toolData }],
+              }))
+            }
             break
           }
 
@@ -206,22 +256,38 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
               screenshot: (parsed.screenshot as string) ?? null,
               status: parsed.error ? 'failed' : 'completed',
             }
-            setMessages((prev) =>
-              prev.map((msg) => {
-                if (msg.id !== assistantId) return msg
-                return {
-                  ...msg,
-                  toolExecutions: (msg.toolExecutions ?? []).map((te) => {
-                    if (te.toolName !== parsed.toolName || te.status !== 'running') return te
-                    return { ...te, ...updatedTool }
-                  }),
-                  contentBlocks: (msg.contentBlocks ?? []).map((block) => {
-                    if (block.type !== 'tool' || block.tool.toolName !== parsed.toolName || block.tool.status !== 'running') return block
-                    return { ...block, tool: { ...block.tool, ...updatedTool } }
-                  }),
+            if (parsed.subAgent) {
+              updateAssistant((msg) => {
+                const blocks = [...(msg.contentBlocks ?? [])]
+                const idx = blocks.findLastIndex((b) => b.type === 'sub_agent' && b.subAgent.status === 'running')
+                if (idx >= 0) {
+                  const block = blocks[idx] as ContentBlock & { type: 'sub_agent' }
+                  blocks[idx] = {
+                    ...block,
+                    subAgent: {
+                      ...block.subAgent,
+                      tools: block.subAgent.tools.map((t) => {
+                        if (t.toolName !== parsed.toolName || t.status !== 'running') return t
+                        return { ...t, ...updatedTool }
+                      }),
+                    },
+                  }
                 }
-              }),
-            )
+                return { ...msg, contentBlocks: blocks }
+              })
+            } else {
+              updateAssistant((msg) => ({
+                ...msg,
+                toolExecutions: (msg.toolExecutions ?? []).map((te) => {
+                  if (te.toolName !== parsed.toolName || te.status !== 'running') return te
+                  return { ...te, ...updatedTool }
+                }),
+                contentBlocks: (msg.contentBlocks ?? []).map((block) => {
+                  if (block.type !== 'tool' || block.tool.toolName !== parsed.toolName || block.tool.status !== 'running') return block
+                  return { ...block, tool: { ...block.tool, ...updatedTool } }
+                }),
+              }))
+            }
             break
           }
 
@@ -240,28 +306,20 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
 
           case 'content':
             setThinkingMessage(null)
-            setMessages((prev) =>
-              prev.map((msg) => {
-                if (msg.id !== assistantId) return msg
-                const blocks = [...(msg.contentBlocks ?? [])]
-                const lastBlock = blocks[blocks.length - 1]
-                if (lastBlock && lastBlock.type === 'text') {
-                  blocks[blocks.length - 1] = { type: 'text', text: lastBlock.text + (parsed.text as string) }
-                } else {
-                  blocks.push({ type: 'text', text: parsed.text as string })
-                }
-                return { ...msg, content: msg.content + (parsed.text as string), contentBlocks: blocks }
-              }),
-            )
+            updateAssistant((msg) => {
+              const blocks = [...(msg.contentBlocks ?? [])]
+              const lastBlock = blocks[blocks.length - 1]
+              if (lastBlock && lastBlock.type === 'text') {
+                blocks[blocks.length - 1] = { type: 'text', text: lastBlock.text + (parsed.text as string) }
+              } else {
+                blocks.push({ type: 'text', text: parsed.text as string })
+              }
+              return { ...msg, content: msg.content + (parsed.text as string), contentBlocks: blocks }
+            })
             break
 
           case 'sources':
-            setMessages((prev) =>
-              prev.map((msg) => {
-                if (msg.id !== assistantId) return msg
-                return { ...msg, sources: parsed.sources as ChatMessage['sources'] }
-              }),
-            )
+            updateAssistant((msg) => ({ ...msg, sources: parsed.sources as ChatMessage['sources'] }))
             break
 
           case 'compressing':
@@ -296,12 +354,7 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
 
           case 'error':
             setThinkingMessage(null)
-            setMessages((prev) =>
-              prev.map((msg) => {
-                if (msg.id !== assistantId) return msg
-                return { ...msg, content: msg.content || `Error: ${parsed.message}`, isError: true }
-              }),
-            )
+            updateAssistant((msg) => ({ ...msg, content: msg.content || `Error: ${parsed.message}`, isError: true }))
             break
         }
       }

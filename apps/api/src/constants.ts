@@ -1,14 +1,14 @@
 // ── Timeouts (milliseconds unless noted) ──────────
-export const BROWSER_IDLE_TIMEOUT_MS = 5 * 60 * 1000       // 5 min
+export const BROWSER_IDLE_TIMEOUT_MS = 5 * 60 * 1000 // 5 min
 export const BROWSER_HEALTH_TIMEOUT_MS = 5000
 export const BROWSER_SCRIPT_DEFAULT_TIMEOUT_S = 30
 export const BROWSER_SCRIPT_MIN_TIMEOUT_S = 5
 export const BROWSER_SCRIPT_MAX_TIMEOUT_S = 120
-export const BROWSER_ACTION_TIMEOUT_MS = 8_000               // Playwright locator auto-wait cap
-export const BROWSER_NAV_TIMEOUT_MS = 15_000                  // page.goto() timeout
+export const BROWSER_ACTION_TIMEOUT_MS = 8_000 // Playwright locator auto-wait cap
+export const BROWSER_NAV_TIMEOUT_MS = 15_000 // page.goto() timeout
 
-export const SANDBOX_MAX_TIMEOUT_MS = 300_000               // 5 min
-export const SANDBOX_IDLE_TIMEOUT_MS = 10 * 60 * 1000       // 10 min
+export const SANDBOX_MAX_TIMEOUT_MS = 300_000 // 5 min
+export const SANDBOX_IDLE_TIMEOUT_MS = 10 * 60 * 1000 // 10 min
 export const SANDBOX_DEFAULT_EXEC_TIMEOUT_S = 30
 export const SANDBOX_STOP_TIMEOUT_S = 5
 
@@ -16,13 +16,13 @@ export const FILE_READ_TIMEOUT_S = 10
 export const RECENT_EXECUTION_WINDOW_MS = 60_000
 
 // ── Size limits ───────────────────────────────────
-export const MAX_READABLE_CONTENT_BYTES = 50 * 1024         // 50KB
-export const MAX_FILE_UPLOAD_BYTES = 20 * 1024 * 1024       // 20MB
+export const MAX_READABLE_CONTENT_BYTES = 50 * 1024 // 50KB
+export const MAX_FILE_UPLOAD_BYTES = 20 * 1024 * 1024 // 20MB
 export const EXEC_OUTPUT_MAX_BYTES = 50_000
 export const MAX_SCREENSHOT_SSE_SIZE = 500_000
 
-export const SANDBOX_MEMORY_BYTES = 512 * 1024 * 1024       // 512MB
-export const SANDBOX_NANOCPUS = 1_000_000_000               // 1 CPU
+export const SANDBOX_MEMORY_BYTES = 512 * 1024 * 1024 // 512MB
+export const SANDBOX_NANOCPUS = 1_000_000_000 // 1 CPU
 export const SANDBOX_PID_LIMIT = 100
 export const SANDBOX_TIMEOUT_EXIT_CODE = 124
 
@@ -45,8 +45,8 @@ export const INPUT_VALUE_MAX_LEN = 100
 export const SCREENSHOT_JPEG_QUALITY = 50
 
 // ── Tool result pruning ─────────────────────────
-export const TOOL_RESULT_PROTECTION_WINDOW = 10_000  // ~40K chars worth of tokens to protect
-export const MIN_PRUNE_SIZE = 200                     // don't prune results smaller than this
+export const TOOL_RESULT_PROTECTION_WINDOW = 10_000 // ~40K chars worth of tokens to protect
+export const MIN_PRUNE_SIZE = 200 // don't prune results smaller than this
 
 // ── Agent ─────────────────────────────────────────
 export const DEFAULT_MAX_AGENT_ITERATIONS = 50
@@ -90,11 +90,28 @@ export const TOOL_DISCOVERY_COLLECTION = 'agentbuddy_tools'
 export const TOOL_DISCOVERY_EMBEDDING_INSTRUCTIONS_LIMIT = 500
 export const TOOL_DISCOVERY_MAX_CALLS = 3
 export const PREFLIGHT_DISCOVERY_SCORE_THRESHOLD = 0.55
-export const ALWAYS_ON_CAPABILITY_SLUGS = ['document-search', 'agent-memory', 'bash', 'python']
+export const ALWAYS_ON_CAPABILITY_SLUGS = [
+  'document-search',
+  'agent-memory',
+  'bash',
+  'python',
+  'sub-agent-delegation',
+]
+
+// ── Sub-agent delegation ────────────────────────
+export const SUB_AGENT_EXPLORE_MAX_ITERATIONS = 15
+export const SUB_AGENT_ANALYZE_MAX_ITERATIONS = 10
+export const SUB_AGENT_EXECUTE_MAX_ITERATIONS = 25
+
+/** Tools the main agent cannot use directly — must delegate to a sub-agent */
+export const DELEGATION_ONLY_TOOLS = new Set(['run_browser_script'])
 
 // ── Parallel tool execution ─────────────────────
 export const PARALLEL_SAFE_TOOLS = new Set([
-  'web_search', 'search_documents', 'discover_tools', 'list_crons',
+  'web_search',
+  'search_documents',
+  'discover_tools',
+  'list_crons',
 ])
 
 // ── API key masking ─────────────────────────────

@@ -1,8 +1,28 @@
 export type SSEEvent =
   | { event: 'thinking'; data: { message: string } }
-  | { event: 'tool_start'; data: { toolName: string; capabilitySlug: string; input: Record<string, unknown> } }
-  | { event: 'tool_result'; data: { toolName: string; output?: string; error?: string; exitCode?: number; durationMs: number } }
-  | { event: 'approval_required'; data: { approvalId: string; toolName: string; capabilitySlug: string; input: Record<string, unknown> } }
+  | {
+      event: 'tool_start'
+      data: { toolName: string; capabilitySlug: string; input: Record<string, unknown> }
+    }
+  | {
+      event: 'tool_result'
+      data: {
+        toolName: string
+        output?: string
+        error?: string
+        exitCode?: number
+        durationMs: number
+      }
+    }
+  | {
+      event: 'approval_required'
+      data: {
+        approvalId: string
+        toolName: string
+        capabilitySlug: string
+        input: Record<string, unknown>
+      }
+    }
   | { event: 'content'; data: { text: string } }
   | { event: 'title_update'; data: { title: string } }
   | { event: 'sources'; data: { sources: unknown[] } }
@@ -11,7 +31,12 @@ export type SSEEvent =
   | { event: 'awaiting_approval'; data: { approvalIds: string[] } }
   | { event: 'session'; data: { sessionId: string } }
   | { event: 'context_compressed'; data: Record<string, unknown> }
-  | { event: 'compressing'; data: { status: 'start' | 'done' | 'skipped'; summarizedCount?: number; keptCount?: number } }
+  | {
+      event: 'compressing'
+      data: { status: 'start' | 'done' | 'skipped'; summarizedCount?: number; keptCount?: number }
+    }
+  | { event: 'sub_agent_start'; data: { role: string; task: string } }
+  | { event: 'sub_agent_done'; data: { role: string; summary: string } }
 
 export type SSEEmit = (event: SSEEvent['event'], data: Record<string, unknown>) => void
 

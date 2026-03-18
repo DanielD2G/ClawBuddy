@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client'
 import { prisma } from '../lib/prisma.js'
-import { createLLMProvider, createLightLLM, createTitleLLM } from '../providers/index.js'
+import { createLLMProvider, createExecuteLLM, createTitleLLM } from '../providers/index.js'
 import { recordTokenUsage } from './agent.service.js'
 import { settingsService } from './settings.service.js'
 import { embeddingService } from './embedding.service.js'
@@ -16,8 +16,6 @@ import {
 } from '../constants.js'
 import type { SecretInventory } from './secret-redaction.service.js'
 import { secretRedactionService } from './secret-redaction.service.js'
-
-
 
 export const chatService = {
   async createSession(data: { workspaceId: string; title?: string }) {
@@ -104,39 +102,113 @@ export const chatService = {
     })
 
     // Reconstruct content blocks and apply toolCalls fallback
-    return messages.map((msg) => {
-      let toolExecs = msg.toolExecutions
+    return Promise.all(
+      messages.map(async (msg) => {
+        let toolExecs = msg.toolExecutions
 
-      // Fallback: if a message has toolCalls JSON but no linked toolExecutions, use the JSON data
-      if (toolExecs.length === 0 && msg.toolCalls && Array.isArray(msg.toolCalls)) {
-        toolExecs = (msg.toolCalls as Array<Record<string, unknown>>).map((tc, i) => ({
-          id: `${msg.id}-tc-${i}`,
-          toolName: String(tc.name ?? ''),
-          capabilitySlug: String(tc.capability ?? ''),
-          input: tc.input ?? {},
-          output: tc.output != null ? String(tc.output) : null,
-          screenshot: null,
-          error: tc.error != null ? String(tc.error) : null,
-          exitCode: tc.exitCode != null ? Number(tc.exitCode) : null,
-          durationMs: tc.durationMs != null ? Number(tc.durationMs) : null,
-          status: tc.error ? 'failed' : 'completed',
-        }))
-      }
+        // Fallback: if a message has toolCalls JSON but no linked toolExecutions, use the JSON data
+        if (toolExecs.length === 0 && msg.toolCalls && Array.isArray(msg.toolCalls)) {
+          toolExecs = (msg.toolCalls as Array<Record<string, unknown>>).map((tc, i) => ({
+            id: `${msg.id}-tc-${i}`,
+            toolName: String(tc.name ?? ''),
+            capabilitySlug: String(tc.capability ?? ''),
+            input: tc.input ?? {},
+            output: tc.output != null ? String(tc.output) : null,
+            screenshot: null,
+            error: tc.error != null ? String(tc.error) : null,
+            exitCode: tc.exitCode != null ? Number(tc.exitCode) : null,
+            durationMs: tc.durationMs != null ? Number(tc.durationMs) : null,
+            status: tc.error ? 'failed' : 'completed',
+          }))
+        }
 
-      // Reconstruct ordered contentBlocks from stored layout + tool execution data
-      const storedBlocks = msg.contentBlocks as Array<{ type: string; text?: string; toolIndex?: number }> | null
-      let contentBlocks: Array<{ type: 'text'; text: string } | { type: 'tool'; tool: typeof toolExecs[number] }> | undefined
-      if (storedBlocks?.length) {
-        contentBlocks = storedBlocks.map((block) => {
-          if (block.type === 'tool' && block.toolIndex != null && toolExecs[block.toolIndex]) {
-            return { type: 'tool' as const, tool: toolExecs[block.toolIndex] }
+        // Reconstruct ordered contentBlocks from stored layout + tool execution data
+        const storedBlocks = msg.contentBlocks as Array<{
+          type: string
+          text?: string
+          toolIndex?: number
+          role?: string
+          task?: string
+          subToolIds?: string[]
+        }> | null
+        let contentBlocks:
+          | Array<
+              | { type: 'text'; text: string }
+              | { type: 'tool'; tool: (typeof toolExecs)[number] }
+              | {
+                  type: 'sub_agent'
+                  subAgent: {
+                    role: string
+                    task: string
+                    tools: (typeof toolExecs)[number][]
+                    summary?: string
+                    status: string
+                    durationMs?: number
+                  }
+                }
+            >
+          | undefined
+        if (storedBlocks?.length) {
+          // Collect sub-agent tool IDs that need loading
+          const allSubToolIds = storedBlocks
+            .filter((b) => b.type === 'sub_agent' && b.subToolIds?.length)
+            .flatMap((b) => b.subToolIds!)
+
+          // Batch-load sub-agent tool executions if any
+          let subToolExecMap = new Map<string, (typeof toolExecs)[number]>()
+          if (allSubToolIds.length) {
+            const subToolExecs = await prisma.toolExecution.findMany({
+              where: { id: { in: allSubToolIds } },
+              select: {
+                id: true,
+                toolName: true,
+                capabilitySlug: true,
+                input: true,
+                output: true,
+                screenshot: true,
+                error: true,
+                exitCode: true,
+                durationMs: true,
+                status: true,
+              },
+              orderBy: { createdAt: 'asc' },
+            })
+            subToolExecMap = new Map(subToolExecs.map((e) => [e.id, e]))
           }
-          return { type: 'text' as const, text: block.text ?? '' }
-        })
-      }
 
-      return { ...msg, toolExecutions: toolExecs, ...(contentBlocks ? { contentBlocks } : {}) }
-    })
+          contentBlocks = storedBlocks.map((block) => {
+            if (
+              block.type === 'sub_agent' &&
+              block.toolIndex != null &&
+              toolExecs[block.toolIndex]
+            ) {
+              const te = toolExecs[block.toolIndex]
+              // Resolve individual sub-agent tool executions from stored IDs
+              const subTools = (block.subToolIds ?? [])
+                .map((id) => subToolExecMap.get(id))
+                .filter(Boolean) as (typeof toolExecs)[number][]
+              return {
+                type: 'sub_agent' as const,
+                subAgent: {
+                  role: block.role ?? 'execute',
+                  task: block.task ?? '',
+                  tools: subTools,
+                  summary: te.output ?? undefined,
+                  status: te.error ? 'failed' : 'completed',
+                  durationMs: te.durationMs ?? undefined,
+                },
+              }
+            }
+            if (block.type === 'tool' && block.toolIndex != null && toolExecs[block.toolIndex]) {
+              return { type: 'tool' as const, tool: toolExecs[block.toolIndex] }
+            }
+            return { type: 'text' as const, text: block.text ?? '' }
+          })
+        }
+
+        return { ...msg, toolExecutions: toolExecs, ...(contentBlocks ? { contentBlocks } : {}) }
+      }),
+    )
   },
 
   async sendMessage(
@@ -154,8 +226,8 @@ export const chatService = {
     const session = await prisma.chatSession.findUniqueOrThrow({
       where: { id: sessionId },
     })
-    const secretInventory = inventory
-      ?? await secretRedactionService.buildSecretInventory(session.workspaceId)
+    const secretInventory =
+      inventory ?? (await secretRedactionService.buildSecretInventory(session.workspaceId))
     const safeContent = secretRedactionService.redactForPublicStorage(content, secretInventory)
 
     // Store user message (with attachments if any) and bump lastMessageAt for sidebar ordering
@@ -172,7 +244,9 @@ export const chatService = {
     ])
 
     // Check workspace-scoped capabilities
-    const capabilities = await capabilityService.getEnabledCapabilitiesForWorkspace(session.workspaceId!)
+    const capabilities = await capabilityService.getEnabledCapabilitiesForWorkspace(
+      session.workspaceId!,
+    )
     const hasNonDocCapabilities = capabilities.some((c) => c.slug !== 'document-search')
 
     const hasMentions = mentionedSlugs?.length && mentionedSlugs.length > 0
@@ -191,7 +265,14 @@ export const chatService = {
     }
 
     if (hasNonDocCapabilities || hasMentions) {
-      return this._sendWithAgentLoop(session, sessionId, safeContent, emit, secretInventory, mentionedSlugs)
+      return this._sendWithAgentLoop(
+        session,
+        sessionId,
+        safeContent,
+        emit,
+        secretInventory,
+        mentionedSlugs,
+      )
     }
 
     // Use classic RAG flow for document-search-only workspaces
@@ -218,15 +299,24 @@ export const chatService = {
       // Auto-title immediately (fire-and-forget, don't wait for agent loop)
       this._autoTitle(session, sessionId, content)
 
-      const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: session.workspaceId! }, select: { autoExecute: true } })
+      const workspace = await prisma.workspace.findUniqueOrThrow({
+        where: { id: session.workspaceId! },
+        select: { autoExecute: true },
+      })
 
       // Agent loop now saves ChatMessages per-iteration directly — no tracking wrapper needed
-      const result = await agentService.runAgentLoop(sessionId, content, session.workspaceId!, emit, {
-        autoApprove: workspace.autoExecute,
-        mentionedSlugs,
-        secretInventory: inventory,
-        historyIncludesCurrentUserMessage: true,
-      })
+      const result = await agentService.runAgentLoop(
+        sessionId,
+        content,
+        session.workspaceId!,
+        emit,
+        {
+          autoApprove: workspace.autoExecute,
+          mentionedSlugs,
+          secretInventory: inventory,
+          historyIncludesCurrentUserMessage: true,
+        },
+      )
 
       await prisma.chatSession.update({
         where: { id: sessionId },
@@ -237,10 +327,12 @@ export const chatService = {
     } catch (err) {
       console.error('[ChatService] Agent loop error:', err)
 
-      await prisma.chatSession.update({
-        where: { id: sessionId },
-        data: { agentStatus: 'idle' },
-      }).catch(() => {})
+      await prisma.chatSession
+        .update({
+          where: { id: sessionId },
+          data: { agentStatus: 'idle' },
+        })
+        .catch(() => {})
 
       const errorMsg = err instanceof Error ? err.message : 'An unexpected error occurred'
       emit('error', { message: errorMsg })
@@ -264,8 +356,7 @@ export const chatService = {
     // Auto-title immediately (fire-and-forget)
     this._autoTitle(session, sessionId, content)
 
-    const useLightModel = await settingsService.getUseLightModel()
-    const llm = useLightModel ? await createLightLLM() : await createLLMProvider()
+    const llm = await createExecuteLLM()
 
     const queryVector = await embeddingService.embed(content)
 
@@ -320,7 +411,13 @@ export const chatService = {
     recordTokenUsage(llmResponse.usage, sessionId, llm.providerId, llm.modelId)
 
     const seen = new Set<string>()
-    const sources: { documentId: string; documentTitle: string; workspaceId: string; chunkId: string; chunkIndex: number }[] = []
+    const sources: {
+      documentId: string
+      documentTitle: string
+      workspaceId: string
+      chunkId: string
+      chunkIndex: number
+    }[] = []
     for (const c of chunks) {
       if (!seen.has(c.document.id)) {
         seen.add(c.document.id)
@@ -355,11 +452,7 @@ export const chatService = {
   /**
    * Auto-generate title for first message (fire-and-forget).
    */
-  _autoTitle(
-    session: { title: string | null },
-    sessionId: string,
-    content: string,
-  ) {
+  _autoTitle(session: { title: string | null }, sessionId: string, content: string) {
     if (session.title) return // Already titled, nothing to do
 
     createTitleLLM()
@@ -384,8 +477,11 @@ export const chatService = {
         return prisma.$executeRaw`UPDATE "ChatSession" SET "title" = ${trimmed} WHERE "id" = ${sessionId}`
       })
       .catch(() => {
-        const fallback = content.slice(0, CHAT_TITLE_MAX_LEN) + (content.length > CHAT_TITLE_MAX_LEN ? '...' : '')
-        prisma.$executeRaw`UPDATE "ChatSession" SET "title" = ${fallback} WHERE "id" = ${sessionId}`.catch(() => {})
+        const fallback =
+          content.slice(0, CHAT_TITLE_MAX_LEN) + (content.length > CHAT_TITLE_MAX_LEN ? '...' : '')
+        prisma.$executeRaw`UPDATE "ChatSession" SET "title" = ${fallback} WHERE "id" = ${sessionId}`.catch(
+          () => {},
+        )
       })
   },
 }

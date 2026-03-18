@@ -5,9 +5,8 @@ import {
   MODEL_CATALOG,
   DEFAULT_LLM_MODELS,
   DEFAULT_EMBEDDING_MODELS,
+  DEFAULT_MEDIUM_MODELS,
   DEFAULT_LIGHT_MODELS,
-  DEFAULT_TITLE_MODELS,
-  DEFAULT_COMPACT_MODELS,
   ENV_KEYS,
   DB_KEY_FIELDS,
   inferProviderFromModel,
@@ -50,18 +49,51 @@ export const settingsService = {
   },
 
   async getLightModel(): Promise<string> {
-    const s = await this.get()
-    return s.lightModel ?? DEFAULT_LIGHT_MODELS[s.aiProvider] ?? DEFAULT_LIGHT_MODELS.openai
+    return this._resolveModel('lightModel', null, DEFAULT_LIGHT_MODELS)
   },
 
   async getTitleModel(): Promise<string> {
-    const s = await this.get()
-    return s.titleModel ?? DEFAULT_TITLE_MODELS[s.aiProvider] ?? DEFAULT_TITLE_MODELS.openai
+    return this._resolveModel('titleModel', 'lightModel', DEFAULT_LIGHT_MODELS)
   },
 
   async getCompactModel(): Promise<string> {
+    return this._resolveModel('compactModel', 'mediumModel', DEFAULT_MEDIUM_MODELS)
+  },
+
+  async getMediumModel(): Promise<string> {
+    return this._resolveModel('mediumModel', null, DEFAULT_MEDIUM_MODELS)
+  },
+
+  async getAdvancedModelConfig(): Promise<boolean> {
+    return (await this.get()).advancedModelConfig
+  },
+
+  async getExploreModel(): Promise<string> {
+    return this._resolveModel('exploreModel', 'lightModel', DEFAULT_LIGHT_MODELS)
+  },
+
+  async getExecuteModel(): Promise<string> {
+    return this._resolveModel('executeModel', 'mediumModel', DEFAULT_MEDIUM_MODELS)
+  },
+
+  /**
+   * Resolve a model by key with optional advanced-mode override and tier fallback.
+   * - If advancedModelConfig is on and the model key has a value, use it directly.
+   * - Otherwise, fall back to the tier's model → provider default → openai default.
+   */
+  async _resolveModel(
+    modelKey: string,
+    fallbackTierKey: string | null,
+    defaults: Record<string, string>,
+  ): Promise<string> {
     const s = await this.get()
-    return s.compactModel ?? DEFAULT_COMPACT_MODELS[s.aiProvider] ?? DEFAULT_COMPACT_MODELS.openai
+    const settings = s as Record<string, unknown>
+    if (fallbackTierKey && s.advancedModelConfig && settings[modelKey]) {
+      return settings[modelKey] as string
+    }
+    const tierKey = fallbackTierKey ?? modelKey
+    const tierValue = settings[tierKey] as string | null | undefined
+    return tierValue ?? defaults[s.aiProvider] ?? defaults.openai
   },
 
   async getUseLightModel(): Promise<boolean> {
@@ -70,12 +102,18 @@ export const settingsService = {
 
   async getEmbeddingModel(): Promise<string> {
     const s = await this.get()
-    return s.embeddingModel ?? DEFAULT_EMBEDDING_MODELS[s.embeddingProvider] ?? DEFAULT_EMBEDDING_MODELS.openai
+    return (
+      s.embeddingModel ??
+      DEFAULT_EMBEDDING_MODELS[s.embeddingProvider] ??
+      DEFAULT_EMBEDDING_MODELS.openai
+    )
   },
 
   async getContextLimitTokens(): Promise<number> {
     const s = await this.get()
-    return (s as Record<string, unknown>).contextLimitTokens as number ?? DEFAULT_CONTEXT_LIMIT_TOKENS
+    return (
+      ((s as Record<string, unknown>).contextLimitTokens as number) ?? DEFAULT_CONTEXT_LIMIT_TOKENS
+    )
   },
 
   async getTimezone(): Promise<string> {
@@ -85,14 +123,16 @@ export const settingsService = {
 
   async getMaxAgentIterations(): Promise<number> {
     const s = await this.get()
-    return (s as Record<string, unknown>).maxAgentIterations as number ?? DEFAULT_MAX_AGENT_ITERATIONS
+    return (
+      ((s as Record<string, unknown>).maxAgentIterations as number) ?? DEFAULT_MAX_AGENT_ITERATIONS
+    )
   },
 
   async getBrowserGridUrl(): Promise<string> {
     const envUrl = process.env.BROWSER_GRID_URL
     if (envUrl) return envUrl
     const s = await this.get()
-    return (s as Record<string, unknown>).browserGridUrl as string ?? DEFAULT_BROWSER_GRID_URL
+    return ((s as Record<string, unknown>).browserGridUrl as string) ?? DEFAULT_BROWSER_GRID_URL
   },
 
   async getBrowserGridApiKey(): Promise<string | null> {
@@ -110,12 +150,12 @@ export const settingsService = {
 
   async getBrowserGridBrowser(): Promise<string> {
     const s = await this.get()
-    return (s as Record<string, unknown>).browserGridBrowser as string ?? DEFAULT_BROWSER_TYPE
+    return ((s as Record<string, unknown>).browserGridBrowser as string) ?? DEFAULT_BROWSER_TYPE
   },
 
   async getBrowserModel(): Promise<string | null> {
     const s = await this.get()
-    return (s as Record<string, unknown>).browserModel as string | null ?? null
+    return ((s as Record<string, unknown>).browserModel as string | null) ?? null
   },
 
   async getApiKey(provider: string): Promise<string | null> {
@@ -220,10 +260,14 @@ export const settingsService = {
   async update(data: {
     aiProvider?: string
     aiModel?: string
+    mediumModel?: string
     lightModel?: string
+    exploreModel?: string
+    executeModel?: string
     titleModel?: string
     compactModel?: string
     useLightModel?: boolean
+    advancedModelConfig?: boolean
     embeddingProvider?: string
     embeddingModel?: string
     contextLimitTokens?: number
@@ -245,19 +289,31 @@ export const settingsService = {
       throw new Error(`AI provider "${data.aiProvider}" is not available (no API key)`)
     }
     if (data.embeddingProvider && !available.embedding.includes(data.embeddingProvider)) {
-      throw new Error(`Embedding provider "${data.embeddingProvider}" is not available (no API key)`)
+      throw new Error(
+        `Embedding provider "${data.embeddingProvider}" is not available (no API key)`,
+      )
     }
 
     // Validate each model against its inferred provider (supports mixed providers per role)
     const defaultProvider = data.aiProvider ?? settings.aiProvider
-    for (const field of ['aiModel', 'lightModel', 'titleModel', 'compactModel'] as const) {
+    for (const field of [
+      'aiModel',
+      'mediumModel',
+      'lightModel',
+      'exploreModel',
+      'executeModel',
+      'titleModel',
+      'compactModel',
+    ] as const) {
       const modelId = data[field]
       if (!modelId) continue
       const modelProvider = inferProviderFromModel(modelId) ?? defaultProvider
       // Verify the provider has an API key
       const hasKey = available.llm.includes(modelProvider)
       if (!hasKey) {
-        throw new Error(`No API key configured for provider "${modelProvider}" (model "${modelId}")`)
+        throw new Error(
+          `No API key configured for provider "${modelProvider}" (model "${modelId}")`,
+        )
       }
       const llmModels = await discoverLLMModels(modelProvider)
       if (llmModels.length && !llmModels.includes(modelId)) {
@@ -268,13 +324,20 @@ export const settingsService = {
     if (data.embeddingModel && data.embeddingProvider) {
       const models = await discoverEmbeddingModels(data.embeddingProvider)
       if (models.length && !models.includes(data.embeddingModel)) {
-        throw new Error(`Model "${data.embeddingModel}" is not available for provider "${data.embeddingProvider}"`)
+        throw new Error(
+          `Model "${data.embeddingModel}" is not available for provider "${data.embeddingProvider}"`,
+        )
       }
     }
 
     if (data.contextLimitTokens !== undefined) {
-      if (data.contextLimitTokens < MIN_CONTEXT_LIMIT_TOKENS || data.contextLimitTokens > MAX_CONTEXT_LIMIT_TOKENS) {
-        throw new Error(`Context limit must be between ${MIN_CONTEXT_LIMIT_TOKENS.toLocaleString()} and ${MAX_CONTEXT_LIMIT_TOKENS.toLocaleString()} tokens`)
+      if (
+        data.contextLimitTokens < MIN_CONTEXT_LIMIT_TOKENS ||
+        data.contextLimitTokens > MAX_CONTEXT_LIMIT_TOKENS
+      ) {
+        throw new Error(
+          `Context limit must be between ${MIN_CONTEXT_LIMIT_TOKENS.toLocaleString()} and ${MAX_CONTEXT_LIMIT_TOKENS.toLocaleString()} tokens`,
+        )
       }
     }
 

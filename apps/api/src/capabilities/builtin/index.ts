@@ -6,6 +6,7 @@ import { webSearch } from './web-search.js'
 import { googleWorkspace } from './google-workspace.js'
 import { browserAutomation } from './browser-automation.js'
 import { toolDiscovery } from './tool-discovery.js'
+import { subAgentDelegation } from './sub-agent-delegation.js'
 
 // Only capabilities with custom (non-sandbox) execution logic remain as builtins.
 // bash, python, aws-cli, kubectl, docker have been migrated to .skill files.
@@ -17,6 +18,7 @@ export const BUILTIN_CAPABILITIES: CapabilityDefinition[] = [
   googleWorkspace,
   browserAutomation,
   toolDiscovery,
+  subAgentDelegation,
 ]
 
 export const BUILTIN_CAPABILITIES_MAP = new Map<string, CapabilityDefinition>(

@@ -141,10 +141,14 @@ model AppSettings {
   id                String   @id @default("singleton")
   aiProvider        String   @default("openai")
   aiModel           String?
+  mediumModel       String?
   lightModel        String?
+  exploreModel      String?
+  executeModel      String?
   titleModel        String?
   compactModel      String?
   useLightModel     Boolean  @default(true)
+  advancedModelConfig Boolean @default(false)
   embeddingProvider String   @default("openai")
   embeddingModel    String?
   openaiApiKey        String?  @db.Text

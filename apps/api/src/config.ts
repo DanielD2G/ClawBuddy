@@ -52,8 +52,14 @@ export const DEFAULT_EMBEDDING_MODELS: Record<string, string> = {
   gemini: 'gemini-embedding-001',
 }
 
-export const DEFAULT_LIGHT_MODELS: Record<string, string> = {
+export const DEFAULT_MEDIUM_MODELS: Record<string, string> = {
   openai: 'gpt-5-mini',
+  gemini: 'gemini-2.5-flash',
+  claude: 'claude-sonnet-4-6',
+}
+
+export const DEFAULT_LIGHT_MODELS: Record<string, string> = {
+  openai: 'gpt-5-nano',
   gemini: 'gemini-2.5-flash-lite',
   claude: 'claude-haiku-4-5-20251001',
 }
@@ -72,7 +78,13 @@ export const DEFAULT_COMPACT_MODELS: Record<string, string> = {
 
 /** Infer the provider from a model ID based on naming conventions. */
 export function inferProviderFromModel(modelId: string): string | null {
-  if (modelId.startsWith('gpt-') || modelId.startsWith('o1') || modelId.startsWith('o3') || modelId.startsWith('o4')) return 'openai'
+  if (
+    modelId.startsWith('gpt-') ||
+    modelId.startsWith('o1') ||
+    modelId.startsWith('o3') ||
+    modelId.startsWith('o4')
+  )
+    return 'openai'
   if (modelId.startsWith('gemini-')) return 'gemini'
   if (modelId.startsWith('claude-')) return 'claude'
   return null

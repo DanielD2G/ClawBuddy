@@ -9,8 +9,16 @@ import { cronService } from './cron.service.js'
 import { settingsService } from './settings.service.js'
 import { browserService } from './browser.service.js'
 import type { ToolCall } from '../providers/llm.interface.js'
-import { SEARCH_RESULTS_LIMIT, ALWAYS_ON_CAPABILITY_SLUGS } from '../constants.js'
+import type { SSEEmit } from '../lib/sse.js'
+import {
+  SEARCH_RESULTS_LIMIT,
+  ALWAYS_ON_CAPABILITY_SLUGS,
+  DELEGATION_ONLY_TOOLS,
+} from '../constants.js'
 import { toolDiscoveryService } from './tool-discovery.service.js'
+import { subAgentService } from './sub-agent.service.js'
+import { SUB_AGENT_ROLES } from './sub-agent-roles.js'
+import type { SubAgentRole } from './sub-agent.types.js'
 import { stripNullBytes, stripNullBytesOrNull } from '../lib/sanitize.js'
 import { extractScreenshotBase64 } from '../lib/screenshot.js'
 import type { SecretInventory } from './secret-redaction.service.js'
@@ -27,6 +35,10 @@ interface ExecutionContext {
     skillType: string | null
     toolDefinitions: unknown
   }
+  /** SSE emitter for streaming events (needed by sub-agent delegation) */
+  emit?: SSEEmit
+  /** Pre-loaded capabilities for the workspace (passed to sub-agents to avoid redundant DB queries) */
+  capabilities?: Array<{ slug: string; toolDefinitions: unknown; skillType?: string | null; name: string; systemPrompt: string }>
 }
 
 export interface DocumentSource {
@@ -45,6 +57,8 @@ export interface ExecutionResult {
   sources?: DocumentSource[]
   /** ID of the ToolExecution record created in the database */
   executionId?: string
+  /** IDs of sub-agent ToolExecution records (for delegate_task) */
+  subAgentExecutionIds?: string[]
 }
 
 /**
@@ -61,6 +75,7 @@ export const NON_SANDBOX_TOOLS = new Set([
   'web_search',
   'run_browser_script',
   'discover_tools',
+  'delegate_task',
 ])
 
 export const toolExecutorService = {
@@ -73,8 +88,9 @@ export const toolExecutorService = {
     context: ExecutionContext,
   ): Promise<ExecutionResult> {
     const startTime = Date.now()
-    const inventory = context.secretInventory
-      ?? await secretRedactionService.buildSecretInventory(context.workspaceId)
+    const inventory =
+      context.secretInventory ??
+      (await secretRedactionService.buildSecretInventory(context.workspaceId))
     const publicInput = secretRedactionService.redactForPublicStorage(
       toolCall.arguments as Record<string, unknown>,
       inventory,
@@ -101,6 +117,8 @@ export const toolExecutorService = {
         result = await this.executeBrowserScript(toolCall, context)
       } else if (toolCall.name === 'discover_tools') {
         result = await this.executeDiscoverTools(toolCall, context)
+      } else if (toolCall.name === 'delegate_task') {
+        result = await this.executeDelegateTask(toolCall, context)
       } else {
         // All other tools are routed to the sandbox
         result = await this.executeSandboxCommand(toolCall, capabilitySlug, context)
@@ -118,13 +136,19 @@ export const toolExecutorService = {
       }
 
       const publicOutput = result.output
-        ? secretRedactionService.redactSerializedText(result.output, inventory, { skipKeys: ['screenshot'] })
+        ? secretRedactionService.redactSerializedText(result.output, inventory, {
+            skipKeys: ['screenshot'],
+          })
         : ''
       const publicDbOutput = outputForDb
-        ? secretRedactionService.redactSerializedText(outputForDb, inventory, { skipKeys: ['screenshot'] })
+        ? secretRedactionService.redactSerializedText(outputForDb, inventory, {
+            skipKeys: ['screenshot'],
+          })
         : null
       const publicError = result.error
-        ? secretRedactionService.redactSerializedText(result.error, inventory, { skipKeys: ['screenshot'] })
+        ? secretRedactionService.redactSerializedText(result.error, inventory, {
+            skipKeys: ['screenshot'],
+          })
         : undefined
 
       // Record execution (sanitize output to strip null bytes)
@@ -169,7 +193,10 @@ export const toolExecutorService = {
         executionId = execution.id
       } catch {
         // If recording the execution also fails, just log and continue
-        console.error(`[ToolExecutor] Failed to record execution error for ${toolCall.name}:`, error)
+        console.error(
+          `[ToolExecutor] Failed to record execution error for ${toolCall.name}:`,
+          error,
+        )
       }
 
       return { output: '', error, durationMs, executionId }
@@ -294,7 +321,12 @@ export const toolExecutorService = {
       default: {
         // Dynamic skill tool resolution:
         // Use pre-loaded capability data when available to avoid redundant DB queries
-        command = await this.resolveSkillCommand(toolCall.name, args, capabilitySlug, context.capability)
+        command = await this.resolveSkillCommand(
+          toolCall.name,
+          args,
+          capabilitySlug,
+          context.capability,
+        )
         if (!command) {
           return {
             output: '',
@@ -333,7 +365,10 @@ export const toolExecutorService = {
 
     return {
       output,
-      error: result.exitCode !== 0 ? stderr || `Command failed with exit code ${result.exitCode}` : undefined,
+      error:
+        result.exitCode !== 0
+          ? stderr || `Command failed with exit code ${result.exitCode}`
+          : undefined,
       exitCode: result.exitCode,
       durationMs: Date.now() - startTime,
     }
@@ -342,7 +377,10 @@ export const toolExecutorService = {
   /**
    * Save a document to the agent's knowledge base.
    */
-  async executeSaveDocument(toolCall: ToolCall, context: ExecutionContext): Promise<ExecutionResult> {
+  async executeSaveDocument(
+    toolCall: ToolCall,
+    context: ExecutionContext,
+  ): Promise<ExecutionResult> {
     const startTime = Date.now()
     const args = toolCall.arguments as Record<string, unknown>
     const title = String(args.title ?? 'Untitled')
@@ -381,7 +419,10 @@ export const toolExecutorService = {
   /**
    * Generate a downloadable file and return a download URL.
    */
-  async executeGenerateFile(toolCall: ToolCall, context: ExecutionContext): Promise<ExecutionResult> {
+  async executeGenerateFile(
+    toolCall: ToolCall,
+    context: ExecutionContext,
+  ): Promise<ExecutionResult> {
     const startTime = Date.now()
     const args = toolCall.arguments as Record<string, unknown>
     const filename = String(args.filename ?? 'file.txt')
@@ -391,7 +432,11 @@ export const toolExecutorService = {
     if (sourcePath) {
       // Read file content from sandbox
       if (!context.linuxUser) {
-        return { output: '', error: 'sourcePath requires an active sandbox. Use content parameter instead.', durationMs: Date.now() - startTime }
+        return {
+          output: '',
+          error: 'sourcePath requires an active sandbox. Use content parameter instead.',
+          durationMs: Date.now() - startTime,
+        }
       }
       const userHome = `/workspace/users/${context.linuxUser}`
       // Resolve relative paths to user's home directory
@@ -403,7 +448,10 @@ export const toolExecutorService = {
         { timeout: 10 },
       )
       // Fallback: if absolute path failed, try the basename in user's home dir
-      if (readResult.exitCode !== 0 && resolvedPath !== `${userHome}/${sourcePath.split('/').pop()}`) {
+      if (
+        readResult.exitCode !== 0 &&
+        resolvedPath !== `${userHome}/${sourcePath.split('/').pop()}`
+      ) {
         const fallbackPath = `${userHome}/${sourcePath.split('/').pop()}`
         const fallbackResult = await sandboxService.execInWorkspace(
           context.workspaceId,
@@ -416,21 +464,34 @@ export const toolExecutorService = {
         }
       }
       if (readResult.exitCode !== 0) {
-        return { output: '', error: `Failed to read ${sourcePath}: ${readResult.stderr}. Your working directory is ${userHome}/ — use absolute paths or relative paths from there.`, durationMs: Date.now() - startTime }
+        return {
+          output: '',
+          error: `Failed to read ${sourcePath}: ${readResult.stderr}. Your working directory is ${userHome}/ — use absolute paths or relative paths from there.`,
+          durationMs: Date.now() - startTime,
+        }
       }
       content = readResult.stdout
     } else if (args.content) {
       content = String(args.content)
     } else {
-      return { output: '', error: 'Either content or sourcePath must be provided', durationMs: Date.now() - startTime }
+      return {
+        output: '',
+        error: 'Either content or sourcePath must be provided',
+        durationMs: Date.now() - startTime,
+      }
     }
 
     const key = `generated/${Date.now()}-${filename}`
     const ext = filename.split('.').pop()?.toLowerCase() ?? 'txt'
     const mimeTypes: Record<string, string> = {
-      csv: 'text/csv', md: 'text/markdown', txt: 'text/plain',
-      json: 'application/json', html: 'text/html', xml: 'application/xml',
-      yaml: 'text/yaml', yml: 'text/yaml',
+      csv: 'text/csv',
+      md: 'text/markdown',
+      txt: 'text/plain',
+      json: 'application/json',
+      html: 'text/html',
+      xml: 'application/xml',
+      yaml: 'text/yaml',
+      yml: 'text/yaml',
     }
     await storageService.upload(key, Buffer.from(content, 'utf-8'), mimeTypes[ext] ?? 'text/plain')
 
@@ -527,10 +588,7 @@ export const toolExecutorService = {
   /**
    * Create a cron job via agent tool call.
    */
-  async executeCreateCron(
-    toolCall: ToolCall,
-    context: ExecutionContext,
-  ): Promise<ExecutionResult> {
+  async executeCreateCron(toolCall: ToolCall, context: ExecutionContext): Promise<ExecutionResult> {
     const startTime = Date.now()
     const args = toolCall.arguments as Record<string, unknown>
 
@@ -632,11 +690,15 @@ export const toolExecutorService = {
       const groundingMeta = (candidate as any)?.groundingMetadata
       let sources = ''
       if (groundingMeta?.groundingChunks?.length) {
-        const chunks = groundingMeta.groundingChunks as Array<{ web?: { uri: string; title: string } }>
-        sources = '\n\n**Sources:**\n' + chunks
-          .filter((c) => c.web)
-          .map((c) => `- [${c.web!.title}](${c.web!.uri})`)
-          .join('\n')
+        const chunks = groundingMeta.groundingChunks as Array<{
+          web?: { uri: string; title: string }
+        }>
+        sources =
+          '\n\n**Sources:**\n' +
+          chunks
+            .filter((c) => c.web)
+            .map((c) => `- [${c.web!.title}](${c.web!.uri})`)
+            .join('\n')
       }
 
       return {
@@ -737,17 +799,114 @@ export const toolExecutorService = {
       }
     }
 
+    // Mark delegation-only tools so the LLM knows to use delegate_task
+    const annotatedDiscovered = discovered.map((cap) => ({
+      slug: cap.slug,
+      name: cap.name,
+      tools: cap.tools.map((tool) =>
+        DELEGATION_ONLY_TOOLS.has(tool.name)
+          ? { ...tool, description: `[DELEGATION-ONLY — use delegate_task] ${tool.description}` }
+          : tool,
+      ),
+      instructions: cap.instructions,
+    }))
+
     return {
       output: JSON.stringify({
         type: 'discovery_result',
-        discovered: discovered.map((cap) => ({
-          slug: cap.slug,
-          name: cap.name,
-          tools: cap.tools,
-          instructions: cap.instructions,
-        })),
+        discovered: annotatedDiscovered,
       }),
       durationMs: Date.now() - startTime,
+    }
+  },
+
+  /**
+   * Delegate a task to a sub-agent.
+   */
+  async executeDelegateTask(
+    toolCall: ToolCall,
+    context: ExecutionContext,
+  ): Promise<ExecutionResult> {
+    const startTime = Date.now()
+    const args = toolCall.arguments as { role: string; task: string; context?: string }
+
+    if (!args.role || !args.task) {
+      return {
+        output: '',
+        error: 'Both role and task are required',
+        durationMs: Date.now() - startTime,
+      }
+    }
+
+    if (!(args.role in SUB_AGENT_ROLES)) {
+      const validRoles = Object.keys(SUB_AGENT_ROLES).join(', ')
+      return {
+        output: '',
+        error: `Invalid role: "${args.role}". Must be one of: ${validRoles}`,
+        durationMs: Date.now() - startTime,
+      }
+    }
+
+    const inventory =
+      context.secretInventory ??
+      (await secretRedactionService.buildSecretInventory(context.workspaceId))
+
+    const subResult = await subAgentService.runSubAgent(
+      {
+        role: args.role as SubAgentRole,
+        task: args.task,
+        context: args.context,
+      },
+      {
+        workspaceId: context.workspaceId,
+        sessionId: context.chatSessionId,
+        linuxUser: context.linuxUser,
+        secretInventory: inventory,
+        emit: context.emit,
+        capabilities: context.capabilities,
+      },
+    )
+
+    // Persist sub-agent tool executions to DB (batched in a transaction)
+    let subAgentExecutionIds: string[] = []
+    if (subResult.toolExecutions.length) {
+      const executions = await prisma.$transaction(
+        subResult.toolExecutions.map((te) =>
+          prisma.toolExecution.create({
+            data: {
+              capabilitySlug: te.capabilitySlug,
+              toolName: te.toolName,
+              input: te.input as Prisma.InputJsonValue,
+              output: te.output ?? null,
+              error: te.error ?? null,
+              durationMs: te.durationMs,
+              status: te.error ? 'failed' : 'completed',
+            },
+          }),
+        ),
+      )
+      subAgentExecutionIds = executions.map((e) => e.id)
+    }
+
+    const output = [
+      `## Sub-Agent Result (${subResult.role})`,
+      '',
+      subResult.result,
+      '',
+      `---`,
+      `Iterations: ${subResult.iterationsUsed} | Tools used: ${subResult.toolExecutions.length} | Success: ${subResult.success}`,
+      subResult.tokenUsage
+        ? `Tokens: ${subResult.tokenUsage.inputTokens} in / ${subResult.tokenUsage.outputTokens} out`
+        : '',
+    ]
+      .filter(Boolean)
+      .join('\n')
+
+    return {
+      output,
+      error: subResult.success ? undefined : 'Sub-agent did not complete successfully',
+      durationMs: Date.now() - startTime,
+      subAgentExecutionIds,
     }
   },
 
