@@ -10,7 +10,9 @@ import {
   DEFAULT_COMPACT_MODELS,
   ENV_KEYS,
   DB_KEY_FIELDS,
+  inferProviderFromModel,
 } from '../config.js'
+import { discoverLLMModels, discoverEmbeddingModels } from './model-discovery.service.js'
 import {
   DEFAULT_CONTEXT_LIMIT_TOKENS,
   DEFAULT_BROWSER_GRID_URL,
@@ -20,8 +22,6 @@ import {
   KEY_MASK_THRESHOLD,
   DEFAULT_MAX_AGENT_ITERATIONS,
 } from '../constants.js'
-
-export { MODEL_CATALOG }
 
 export const settingsService = {
   async get() {
@@ -242,18 +242,26 @@ export const settingsService = {
       throw new Error(`Embedding provider "${data.embeddingProvider}" is not available (no API key)`)
     }
 
-    // Validate all model fields against catalog
-    const provider = data.aiProvider ?? settings.aiProvider
-    const llmModels = MODEL_CATALOG.llm[provider] ?? []
+    // Validate each model against its inferred provider (supports mixed providers per role)
+    const defaultProvider = data.aiProvider ?? settings.aiProvider
     for (const field of ['aiModel', 'lightModel', 'titleModel', 'compactModel'] as const) {
-      if (data[field] && llmModels.length && !llmModels.includes(data[field]!)) {
-        throw new Error(`Model "${data[field]}" is not available for provider "${provider}"`)
+      const modelId = data[field]
+      if (!modelId) continue
+      const modelProvider = inferProviderFromModel(modelId) ?? defaultProvider
+      // Verify the provider has an API key
+      const hasKey = available.llm.includes(modelProvider)
+      if (!hasKey) {
+        throw new Error(`No API key configured for provider "${modelProvider}" (model "${modelId}")`)
+      }
+      const llmModels = await discoverLLMModels(modelProvider)
+      if (llmModels.length && !llmModels.includes(modelId)) {
+        throw new Error(`Model "${modelId}" is not available for provider "${modelProvider}"`)
       }
     }
 
     if (data.embeddingModel && data.embeddingProvider) {
-      const models = MODEL_CATALOG.embedding[data.embeddingProvider]
-      if (models && !models.includes(data.embeddingModel)) {
+      const models = await discoverEmbeddingModels(data.embeddingProvider)
+      if (models.length && !models.includes(data.embeddingModel)) {
         throw new Error(`Model "${data.embeddingModel}" is not available for provider "${data.embeddingProvider}"`)
       }
     }

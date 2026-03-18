@@ -6,8 +6,8 @@ dist/
 
 # Environment
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 
 # IDE
 .vscode/
@@ -24,6 +24,15 @@ apps/api/prisma/migrations/
 *.log
 logs/
 
+# Secrets / Certificates
+*.pem
+*.key
+*.cert
+*.p12
+*.pfx
+
 # Test
 coverage/
-.claude/worktrees/
+.claude/
+.agents/
+.codex/

@@ -70,6 +70,14 @@ export const DEFAULT_COMPACT_MODELS: Record<string, string> = {
   claude: 'claude-haiku-4-5-20251001',
 }
 
+/** Infer the provider from a model ID based on naming conventions. */
+export function inferProviderFromModel(modelId: string): string | null {
+  if (modelId.startsWith('gpt-') || modelId.startsWith('o1') || modelId.startsWith('o3') || modelId.startsWith('o4')) return 'openai'
+  if (modelId.startsWith('gemini-')) return 'gemini'
+  if (modelId.startsWith('claude-')) return 'claude'
+  return null
+}
+
 export const ENV_KEYS: Record<string, string> = {
   openai: env.OPENAI_API_KEY,
   gemini: env.GEMINI_API_KEY,

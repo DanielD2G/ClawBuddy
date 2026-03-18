@@ -8,8 +8,10 @@ import { useTestBotToken } from '@/hooks/use-channels'
 interface StepChannelsProps {
   telegramEnabled: boolean
   telegramToken: string
+  telegramTokenTested: boolean
   onTelegramEnabledChange: (enabled: boolean) => void
   onTelegramTokenChange: (token: string) => void
+  onTokenTested: (tested: boolean) => void
   onBack: () => void
   onNext: () => void
 }
@@ -17,8 +19,10 @@ interface StepChannelsProps {
 export function StepChannels({
   telegramEnabled,
   telegramToken,
+  telegramTokenTested,
   onTelegramEnabledChange,
   onTelegramTokenChange,
+  onTokenTested,
   onBack,
   onNext,
 }: StepChannelsProps) {
@@ -26,7 +30,9 @@ export function StepChannels({
 
   const handleTest = () => {
     if (telegramToken.trim()) {
-      testToken.mutate(telegramToken.trim())
+      testToken.mutate(telegramToken.trim(), {
+        onSuccess: () => onTokenTested(true),
+      })
     }
   }
 
@@ -68,7 +74,10 @@ export function StepChannels({
                   >
                     @BotFather <ExternalLink className="h-3 w-3" />
                   </a>{' '}
-                  and paste the token below. You can enable it later from Settings.
+                  and paste the token below.{' '}
+                  {telegramTokenTested
+                    ? 'The channel will be activated automatically when setup completes.'
+                    : 'You can enable it later from Settings.'}
                 </p>
               </div>
               <div className="space-y-1.5">

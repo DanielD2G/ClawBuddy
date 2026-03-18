@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
-import { settingsService, MODEL_CATALOG } from '../services/settings.service.js'
+import { settingsService } from '../services/settings.service.js'
+import { discoverLLMModels } from '../services/model-discovery.service.js'
 import { prisma } from '../lib/prisma.js'
 
 const app = new Hono()
@@ -23,7 +24,7 @@ app.get('/settings/providers', async (c) => {
 
 // Model configuration
 app.get('/settings/models', async (c) => {
-  const [provider, primary, light, title, compact, embeddingModel, useLightModel, contextLimitTokens, maxAgentIterations] = await Promise.all([
+  const [provider, primary, light, title, compact, embeddingModel, useLightModel, contextLimitTokens, maxAgentIterations, available] = await Promise.all([
     settingsService.getAIProvider(),
     settingsService.getAIModel(),
     settingsService.getLightModel(),
@@ -33,7 +34,15 @@ app.get('/settings/models', async (c) => {
     settingsService.getUseLightModel(),
     settingsService.getContextLimitTokens(),
     settingsService.getMaxAgentIterations(),
+    settingsService.getAvailableProviders(),
   ])
+
+  // Build per-provider catalogs for all available LLM providers
+  const catalogEntries = await Promise.all(
+    available.llm.map(async (p) => [p, await discoverLLMModels(p)] as const),
+  )
+  const catalogs = Object.fromEntries(catalogEntries) as Record<string, string[]>
+
   return c.json({
     success: true,
     data: {
@@ -43,7 +52,8 @@ app.get('/settings/models', async (c) => {
       useLightModel,
       contextLimitTokens,
       maxAgentIterations,
-      catalog: MODEL_CATALOG.llm[provider] ?? [],
+      availableProviders: available.llm,
+      catalogs,
     },
   })
 })

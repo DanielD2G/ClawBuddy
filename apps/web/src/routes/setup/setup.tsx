@@ -45,6 +45,7 @@ export function SetupPage() {
   const [browserGridUrl, setBrowserGridUrl] = useState('http://localhost:9090')
   const [telegramEnabled, setTelegramEnabled] = useState(false)
   const [telegramToken, setTelegramToken] = useState('')
+  const [telegramTokenTested, setTelegramTokenTested] = useState(false)
   const { setActiveWorkspace } = useActiveWorkspace()
   const navigate = useNavigate()
   // Sync picked workspace color to CSS --brand variable in real time
@@ -106,7 +107,7 @@ export function SetupPage() {
         capabilityConfigs: configs,
         workspaceName,
         workspaceColor,
-        ...(telegramEnabled && telegramToken.trim() ? { telegramBotToken: telegramToken.trim() } : {}),
+        ...(telegramEnabled && telegramToken.trim() ? { telegramBotToken: telegramToken.trim(), telegramTokenTested } : {}),
       })
       if (result.workspace) {
         setActiveWorkspace(result.workspace)
@@ -195,8 +196,13 @@ export function SetupPage() {
           <StepChannels
             telegramEnabled={telegramEnabled}
             telegramToken={telegramToken}
+            telegramTokenTested={telegramTokenTested}
             onTelegramEnabledChange={setTelegramEnabled}
-            onTelegramTokenChange={setTelegramToken}
+            onTelegramTokenChange={(token) => {
+              setTelegramToken(token)
+              setTelegramTokenTested(false)
+            }}
+            onTokenTested={setTelegramTokenTested}
             onBack={() => setStep(5)}
             onNext={() => setStep(7)}
           />

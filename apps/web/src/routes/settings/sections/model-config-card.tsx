@@ -2,12 +2,11 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
 import { Brain, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { DEFAULT_CONTEXT_LIMIT_TOKENS, DEFAULT_MAX_AGENT_ITERATIONS } from '@/constants'
+import { DEFAULT_CONTEXT_LIMIT_TOKENS, DEFAULT_MAX_AGENT_ITERATIONS, PROVIDER_LABELS } from '@/constants'
 
 interface ModelConfigData {
   provider: string
@@ -20,7 +19,8 @@ interface ModelConfigData {
   useLightModel: boolean
   contextLimitTokens: number
   maxAgentIterations: number
-  catalog: string[]
+  availableProviders: string[]
+  catalogs: Record<string, string[]>
 }
 
 const MODEL_ROLES = [
@@ -29,6 +29,13 @@ const MODEL_ROLES = [
   { key: 'title' as const, label: 'Title', description: 'Chat title generation' },
   { key: 'compact' as const, label: 'Compact', description: 'Context window compression' },
 ]
+
+function inferProvider(modelId: string, availableProviders: string[]): string {
+  if (modelId.startsWith('gpt-') || modelId.startsWith('o1') || modelId.startsWith('o3') || modelId.startsWith('o4')) return 'openai'
+  if (modelId.startsWith('gemini-')) return 'gemini'
+  if (modelId.startsWith('claude-')) return 'claude'
+  return availableProviders[0] ?? 'openai'
+}
 
 export function ModelConfigCard() {
   const queryClient = useQueryClient()
@@ -39,6 +46,7 @@ export function ModelConfigCard() {
   })
 
   const [models, setModels] = useState<Record<string, string>>({})
+  const [roleProviders, setRoleProviders] = useState<Record<string, string>>({})
   const [useLightModel, setUseLightModel] = useState(true)
   const [contextLimitTokens, setContextLimitTokens] = useState(DEFAULT_CONTEXT_LIMIT_TOKENS)
   const [maxAgentIterations, setMaxAgentIterations] = useState(DEFAULT_MAX_AGENT_ITERATIONS)
@@ -47,6 +55,15 @@ export function ModelConfigCard() {
   useEffect(() => {
     if (data) {
       setModels(data.models)
+      // Infer initial provider per role from the current model
+      const providers: Record<string, string> = {}
+      for (const role of MODEL_ROLES) {
+        const modelId = data.models[role.key]
+        if (modelId) {
+          providers[role.key] = inferProvider(modelId, data.availableProviders)
+        }
+      }
+      setRoleProviders(providers)
       setUseLightModel(data.useLightModel)
       setContextLimitTokens(data.contextLimitTokens)
       setMaxAgentIterations(data.maxAgentIterations)
@@ -62,6 +79,16 @@ export function ModelConfigCard() {
       setDirty(false)
     },
   })
+
+  const handleProviderChange = (roleKey: string, provider: string) => {
+    setRoleProviders((prev) => ({ ...prev, [roleKey]: provider }))
+    // Auto-select first model of the new provider
+    const firstModel = data?.catalogs[provider]?.[0]
+    if (firstModel) {
+      setModels((prev) => ({ ...prev, [roleKey]: firstModel }))
+    }
+    setDirty(true)
+  }
 
   const handleModelChange = (key: string, value: string) => {
     setModels((prev) => ({ ...prev, [key]: value }))
@@ -81,10 +108,7 @@ export function ModelConfigCard() {
           AI Models
         </CardTitle>
         <CardDescription>
-          Configure which models are used for each task.
-          {data?.provider && (
-            <Badge variant="outline" className="ml-2 text-xs capitalize">{data.provider}</Badge>
-          )}
+          Configure which provider and model are used for each task.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -122,22 +146,37 @@ export function ModelConfigCard() {
             <div className="space-y-3">
               {MODEL_ROLES.map((role) => {
                 const isDisabled = role.key === 'light' && !useLightModel
+                const currentProvider = roleProviders[role.key] ?? data.provider
+                const providerModels = data.catalogs[currentProvider] ?? []
+
                 return (
                   <div key={role.key} className={cn('flex flex-col gap-1.5', isDisabled && 'opacity-40')}>
                     <div>
                       <label className="text-sm font-medium">{role.label}</label>
                       <p className="text-xs text-muted-foreground">{role.description}</p>
                     </div>
-                    <select
-                      value={models[role.key] ?? ''}
-                      onChange={(e) => handleModelChange(role.key, e.target.value)}
-                      disabled={isDisabled}
-                      className="h-8 w-full rounded-full border bg-background px-3 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring"
-                    >
-                      {data.catalog.map((m) => (
-                        <option key={m} value={m}>{m}</option>
-                      ))}
-                    </select>
+                    <div className="flex gap-2">
+                      <select
+                        value={currentProvider}
+                        onChange={(e) => handleProviderChange(role.key, e.target.value)}
+                        disabled={isDisabled}
+                        className="h-8 w-[140px] shrink-0 rounded-full border bg-background px-3 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                      >
+                        {data.availableProviders.map((p) => (
+                          <option key={p} value={p}>{PROVIDER_LABELS[p] ?? p}</option>
+                        ))}
+                      </select>
+                      <select
+                        value={models[role.key] ?? ''}
+                        onChange={(e) => handleModelChange(role.key, e.target.value)}
+                        disabled={isDisabled}
+                        className="h-8 w-full rounded-full border bg-background px-3 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring"
+                      >
+                        {providerModels.map((m) => (
+                          <option key={m} value={m}>{m}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 )
               })}

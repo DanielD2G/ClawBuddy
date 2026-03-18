@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
-import { settingsService, MODEL_CATALOG } from '../services/settings.service.js'
+import { settingsService } from '../services/settings.service.js'
+import { buildModelCatalogs, invalidateModelCache } from '../services/model-discovery.service.js'
 import { prisma } from '../lib/prisma.js'
 import { DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT } from '../constants.js'
 
@@ -119,6 +120,8 @@ app.get('/admin/settings', async (c) => {
   const available = await settingsService.getAvailableProviders()
   const apiKeys = await settingsService.getMaskedKeys()
 
+  const models = await buildModelCatalogs(available)
+
   return c.json({
     success: true,
     data: {
@@ -130,7 +133,7 @@ app.get('/admin/settings', async (c) => {
           embeddingModel: settings.embeddingModel,
         },
         available,
-        models: MODEL_CATALOG,
+        models,
       },
       apiKeys,
       onboardingComplete: settings.onboardingComplete,
@@ -166,6 +169,7 @@ app.put('/admin/api-keys/:provider', async (c) => {
     return c.json({ success: false, error: 'key is required' }, 400)
   }
   await settingsService.setApiKey(provider, key)
+  invalidateModelCache(provider)
   const apiKeys = await settingsService.getMaskedKeys()
   return c.json({ success: true, data: { apiKeys } })
 })
@@ -173,6 +177,7 @@ app.put('/admin/api-keys/:provider', async (c) => {
 app.delete('/admin/api-keys/:provider', async (c) => {
   const { provider } = c.req.param()
   await settingsService.removeApiKey(provider)
+  invalidateModelCache(provider)
   const apiKeys = await settingsService.getMaskedKeys()
   return c.json({ success: true, data: { apiKeys } })
 })

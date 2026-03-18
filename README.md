@@ -45,12 +45,13 @@ AgentBuddy was born from using [OpenClaw](https://github.com/openclaw/openclaw) 
 |---|---|---|
 | **Execution isolation** | Every tool runs in a Docker sandbox with resource limits (512MB RAM, 1 vCPU, 100 PIDs) | Direct shell access on host machine |
 | **Multi-workspace** | Full workspace isolation — each with its own capabilities, permissions, documents, and chat history | Single profile model |
-| **Credential security** | API keys encrypted at rest with AES-256-GCM | Plain text or environment variables |
+| **Credential security** | API keys encrypted at rest with AES-256-GCM; secrets automatically redacted from agent context, logs, SSE streams, and DB storage | Plain text or environment variables |
 | **Tool approvals** | Built-in approval workflow with glob-pattern permission rules (session or global scope) | No granular permission system |
 | **Browser automation** | BrowserGrid with Camoufox anti-detection, fingerprint injection, and live view dashboard | Chrome DevTools Protocol |
 | **Dynamic tool discovery** | RAG-based — only loads relevant tools per query instead of dumping all tools into context | All tools always loaded |
 | **Context compression** | Automatic summarization of old messages to stay within token limits | Manual context management |
-| **Privacy** | Fully self-hosted, zero telemetry, no external calls except your chosen LLM provider | Requires careful configuration to avoid data leaks |
+| **Privacy** | Fully self-hosted, zero telemetry, no external calls except your chosen LLM provider. Agents never see your API keys or secrets | Requires careful configuration to avoid data leaks |
+| **Channels** | Integrate external messaging platforms (Telegram, more coming) as chat interfaces | Web-only |
 | **LLM providers** | Claude, GPT, Gemini (chat + embeddings) with per-workspace model configuration | Multi-model but tightly coupled |
 | **Document RAG** | Vector search with Qdrant, chunked embeddings, semantic retrieval | Limited document handling |
 
@@ -103,6 +104,18 @@ Create recurring tasks with standard cron expressions. The AI can set up automat
 ### Tool Discovery
 
 When you have many capabilities enabled (6+), AgentBuddy uses RAG-based tool discovery to load only the relevant tools per query. This keeps the LLM context clean and improves response quality.
+
+### Secret Redaction
+
+API keys, tokens, and credentials are automatically redacted across the entire pipeline. The agent never sees your secrets — they're stripped from tool outputs, SSE streams, logs, and database storage. Even if a tool accidentally prints an environment variable, it gets replaced with `[REDACTED]` before reaching the LLM or being persisted.
+
+### Channels
+
+Connect external messaging platforms as chat interfaces for your agent. Currently supported:
+
+- **Telegram** — Link a Telegram bot to any workspace. Messages flow through the same agent pipeline with full tool access, RAG, and permissions.
+
+More channel integrations are planned.
 
 ### Context Compression
 
@@ -163,7 +176,6 @@ Long conversations are automatically compressed — old messages get summarized 
 | Queue | BullMQ + Redis 7 |
 | Browser | BrowserGrid (Playwright + Camoufox) |
 | Sandboxing | Docker containers with resource limits |
-| Auth | Better Auth |
 
 ### LLM Support
 

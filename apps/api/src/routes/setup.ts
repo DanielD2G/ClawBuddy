@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { Context } from 'hono'
-import { settingsService, MODEL_CATALOG } from '../services/settings.service.js'
+import { settingsService } from '../services/settings.service.js'
+import { buildModelCatalogs, invalidateModelCache } from '../services/model-discovery.service.js'
 import { searchService } from '../services/search.service.js'
 import { capabilityService } from '../services/capability.service.js'
 import { toolDiscoveryService } from '../services/tool-discovery.service.js'
@@ -44,6 +45,8 @@ app.get('/settings', async (c) => {
   const available = await settingsService.getAvailableProviders()
   const apiKeys = await settingsService.getMaskedKeys()
 
+  const models = await buildModelCatalogs(available)
+
   return c.json({
     success: true,
     data: {
@@ -55,7 +58,7 @@ app.get('/settings', async (c) => {
           embeddingModel: settings.embeddingModel,
         },
         available,
-        models: MODEL_CATALOG,
+        models,
       },
       apiKeys,
       browserGridFromEnv: !!process.env.BROWSER_GRID_URL,
@@ -111,6 +114,7 @@ app.put('/api-keys/:provider', async (c) => {
     return c.json({ success: false, error: 'key is required' }, 400)
   }
   await settingsService.setApiKey(provider, key)
+  invalidateModelCache(provider)
   const apiKeys = await settingsService.getMaskedKeys()
   return c.json({ success: true, data: { apiKeys } })
 })
@@ -508,7 +512,7 @@ app.post('/complete', async (c) => {
   if (blocked) return blocked
 
   const body = await c.req.json()
-  const { capabilities, capabilityConfigs, workspaceName, workspaceColor, telegramBotToken } = body
+  const { capabilities, capabilityConfigs, workspaceName, workspaceColor, telegramBotToken, telegramTokenTested } = body
 
   const settings = await settingsService.get()
 
@@ -579,15 +583,27 @@ app.post('/complete', async (c) => {
     }
   }
 
-  // Create Telegram channel if token provided (disabled by default)
+  // Create Telegram channel if token provided
   if (telegramBotToken && typeof telegramBotToken === 'string') {
     const { channelService } = await import('../services/channel.service.js')
-    await channelService.create({
+    const channel = await channelService.create({
       workspaceId: workspace.id,
       type: 'telegram',
       name: 'Telegram',
       config: { botToken: telegramBotToken },
     })
+
+    // Auto-enable if token was successfully tested during onboarding
+    if (telegramTokenTested) {
+      try {
+        const { telegramBotManager } = await import('../channels/telegram/telegram-bot-manager.js')
+        const botUsername = await telegramBotManager.startBot(channel.id, telegramBotToken, workspace.id)
+        await channelService.update(channel.id, { config: { botUsername } })
+        await channelService.enable(channel.id)
+      } catch (err) {
+        console.error('[Setup] Failed to auto-enable Telegram channel:', err)
+      }
+    }
   }
 
   // Index capabilities with the user's chosen embedding model (non-blocking)

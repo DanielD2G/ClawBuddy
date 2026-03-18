@@ -1,4 +1,5 @@
 import { settingsService } from '../services/settings.service.js'
+import { inferProviderFromModel } from '../config.js'
 import type { EmbeddingProvider } from './embeddings.interface.js'
 import type { LLMProvider } from './llm.interface.js'
 
@@ -23,7 +24,8 @@ export async function createEmbeddingProvider(): Promise<EmbeddingProvider> {
 }
 
 async function createLLMForModel(model: string): Promise<LLMProvider> {
-  const provider = await settingsService.getAIProvider()
+  // Infer provider from the model name; fall back to the global aiProvider setting
+  const provider = inferProviderFromModel(model) ?? await settingsService.getAIProvider()
   const apiKey = await settingsService.getApiKey(provider)
   if (!apiKey) throw new Error(`No API key configured for AI provider: ${provider}`)
 
