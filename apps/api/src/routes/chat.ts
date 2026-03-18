@@ -8,22 +8,21 @@ import { storageService } from '../services/storage.service.js'
 import { MAX_FILE_UPLOAD_BYTES } from '../constants.js'
 import { sanitizeFileName } from '../lib/sanitize.js'
 import { secretRedactionService } from '../services/secret-redaction.service.js'
+import { sendChatMessageSchema, createChatSessionSchema } from '@agentbuddy/shared'
+import { validateBody } from '../lib/validate.js'
+import { ValidationError } from '../lib/errors.js'
 
 const app = new Hono()
 
 app.post('/chat', async (c) => {
   const body = await c.req.json()
-  const { content } = body
-  let { sessionId } = body
-  let { workspaceId } = body
-
-  if (!content) {
-    return c.json({ success: false, error: 'content is required' }, 400)
-  }
+  const validated = validateBody(sendChatMessageSchema, body)
+  let { sessionId } = validated
+  let { workspaceId } = validated
 
   if (!sessionId) {
     if (!workspaceId) {
-      return c.json({ success: false, error: 'workspaceId is required for new sessions' }, 400)
+      throw new ValidationError('workspaceId is required for new sessions')
     }
     const session = await chatService.createSession({
       workspaceId,
@@ -34,19 +33,19 @@ app.post('/chat', async (c) => {
     workspaceId = session?.workspaceId ?? undefined
   }
 
-  const { cleanedContent, mentionedSlugs } = mentionParserService.parse(content)
+  const { cleanedContent, mentionedSlugs } = mentionParserService.parse(validated.content)
 
   const currentSessionId = sessionId
-  const attachments = body.attachments ?? undefined
+  const attachments = validated.attachments ?? undefined
   const inventory = await secretRedactionService.buildSecretInventory(workspaceId)
   return createSSEStream(async (emit) => {
     const redactedEmit = secretRedactionService.createRedactedEmit(emit, inventory)
     redactedEmit('session', { sessionId: currentSessionId })
     await chatService.sendMessage(
       currentSessionId,
-      cleanedContent || content,
+      cleanedContent || validated.content,
       redactedEmit,
-      { documentIds: body.documentIds, mentionedSlugs, attachments, inventory },
+      { documentIds: validated.documentIds, mentionedSlugs, attachments, inventory },
     )
   })
 })
@@ -62,7 +61,10 @@ app.post('/chat/sessions/:sessionId/approve', async (c) => {
   }
 
   if (!approvalId || !['approved', 'denied'].includes(decision)) {
-    return c.json({ success: false, error: 'approvalId and decision (approved/denied) are required' }, 400)
+    return c.json(
+      { success: false, error: 'approvalId and decision (approved/denied) are required' },
+      400,
+    )
   }
 
   const session = await chatService.getSession(sessionId)
@@ -103,7 +105,10 @@ app.post('/chat/sessions/:sessionId/approve', async (c) => {
   })
 
   if (pendingApprovals.length > 0) {
-    return c.json({ success: true, data: { status: 'waiting', pendingCount: pendingApprovals.length } })
+    return c.json({
+      success: true,
+      data: { status: 'waiting', pendingCount: pendingApprovals.length },
+    })
   }
 
   const inventory = await secretRedactionService.buildSecretInventory(session.workspaceId)
@@ -167,12 +172,10 @@ app.get('/chat/sessions', async (c) => {
 
 app.post('/chat/sessions', async (c) => {
   const body = await c.req.json()
-  if (!body.workspaceId) {
-    return c.json({ success: false, error: 'workspaceId is required' }, 400)
-  }
+  const data = validateBody(createChatSessionSchema, body)
   const session = await chatService.createSession({
-    workspaceId: body.workspaceId,
-    title: body.title,
+    workspaceId: data.workspaceId,
+    title: data.title,
   })
   return c.json({ success: true, data: session }, 201)
 })
@@ -192,7 +195,12 @@ app.get('/chat/sessions/:sessionId/messages', async (c) => {
   const messages = await chatService.getMessages(sessionId)
 
   // Include pending approval state so the UI can restore after reload
-  let pendingApprovals: Array<{ id: string; toolName: string; capabilitySlug: string; input: unknown }> = []
+  let pendingApprovals: Array<{
+    id: string
+    toolName: string
+    capabilitySlug: string
+    input: unknown
+  }> = []
   if (session?.agentStatus === 'awaiting_approval') {
     pendingApprovals = await prisma.toolApproval.findMany({
       where: { chatSessionId: sessionId, status: 'pending' },

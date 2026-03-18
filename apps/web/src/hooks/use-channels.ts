@@ -1,5 +1,6 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
+import { createMutation } from './create-mutation'
 
 export interface Channel {
   id: string
@@ -20,46 +21,31 @@ export function useChannels(workspaceId?: string) {
   return useQuery({
     queryKey: ['channels', workspaceId],
     queryFn: () =>
-      apiClient.get<Channel[]>(
-        workspaceId ? `/channels?workspaceId=${workspaceId}` : '/channels'
-      ),
+      apiClient.get<Channel[]>(workspaceId ? `/channels?workspaceId=${workspaceId}` : '/channels'),
   })
 }
 
-export function useCreateChannel() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (data: { workspaceId: string; type: string; name: string; config: { botToken: string } }) =>
-      apiClient.post<Channel>('/channels', data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['channels'] }),
-  })
-}
+export const useCreateChannel = createMutation<
+  Channel,
+  { workspaceId: string; type: string; name: string; config: { botToken: string } }
+>('post', '/channels', [['channels']])
 
-export function useUpdateChannel() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: ({ id, ...data }: { id: string; name?: string; config?: { botToken?: string } }) =>
-      apiClient.patch<Channel>(`/channels/${id}`, data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['channels'] }),
-  })
-}
+export const useUpdateChannel = createMutation<
+  Channel,
+  { id: string; name?: string; config?: { botToken?: string } }
+>('patch', ({ id }) => `/channels/${id}`, [['channels']])
 
-export function useDeleteChannel() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (id: string) => apiClient.delete(`/channels/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['channels'] }),
-  })
-}
+export const useDeleteChannel = createMutation<unknown, string>(
+  'delete',
+  (id) => `/channels/${id}`,
+  [['channels']],
+)
 
-export function useToggleChannel() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
-      apiClient.post(`/channels/${id}/${enabled ? 'enable' : 'disable'}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['channels'] }),
-  })
-}
+export const useToggleChannel = createMutation<unknown, { id: string; enabled: boolean }>(
+  'post',
+  ({ id, enabled }) => `/channels/${id}/${enabled ? 'enable' : 'disable'}`,
+  [['channels']],
+)
 
 export function useTestChannel() {
   return useMutation({

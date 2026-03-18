@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { prisma } from '../lib/prisma.js'
+import { ok } from '../lib/responses.js'
 
 const app = new Hono()
 
@@ -10,7 +11,7 @@ app.get('/stats', async (c) => {
     prisma.chatSession.count(),
   ])
 
-  return c.json({ success: true, data: { workspaces, documents, chatSessions } })
+  return ok(c, { workspaces, documents, chatSessions })
 })
 
 export default app

@@ -2,6 +2,24 @@ import { settingsService } from '../services/settings.service.js'
 import { inferProviderFromModel } from '../config.js'
 import type { EmbeddingProvider } from './embeddings.interface.js'
 import type { LLMProvider } from './llm.interface.js'
+import { OpenAIEmbeddingProvider } from './openai-embeddings.js'
+import { GeminiEmbeddingProvider } from './gemini-embeddings.js'
+import { OpenAILLMProvider } from './openai-llm.js'
+import { GeminiLLMProvider } from './gemini-llm.js'
+import { ClaudeLLMProvider } from './claude-llm.js'
+
+const embeddingRegistry = new Map<string, new (model: string, apiKey: string) => EmbeddingProvider>(
+  [
+    ['openai', OpenAIEmbeddingProvider],
+    ['gemini', GeminiEmbeddingProvider],
+  ],
+)
+
+const llmRegistry = new Map<string, new (model: string, apiKey: string) => LLMProvider>([
+  ['openai', OpenAILLMProvider],
+  ['gemini', GeminiLLMProvider],
+  ['claude', ClaudeLLMProvider],
+])
 
 export async function createEmbeddingProvider(): Promise<EmbeddingProvider> {
   const provider = await settingsService.getEmbeddingProvider()
@@ -9,18 +27,9 @@ export async function createEmbeddingProvider(): Promise<EmbeddingProvider> {
   const apiKey = await settingsService.getApiKey(provider)
   if (!apiKey) throw new Error(`No API key configured for embedding provider: ${provider}`)
 
-  switch (provider) {
-    case 'openai': {
-      const { OpenAIEmbeddingProvider } = require('./openai-embeddings.js')
-      return new OpenAIEmbeddingProvider(model, apiKey)
-    }
-    case 'gemini': {
-      const { GeminiEmbeddingProvider } = require('./gemini-embeddings.js')
-      return new GeminiEmbeddingProvider(model, apiKey)
-    }
-    default:
-      throw new Error(`Unknown embedding provider: ${provider}`)
-  }
+  const Provider = embeddingRegistry.get(provider)
+  if (!Provider) throw new Error(`Unknown embedding provider: ${provider}`)
+  return new Provider(model, apiKey)
 }
 
 async function createLLMForModel(model: string): Promise<LLMProvider> {
@@ -29,22 +38,9 @@ async function createLLMForModel(model: string): Promise<LLMProvider> {
   const apiKey = await settingsService.getApiKey(provider)
   if (!apiKey) throw new Error(`No API key configured for AI provider: ${provider}`)
 
-  switch (provider) {
-    case 'openai': {
-      const { OpenAILLMProvider } = require('./openai-llm.js')
-      return new OpenAILLMProvider(model, apiKey)
-    }
-    case 'gemini': {
-      const { GeminiLLMProvider } = require('./gemini-llm.js')
-      return new GeminiLLMProvider(model, apiKey)
-    }
-    case 'claude': {
-      const { ClaudeLLMProvider } = require('./claude-llm.js')
-      return new ClaudeLLMProvider(model, apiKey)
-    }
-    default:
-      throw new Error(`Unknown AI provider: ${provider}`)
-  }
+  const Provider = llmRegistry.get(provider)
+  if (!Provider) throw new Error(`Unknown AI provider: ${provider}`)
+  return new Provider(model, apiKey)
 }
 
 function llmFactory(getModel: () => Promise<string>): () => Promise<LLMProvider> {

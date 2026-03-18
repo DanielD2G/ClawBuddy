@@ -1,6 +1,7 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
 import { POLL_CRON_JOBS_MS } from '@/constants'
+import { createMutation } from './create-mutation'
 
 interface AdminStats {
   workspaces: number
@@ -44,7 +45,8 @@ interface PaginatedParams {
 function buildQuery(params: Record<string, string | number | boolean | undefined>) {
   const parts: string[] = []
   for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== '') parts.push(`${key}=${encodeURIComponent(String(value))}`)
+    if (value !== undefined && value !== '')
+      parts.push(`${key}=${encodeURIComponent(String(value))}`)
   }
   return parts.length ? `?${parts.join('&')}` : ''
 }
@@ -80,9 +82,12 @@ export function useAdminConversations(params: PaginatedParams = {}) {
   return useQuery({
     queryKey: ['admin-conversations', params],
     queryFn: () =>
-      apiClient.get<{ conversations: AdminConversation[]; total: number; page: number; limit: number }>(
-        `/admin/conversations${buildQuery(params)}`,
-      ),
+      apiClient.get<{
+        conversations: AdminConversation[]
+        total: number
+        page: number
+        limit: number
+      }>(`/admin/conversations${buildQuery(params)}`),
   })
 }
 
@@ -115,45 +120,30 @@ export function useAdminCronJobs() {
   })
 }
 
-export function useCreateCronJob() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (data: { name: string; schedule: string; type: string; prompt?: string; description?: string }) =>
-      apiClient.post('/admin/cron', data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-cron-jobs'] }),
-  })
-}
+export const useCreateCronJob = createMutation<
+  unknown,
+  { name: string; schedule: string; type: string; prompt?: string; description?: string }
+>('post', '/admin/cron', [['admin-cron-jobs']])
 
-export function useUpdateCronJob() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: ({ id, ...data }: { id: string; name?: string; schedule?: string; prompt?: string; description?: string }) =>
-      apiClient.patch(`/admin/cron/${id}`, data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-cron-jobs'] }),
-  })
-}
+export const useUpdateCronJob = createMutation<
+  unknown,
+  { id: string; name?: string; schedule?: string; prompt?: string; description?: string }
+>('patch', ({ id }) => `/admin/cron/${id}`, [['admin-cron-jobs']])
 
-export function useDeleteCronJob() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (id: string) => apiClient.delete(`/admin/cron/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-cron-jobs'] }),
-  })
-}
+export const useDeleteCronJob = createMutation<unknown, string>(
+  'delete',
+  (id) => `/admin/cron/${id}`,
+  [['admin-cron-jobs']],
+)
 
-export function useToggleCronJob() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
-      apiClient.patch(`/admin/cron/${id}/toggle`, { enabled }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-cron-jobs'] }),
-  })
-}
+export const useToggleCronJob = createMutation<unknown, { id: string; enabled: boolean }>(
+  'patch',
+  ({ id }) => `/admin/cron/${id}/toggle`,
+  [['admin-cron-jobs']],
+)
 
-export function useTriggerCronJob() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (id: string) => apiClient.post(`/admin/cron/${id}/trigger`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-cron-jobs'] }),
-  })
-}
+export const useTriggerCronJob = createMutation<unknown, string>(
+  'post',
+  (id) => `/admin/cron/${id}/trigger`,
+  [['admin-cron-jobs']],
+)
