@@ -95,24 +95,20 @@ export const capabilityService = {
 
     const alwaysOnCaps = await prisma.capability.findMany({
       where: { slug: { in: ALWAYS_ON_CAPABILITY_SLUGS } },
-      select: { id: true, slug: true },
+      select: { id: true },
     })
+    if (!alwaysOnCaps.length) return
 
-    for (const ws of workspaces) {
-      const existing = await prisma.workspaceCapability.findMany({
-        where: { workspaceId: ws.id, capabilityId: { in: alwaysOnCaps.map((c) => c.id) } },
-        select: { capabilityId: true },
-      })
-      const existingIds = new Set(existing.map((e) => e.capabilityId))
-
-      for (const cap of alwaysOnCaps) {
-        if (!existingIds.has(cap.id)) {
-          await prisma.workspaceCapability.create({
-            data: { workspaceId: ws.id, capabilityId: cap.id, enabled: true },
-          })
-        }
-      }
-    }
+    await prisma.workspaceCapability.createMany({
+      data: workspaces.flatMap((ws) =>
+        alwaysOnCaps.map((cap) => ({
+          workspaceId: ws.id,
+          capabilityId: cap.id,
+          enabled: true,
+        })),
+      ),
+      skipDuplicates: true,
+    })
   },
 
   /**

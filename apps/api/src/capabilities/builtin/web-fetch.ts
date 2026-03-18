@@ -46,12 +46,13 @@ export const webFetch: CapabilityDefinition = {
       },
     },
   ],
-  systemPrompt:
-    'You have access to web_fetch for downloading and reading web content directly.\n\n' +
-    '**When to use each web tool:**\n' +
-    '- **web_fetch**: When you have a specific URL to read (documentation, API endpoints, GitHub files, articles)\n' +
-    '- **web_search**: When you need to FIND information with a search query\n' +
-    '- **run_browser_script**: Only when you need to INTERACT with a page (login, fill forms, click buttons)\n\n' +
-    'web_fetch returns the full page content converted to Markdown by default. For JSON APIs, the raw JSON is returned as-is.',
+  systemPrompt: `You have access to web_fetch for downloading and reading web content directly.
+
+**When to use each web tool:**
+- **web_fetch**: When you have a specific URL to read (documentation, API endpoints, GitHub files, articles)
+- **web_search**: When you need to FIND information with a search query
+- **run_browser_script**: Only when you need to INTERACT with a page (login, fill forms, click buttons)
+
+web_fetch returns the full page content converted to Markdown by default. For JSON APIs, the raw JSON is returned as-is.`,
   sandbox: {},
 }

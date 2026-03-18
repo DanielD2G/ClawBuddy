@@ -662,9 +662,15 @@ export const toolExecutorService = {
    */
   async executeWebFetch(toolCall: ToolCall): Promise<ExecutionResult> {
     const startTime = Date.now()
+    const fail = (error: string): ExecutionResult => ({ output: '', error, durationMs: Date.now() - startTime })
+
     const args = toolCall.arguments as Record<string, unknown>
     const url = String(args.url ?? '')
-    const format = String(args.format ?? 'markdown') as 'markdown' | 'text' | 'html'
+    const formatRaw = String(args.format ?? 'markdown').toLowerCase()
+    if (!['markdown', 'text', 'html'].includes(formatRaw)) {
+      return fail(`Invalid format "${formatRaw}" — must be markdown, text, or html`)
+    }
+    const format = formatRaw as 'markdown' | 'text' | 'html'
     const method = String(args.method ?? 'GET').toUpperCase()
     const customHeaders = (args.headers as Record<string, string>) ?? {}
     const body = args.body as string | undefined
@@ -675,15 +681,15 @@ export const toolExecutorService = {
     try {
       parsed = new URL(url)
     } catch {
-      return { output: '', error: 'Invalid URL', durationMs: Date.now() - startTime }
+      return fail('Invalid URL')
     }
     if (!['http:', 'https:'].includes(parsed.protocol)) {
-      return { output: '', error: 'Only http/https URLs are supported', durationMs: Date.now() - startTime }
+      return fail('Only http/https URLs are supported')
     }
 
     // SSRF protection
     if (isPrivateHost(parsed.hostname)) {
-      return { output: '', error: 'Requests to private/internal addresses are blocked', durationMs: Date.now() - startTime }
+      return fail('Requests to private/internal addresses are blocked')
     }
 
     try {
@@ -741,7 +747,7 @@ export const toolExecutorService = {
       return { output, durationMs: Date.now() - startTime }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      return { output: '', error: `Fetch failed: ${msg}`, durationMs: Date.now() - startTime }
+      return fail(`Fetch failed: ${msg}`)
     }
   },
 
