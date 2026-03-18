@@ -60,6 +60,10 @@ export const COMPRESSION_TEMPERATURE = 0.2
 export const COMPRESSION_MAX_TOKENS = 2000
 export const TOKEN_ESTIMATION_DIVISOR = 4
 
+// ── Chat RAG indexing ────────────────────────────
+export const CHAT_RAG_SEARCH_LIMIT = 5
+export const CHAT_RAG_MIN_MESSAGES_FOR_INDEXING = 6
+
 // ── Title generation ─────────────────────────────
 export const TITLE_TEMPERATURE = 0.3
 export const TITLE_MAX_TOKENS = 30

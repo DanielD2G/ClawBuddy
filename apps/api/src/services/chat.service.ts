@@ -5,6 +5,7 @@ import { recordTokenUsage } from './agent.service.js'
 import { settingsService } from './settings.service.js'
 import { embeddingService } from './embedding.service.js'
 import { searchService } from './search.service.js'
+import { chatIndexingService } from './chat-indexing.service.js'
 import { agentService } from './agent.service.js'
 import { capabilityService } from './capability.service.js'
 import type { SSEEmit } from '../lib/sse.js'
@@ -75,6 +76,10 @@ export const chatService = {
   },
 
   async deleteSession(sessionId: string) {
+    // Clean up chat RAG vectors before cascade delete
+    await chatIndexingService.deleteChatIndex(sessionId).catch((err) => {
+      console.error('[ChatRAG] Cleanup failed:', err)
+    })
     return prisma.chatSession.delete({ where: { id: sessionId } })
   },
 

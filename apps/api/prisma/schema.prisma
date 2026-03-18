@@ -89,6 +89,7 @@ model ChatSession {
   lastReadAt         DateTime?
   contextSummary     String?   @db.Text
   contextSummaryUpTo String?
+  chatIndexedUpTo    String?
   lastInputTokens    Int?
   linuxUser          String?
   sessionAllowRules  Json?

@@ -9,6 +9,7 @@ import { toolExecutorService, NON_SANDBOX_TOOLS } from './tool-executor.service.
 import { sandboxService } from './sandbox.service.js'
 import { permissionService } from './permission.service.js'
 import { compressContext } from './context-compression.service.js'
+import { chatIndexingService } from './chat-indexing.service.js'
 import { settingsService } from './settings.service.js'
 import {
   DEFAULT_MAX_AGENT_ITERATIONS,
@@ -23,6 +24,7 @@ import {
   MIN_PRUNE_SIZE,
   TOKEN_ESTIMATION_DIVISOR,
   PARALLEL_SAFE_TOOLS,
+  CHAT_RAG_SEARCH_LIMIT,
 } from '../constants.js'
 import { toolDiscoveryService } from './tool-discovery.service.js'
 import type { ToolDefinition } from '../capabilities/types.js'
@@ -468,7 +470,7 @@ export const agentService = {
     // Context compression — summarize older messages if context is too large
     const sessionData = await prisma.chatSession.findUniqueOrThrow({
       where: { id: sessionId },
-      select: { contextSummary: true, contextSummaryUpTo: true, lastInputTokens: true, sessionAllowRules: true },
+      select: { contextSummary: true, contextSummaryUpTo: true, chatIndexedUpTo: true, lastInputTokens: true, sessionAllowRules: true },
     })
 
     const contextLimitTokens = await settingsService.getContextLimitTokens()
@@ -493,8 +495,26 @@ export const agentService = {
       const summarizedCount = history.length - compressed.recentMessages.length
       emit?.('compressing', { status: 'done', summarizedCount, keptCount: compressed.recentMessages.length })
       debugLog('Context compressed', { summarizedCount, keptCount: compressed.recentMessages.length })
+
+      // Index compressed messages for chat RAG retrieval (fire-and-forget)
+      chatIndexingService.indexChatMessages(sessionId).catch((err) => {
+        console.error('[ChatRAG] Indexing failed:', err)
+      })
     } else {
       emit?.('compressing', { status: 'skipped' })
+    }
+
+    // Retrieve relevant past conversation snippets via chat RAG
+    let chatRagContext = ''
+    if (sessionData.chatIndexedUpTo) {
+      try {
+        const chatRagResults = await chatIndexingService.searchChatHistory(sessionId, userContent, CHAT_RAG_SEARCH_LIMIT)
+        if (chatRagResults.length > 0) {
+          chatRagContext = chatRagResults.map((r) => r.content).join('\n---\n')
+        }
+      } catch (err) {
+        console.error('[ChatRAG] Search failed:', err)
+      }
     }
 
     // Build message list, merging consecutive messages with the same role
@@ -505,6 +525,12 @@ export const agentService = {
         ? [
             { role: 'user' as const, content: `[Previous conversation summary]\n${compressed.summary}` },
             { role: 'assistant' as const, content: 'Understood, I have context from our earlier conversation.' },
+          ]
+        : []),
+      ...(chatRagContext
+        ? [
+            { role: 'user' as const, content: `[Relevant earlier conversation excerpts]\n${chatRagContext}` },
+            { role: 'assistant' as const, content: 'I see those relevant past discussion points.' },
           ]
         : []),
       ...compressed.recentMessages.map((m) => ({
