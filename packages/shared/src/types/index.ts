@@ -13,13 +13,6 @@ export enum DocumentType {
   HTML = 'HTML',
 }
 
-export enum WorkspaceRole {
-  OWNER = 'OWNER',
-  ADMIN = 'ADMIN',
-  MEMBER = 'MEMBER',
-  VIEWER = 'VIEWER',
-}
-
 export interface User {
   id: string
   name: string
@@ -27,22 +20,6 @@ export interface User {
   image?: string | null
   createdAt: Date
   updatedAt: Date
-}
-
-export interface Workspace {
-  id: string
-  name: string
-  description?: string | null
-  createdAt: Date
-  updatedAt: Date
-}
-
-export interface WorkspaceMember {
-  id: string
-  workspaceId: string
-  userId: string
-  role: WorkspaceRole
-  createdAt: Date
 }
 
 export interface Folder {

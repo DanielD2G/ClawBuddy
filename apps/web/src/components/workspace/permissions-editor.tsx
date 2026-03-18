@@ -3,19 +3,12 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
 import { Plus, X, ShieldCheck, Save } from 'lucide-react'
+import { EXAMPLE_PERMISSION_RULES } from '@/constants'
 
 interface PermissionsEditorProps {
   workspaceId: string
   permissions: { allow?: string[] } | null
 }
-
-const EXAMPLE_RULES = [
-  'Bash(aws s3 ls *)',
-  'Bash(aws ecs describe-*)',
-  'Bash(kubectl get *)',
-  'Read(*)',
-  'Python(*)',
-]
 
 export function PermissionsEditor({ workspaceId, permissions }: PermissionsEditorProps) {
   const [rules, setRules] = useState<string[]>(permissions?.allow ?? [])
@@ -110,7 +103,7 @@ export function PermissionsEditor({ workspaceId, permissions }: PermissionsEdito
 
       {/* Quick add examples */}
       <div className="flex flex-wrap gap-1.5">
-        {EXAMPLE_RULES.filter((r) => !rules.includes(r)).slice(0, 3).map((rule) => (
+        {EXAMPLE_PERMISSION_RULES.filter((r) => !rules.includes(r)).slice(0, 3).map((rule) => (
           <button
             key={rule}
             type="button"

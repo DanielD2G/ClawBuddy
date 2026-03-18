@@ -476,7 +476,8 @@ export const chatService = {
         // Use raw query to avoid @updatedAt triggering sidebar reorder
         return prisma.$executeRaw`UPDATE "ChatSession" SET "title" = ${trimmed} WHERE "id" = ${sessionId}`
       })
-      .catch(() => {
+      .catch((err) => {
+        console.warn('[ChatService] Auto-title generation failed, using fallback:', err.message)
         const fallback =
           content.slice(0, CHAT_TITLE_MAX_LEN) + (content.length > CHAT_TITLE_MAX_LEN ? '...' : '')
         prisma.$executeRaw`UPDATE "ChatSession" SET "title" = ${fallback} WHERE "id" = ${sessionId}`.catch(

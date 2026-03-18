@@ -106,6 +106,12 @@ export const SUB_AGENT_EXECUTE_MAX_ITERATIONS = 25
 /** Tools the main agent cannot use directly — must delegate to a sub-agent */
 export const DELEGATION_ONLY_TOOLS = new Set(['run_browser_script'])
 
+// ── Always-allowed tools (no approval needed) ───
+export const ALWAYS_ALLOWED_TOOLS = new Set([
+  'search_documents', 'save_document', 'generate_file',
+  'create_cron', 'list_crons', 'delete_cron', 'web_search',
+])
+
 // ── Parallel tool execution ─────────────────────
 export const PARALLEL_SAFE_TOOLS = new Set([
   'web_search',

@@ -37,6 +37,28 @@ export const WORKSPACE_COLORS = [
   '#06b6d4', '#3b82f6',
 ]
 
+// ── Capability category labels ───────────────────
+export const CATEGORY_LABELS: Record<string, string> = {
+  builtin: 'Built-in',
+  general: 'General',
+  languages: 'Languages',
+  cloud: 'Cloud',
+  devops: 'DevOps',
+  integrations: 'Integrations',
+}
+
+// ── Permission example rules ────────────────────
+export const EXAMPLE_PERMISSION_RULES = [
+  'Bash(aws s3 ls *)',
+  'Bash(aws ecs describe-*)',
+  'Bash(kubectl get *)',
+  'Bash(docker ps *)',
+  'Read(*)',
+  'Write(*)',
+  'Python(*)',
+  'SearchDocuments(*)',
+]
+
 // ── Provider labels ──────────────────────────────
 export const PROVIDER_LABELS: Record<string, string> = {
   openai: 'OpenAI',

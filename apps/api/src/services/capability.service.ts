@@ -251,6 +251,24 @@ export const capabilityService = {
   },
 
   /**
+   * Disable a capability by its slug (resolves to capabilityId internally).
+   */
+  async disableCapabilityBySlug(workspaceId: string, slug: string) {
+    const capability = await prisma.capability.findUnique({ where: { slug } })
+    if (!capability) return
+    return this.disableCapability(workspaceId, capability.id)
+  },
+
+  /**
+   * Remove a workspace capability override entirely.
+   */
+  async removeCapabilityOverride(workspaceId: string, capabilityId: string) {
+    return prisma.workspaceCapability.delete({
+      where: { workspaceId_capabilityId: { workspaceId, capabilityId } },
+    })
+  },
+
+  /**
    * Update config for a workspace capability.
    */
   async updateCapabilityConfig(
