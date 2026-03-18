@@ -40,20 +40,26 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (activeWorkspace) return
 
+    let stale = false
     apiClient.get<Workspace[]>('/workspaces').then((workspaces) => {
-      if (workspaces && workspaces.length > 0 && !activeWorkspace) {
+      if (!stale && workspaces && workspaces.length > 0) {
         setActiveWorkspace(workspaces[0])
       }
-    }).catch(() => {
-      // Ignore — setup may not be complete yet
+    }).catch((err) => {
+      console.warn('[WorkspaceProvider] Failed to auto-select workspace:', err)
     })
+    return () => { stale = true }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync workspace data when it changes externally
   useEffect(() => {
     const handler = (e: StorageEvent) => {
       if (e.key === STORAGE_KEY) {
-        setActiveWorkspaceState(e.newValue ? JSON.parse(e.newValue) : null)
+        try {
+          setActiveWorkspaceState(e.newValue ? JSON.parse(e.newValue) : null)
+        } catch {
+          setActiveWorkspaceState(null)
+        }
       }
     }
     window.addEventListener('storage', handler)

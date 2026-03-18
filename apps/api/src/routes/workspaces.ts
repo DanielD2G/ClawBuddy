@@ -1,35 +1,26 @@
 import { Hono } from 'hono'
-import { Prisma } from '@prisma/client'
-import { mergeWorkspaceSettings } from '@agentbuddy/shared'
-import { prisma } from '../lib/prisma.js'
+import { createWorkspaceSchema, updateWorkspaceSchema } from '@agentbuddy/shared'
+import { workspaceService } from '../services/workspace.service.js'
 import { capabilityService } from '../services/capability.service.js'
 import { sandboxService } from '../services/sandbox.service.js'
 
 const app = new Hono()
 
 app.get('/', async (c) => {
-  const workspaces = await prisma.workspace.findMany({
-    orderBy: { createdAt: 'desc' },
-  })
+  const workspaces = await workspaceService.list()
   return c.json({ success: true, data: workspaces })
 })
 
 app.post('/', async (c) => {
   const body = await c.req.json()
-  const workspace = await prisma.workspace.create({
-    data: {
-      name: body.name,
-      description: body.description ?? null,
-      color: body.color ?? null,
-      settings: body.settings ?? null,
-    },
-  })
+  const parsed = createWorkspaceSchema.parse(body)
+  const workspace = await workspaceService.create(parsed)
   return c.json({ success: true, data: workspace }, 201)
 })
 
 app.get('/:id', async (c) => {
   const { id } = c.req.param()
-  const workspace = await prisma.workspace.findUnique({ where: { id } })
+  const workspace = await workspaceService.findById(id)
   if (!workspace) {
     return c.json({ success: false, error: 'Workspace not found' }, 404)
   }
@@ -39,45 +30,19 @@ app.get('/:id', async (c) => {
 app.patch('/:id', async (c) => {
   const { id } = c.req.param()
   const body = await c.req.json()
-  let mergedSettings: Prisma.InputJsonValue | typeof Prisma.DbNull | undefined
-
-  if (body.settings !== undefined) {
-    if (body.settings === null) {
-      mergedSettings = Prisma.DbNull
-    } else {
-      const existing = await prisma.workspace.findUnique({
-        where: { id },
-        select: { settings: true },
-      })
-      const nextSettings = mergeWorkspaceSettings(
-        existing?.settings,
-        body.settings as Record<string, unknown>,
-      ) ?? {}
-      mergedSettings = nextSettings as Prisma.InputJsonValue
-    }
-  }
-
-  const workspace = await prisma.workspace.update({
-    where: { id },
-    data: {
-      ...(body.name !== undefined && { name: body.name }),
-      ...(body.description !== undefined && { description: body.description }),
-      ...(body.permissions !== undefined && { permissions: body.permissions }),
-      ...(body.color !== undefined && { color: body.color }),
-      ...(body.settings !== undefined && { settings: mergedSettings }),
-      ...(body.autoExecute !== undefined && { autoExecute: body.autoExecute }),
-    },
-  })
+  const parsed = updateWorkspaceSchema.parse(body)
+  const workspace = await workspaceService.update(id, parsed)
   return c.json({ success: true, data: workspace })
 })
 
 app.delete('/:id', async (c) => {
   const { id } = c.req.param()
-  // Stop workspace container before deleting
   try {
     await sandboxService.stopWorkspaceContainer(id)
-  } catch { /* container may not exist */ }
-  await prisma.workspace.delete({ where: { id } })
+  } catch (err) {
+    console.warn(`[Workspaces] Failed to stop container for workspace ${id}:`, err)
+  }
+  await workspaceService.delete(id)
   return c.json({ success: true, data: { id } })
 })
 
@@ -95,10 +60,7 @@ app.put('/:id/capabilities/:capabilitySlug', async (c) => {
   if (body.enabled) {
     await capabilityService.enableCapability(id, capabilitySlug, body.config)
   } else {
-    const capability = await prisma.capability.findUnique({ where: { slug: capabilitySlug } })
-    if (capability) {
-      await capabilityService.disableCapability(id, capability.id)
-    }
+    await capabilityService.disableCapabilityBySlug(id, capabilitySlug)
   }
   return c.json({ success: true })
 })
@@ -106,9 +68,7 @@ app.put('/:id/capabilities/:capabilitySlug', async (c) => {
 app.delete('/:id/capabilities/:capabilityId', async (c) => {
   const { id, capabilityId } = c.req.param()
   try {
-    await prisma.workspaceCapability.delete({
-      where: { workspaceId_capabilityId: { workspaceId: id, capabilityId } },
-    })
+    await capabilityService.removeCapabilityOverride(id, capabilityId)
     return c.json({ success: true })
   } catch {
     return c.json({ success: false, error: 'Override not found' }, 404)
@@ -125,17 +85,7 @@ app.get('/:id/container/status', async (c) => {
 
 app.post('/:id/container/start', async (c) => {
   const { id } = c.req.param()
-  const configEnvVars = await capabilityService.getDecryptedCapabilityConfigsForWorkspace(id)
-  const mergedEnvVars: Record<string, string> = {}
-  for (const envMap of configEnvVars.values()) {
-    Object.assign(mergedEnvVars, envMap)
-  }
-
-  const containerId = await sandboxService.getOrCreateWorkspaceContainer(
-    id,
-    { networkAccess: true },
-    Object.keys(mergedEnvVars).length ? mergedEnvVars : undefined,
-  )
+  const containerId = await sandboxService.startWorkspaceContainerWithCapabilities(id)
   return c.json({ success: true, data: { containerId, status: 'running' } })
 })
 

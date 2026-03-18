@@ -92,6 +92,12 @@ export const TOOL_DISCOVERY_MAX_CALLS = 3
 export const PREFLIGHT_DISCOVERY_SCORE_THRESHOLD = 0.55
 export const ALWAYS_ON_CAPABILITY_SLUGS = ['document-search', 'agent-memory', 'bash', 'python']
 
+// ── Always-allowed tools (no approval needed) ───
+export const ALWAYS_ALLOWED_TOOLS = new Set([
+  'search_documents', 'save_document', 'generate_file',
+  'create_cron', 'list_crons', 'delete_cron', 'web_search',
+])
+
 // ── Parallel tool execution ─────────────────────
 export const PARALLEL_SAFE_TOOLS = new Set([
   'web_search', 'search_documents', 'discover_tools', 'list_crons',
