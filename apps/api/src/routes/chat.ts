@@ -45,7 +45,7 @@ app.post('/chat', async (c) => {
       currentSessionId,
       cleanedContent || validated.content,
       redactedEmit,
-      { documentIds: validated.documentIds, mentionedSlugs, attachments, inventory },
+      { documentIds: validated.documentIds ?? undefined, mentionedSlugs, attachments, inventory },
     )
   })
 })

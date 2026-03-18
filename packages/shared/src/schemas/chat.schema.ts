@@ -2,9 +2,9 @@ import { z } from 'zod'
 
 export const sendChatMessageSchema = z.object({
   content: z.string().min(1, 'content is required'),
-  sessionId: z.string().optional(),
-  workspaceId: z.string().optional(),
-  documentIds: z.array(z.string()).optional(),
+  sessionId: z.string().nullish(),
+  workspaceId: z.string().nullish(),
+  documentIds: z.array(z.string()).nullish(),
   attachments: z
     .array(
       z.object({
@@ -15,7 +15,7 @@ export const sendChatMessageSchema = z.object({
         url: z.string(),
       }),
     )
-    .optional(),
+    .nullish(),
 })
 
 export type SendChatMessageInput = z.infer<typeof sendChatMessageSchema>
