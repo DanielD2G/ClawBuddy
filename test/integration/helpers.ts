@@ -42,10 +42,18 @@ export async function deleteWorkspace(id: string): Promise<void> {
 }
 
 export async function enableCapability(workspaceId: string, slug: string): Promise<void> {
+  return enableCapabilityWithConfig(workspaceId, slug)
+}
+
+export async function enableCapabilityWithConfig(
+  workspaceId: string,
+  slug: string,
+  config?: Record<string, unknown>,
+): Promise<void> {
   const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/capabilities/${slug}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ enabled: true }),
+    body: JSON.stringify({ enabled: true, ...(config ? { config } : {}) }),
   })
   if (!res.ok) {
     const body = await res.text()
@@ -58,6 +66,17 @@ export async function setAutoExecute(workspaceId: string): Promise<void> {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ autoExecute: true }),
+  })
+}
+
+export async function updateWorkspaceSettings(
+  workspaceId: string,
+  settings: Record<string, unknown>,
+): Promise<void> {
+  await fetch(`${API_BASE}/workspaces/${workspaceId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ settings }),
   })
 }
 
@@ -175,6 +194,57 @@ export async function sendMessage(
   }
 
   return { events, sessionId: sid, content: fullContent, toolExecutions }
+}
+
+export async function approveTool(
+  sessionId: string,
+  approvalId: string,
+  decision: 'approved' | 'denied' = 'approved',
+): Promise<TestResult | { status: 'waiting'; pendingCount: number }> {
+  const res = await fetch(`${API_BASE}/chat/sessions/${sessionId}/approve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ approvalId, decision }),
+  })
+
+  const contentType = res.headers.get('content-type') ?? ''
+  if (contentType.includes('application/json')) {
+    const json = await res.json() as { data?: { status?: 'waiting'; pendingCount?: number } }
+    return {
+      status: json.data?.status ?? 'waiting',
+      pendingCount: json.data?.pendingCount ?? 0,
+    }
+  }
+
+  const events = await parseSSEStream(res)
+  const doneEvent = events.find((e) => e.event === 'done')
+  const sid = (doneEvent?.data?.sessionId ?? sessionId) as string
+  const content = events
+    .filter((e) => e.event === 'content')
+    .map((e) => e.data.text as string)
+    .join('')
+  const toolExecutions: TestResult['toolExecutions'] = []
+  for (const e of events) {
+    if (e.event === 'tool_start') {
+      toolExecutions.push({
+        toolName: e.data.toolName as string,
+        capabilitySlug: e.data.capabilitySlug as string,
+      })
+    } else if (e.event === 'tool_result') {
+      const existing = toolExecutions.find(
+        (t) => t.toolName === (e.data.toolName as string) && !t.output && !t.error,
+      )
+      if (existing) {
+        existing.output = (e.data.output as string) ?? undefined
+        existing.error = (e.data.error as string) ?? undefined
+        existing.exitCode = (e.data.exitCode as number) ?? undefined
+        existing.durationMs = (e.data.durationMs as number) ?? undefined
+        existing.screenshot = (e.data.screenshot as string) ?? undefined
+      }
+    }
+  }
+
+  return { events, sessionId: sid, content, toolExecutions }
 }
 
 // ─── Assertion Helpers ───

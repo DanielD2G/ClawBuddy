@@ -1,4 +1,6 @@
 import { Hono } from 'hono'
+import { Prisma } from '@prisma/client'
+import { mergeWorkspaceSettings } from '@agentbuddy/shared'
 import { prisma } from '../lib/prisma.js'
 import { capabilityService } from '../services/capability.service.js'
 import { sandboxService } from '../services/sandbox.service.js'
@@ -37,6 +39,24 @@ app.get('/:id', async (c) => {
 app.patch('/:id', async (c) => {
   const { id } = c.req.param()
   const body = await c.req.json()
+  let mergedSettings: Prisma.InputJsonValue | typeof Prisma.DbNull | undefined
+
+  if (body.settings !== undefined) {
+    if (body.settings === null) {
+      mergedSettings = Prisma.DbNull
+    } else {
+      const existing = await prisma.workspace.findUnique({
+        where: { id },
+        select: { settings: true },
+      })
+      const nextSettings = mergeWorkspaceSettings(
+        existing?.settings,
+        body.settings as Record<string, unknown>,
+      ) ?? {}
+      mergedSettings = nextSettings as Prisma.InputJsonValue
+    }
+  }
+
   const workspace = await prisma.workspace.update({
     where: { id },
     data: {
@@ -44,7 +64,7 @@ app.patch('/:id', async (c) => {
       ...(body.description !== undefined && { description: body.description }),
       ...(body.permissions !== undefined && { permissions: body.permissions }),
       ...(body.color !== undefined && { color: body.color }),
-      ...(body.settings !== undefined && { settings: body.settings }),
+      ...(body.settings !== undefined && { settings: mergedSettings }),
       ...(body.autoExecute !== undefined && { autoExecute: body.autoExecute }),
     },
   })

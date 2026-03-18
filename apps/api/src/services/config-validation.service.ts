@@ -3,6 +3,10 @@ import { encrypt, decrypt } from './crypto.service.js'
 
 const MASK = '••••••••'
 
+function getSecretFieldKeys(schema: ConfigFieldDefinition[]): Set<string> {
+  return new Set(schema.filter((f) => f.type === 'password' || f.type === 'textarea').map((f) => f.key))
+}
+
 interface ValidationResult {
   valid: boolean
   errors: string[]
@@ -42,10 +46,10 @@ export function encryptConfigFields(
   config: Record<string, unknown>,
 ): Record<string, unknown> {
   const result = { ...config }
-  const passwordKeys = new Set(schema.filter((f) => f.type === 'password').map((f) => f.key))
+  const secretKeys = getSecretFieldKeys(schema)
 
   for (const key of Object.keys(result)) {
-    if (passwordKeys.has(key) && typeof result[key] === 'string' && result[key] !== '') {
+    if (secretKeys.has(key) && typeof result[key] === 'string' && result[key] !== '') {
       result[key] = encrypt(result[key] as string)
     }
   }
@@ -58,10 +62,10 @@ export function decryptConfigFields(
   config: Record<string, unknown>,
 ): Record<string, unknown> {
   const result = { ...config }
-  const passwordKeys = new Set(schema.filter((f) => f.type === 'password').map((f) => f.key))
+  const secretKeys = getSecretFieldKeys(schema)
 
   for (const key of Object.keys(result)) {
-    if (passwordKeys.has(key) && typeof result[key] === 'string' && result[key] !== '') {
+    if (secretKeys.has(key) && typeof result[key] === 'string' && result[key] !== '') {
       try {
         result[key] = decrypt(result[key] as string)
       } catch {
@@ -78,10 +82,10 @@ export function maskConfigFields(
   config: Record<string, unknown>,
 ): Record<string, unknown> {
   const result = { ...config }
-  const passwordKeys = new Set(schema.filter((f) => f.type === 'password').map((f) => f.key))
+  const secretKeys = getSecretFieldKeys(schema)
 
   for (const key of Object.keys(result)) {
-    if (passwordKeys.has(key) && typeof result[key] === 'string' && result[key] !== '') {
+    if (secretKeys.has(key) && typeof result[key] === 'string' && result[key] !== '') {
       result[key] = MASK
     }
   }
@@ -99,10 +103,10 @@ export function mergeWithExistingConfig(
   existingConfig: Record<string, unknown>,
 ): Record<string, unknown> {
   const result = { ...newConfig }
-  const passwordKeys = new Set(schema.filter((f) => f.type === 'password').map((f) => f.key))
+  const secretKeys = getSecretFieldKeys(schema)
 
   for (const key of Object.keys(result)) {
-    if (passwordKeys.has(key) && isMaskedValue(result[key])) {
+    if (secretKeys.has(key) && isMaskedValue(result[key])) {
       result[key] = existingConfig[key]
     }
   }

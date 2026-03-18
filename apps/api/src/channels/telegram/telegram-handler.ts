@@ -1,6 +1,7 @@
 import { prisma } from '../../lib/prisma.js'
 import { chatService } from '../../services/chat.service.js'
 import type { SSEEmit } from '../../lib/sse.js'
+import { secretRedactionService } from '../../services/secret-redaction.service.js'
 
 /**
  * Find the most recent active Telegram session for this chat, or create a new one.
@@ -53,6 +54,7 @@ export async function handleTelegramMessage(
   sendFn: (msg: string) => Promise<void>,
 ): Promise<void> {
   const session = await findOrCreateSession(workspaceId, telegramChatId)
+  const inventory = await secretRedactionService.buildSecretInventory(workspaceId)
 
   const telegramEmit: SSEEmit = (event, data) => {
     if (event === 'content' && typeof data.text === 'string' && data.text.trim()) {
@@ -60,5 +62,10 @@ export async function handleTelegramMessage(
     }
   }
 
-  await chatService.sendMessage(session.id, text, telegramEmit)
+  await chatService.sendMessage(
+    session.id,
+    text,
+    secretRedactionService.createRedactedEmit(telegramEmit, inventory),
+    { inventory },
+  )
 }

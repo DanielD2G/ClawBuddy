@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI, type FunctionDeclaration, SchemaType } from '@google/generative-ai'
+import { GoogleGenerativeAI, type Content, type FunctionDeclaration, type Part, SchemaType } from '@google/generative-ai'
 import type {
   LLMProvider,
   ChatMessage,
@@ -56,7 +56,7 @@ export class GeminiLLMProvider implements LLMProvider {
 
     // Build history (all messages except system and last user message)
     const nonSystemMessages = messages.filter((m) => m.role !== 'system')
-    const history = nonSystemMessages.slice(0, -1).flatMap((m) => {
+    const history = nonSystemMessages.slice(0, -1).flatMap<Content>((m) => {
       if (m.role === 'tool') {
         // Gemini's function role can ONLY contain functionResponse parts — no inlineData.
         // When tool results include screenshots, split into function + user messages.
@@ -65,7 +65,7 @@ export class GeminiLLMProvider implements LLMProvider {
           const textResult = textParts.map((b) => (b as { text: string }).text).join('')
           const imageParts = (m.content as ContentBlock[]).filter((b) => b.type === 'image')
 
-          const msgs: Array<Record<string, unknown>> = [
+          const msgs: Content[] = [
             {
               role: 'function',
               parts: [{
@@ -124,7 +124,7 @@ export class GeminiLLMProvider implements LLMProvider {
       }
       // Handle multimodal content
       if (typeof m.content !== 'string' && Array.isArray(m.content)) {
-        const parts: Array<Record<string, unknown>> = []
+        const parts: Part[] = []
         for (const b of m.content as ContentBlock[]) {
           if (b.type === 'image') {
             parts.push({ inlineData: { mimeType: b.source.mediaType, data: b.source.data } })
@@ -145,7 +145,7 @@ export class GeminiLLMProvider implements LLMProvider {
 
     const lastMessage = nonSystemMessages[nonSystemMessages.length - 1]
     const chat = model.startChat({
-      history: history as import('@google/generative-ai').Content[],
+      history,
       ...(systemMessage && {
         systemInstruction: { role: 'user', parts: [{ text: getTextContent(systemMessage.content) }] },
       }),
@@ -209,17 +209,17 @@ export class GeminiLLMProvider implements LLMProvider {
     })
 
     const systemMessage = messages.find((m) => m.role === 'system')
-    const history = messages
+    const history: Content[] = messages
       .filter((m) => m.role !== 'system' && m.role !== 'tool')
       .slice(0, -1)
       .map((m) => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
+        role: m.role === 'assistant' ? ('model' as const) : ('user' as const),
         parts: [{ text: getTextContent(m.content) }],
       }))
 
     const lastMessage = messages[messages.length - 1]
     const chat = model.startChat({
-      history: history as import('@google/generative-ai').Content[],
+      history,
       ...(systemMessage && {
         systemInstruction: { role: 'user', parts: [{ text: getTextContent(systemMessage.content) }] },
       }),

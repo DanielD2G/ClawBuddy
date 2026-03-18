@@ -86,6 +86,7 @@ model ChatSession {
   title       String?
   folderScope String[]  @default([])
   agentState  Json?
+  agentStateEncrypted String? @db.Text
   agentStatus        String   @default("idle")
   lastReadAt         DateTime?
   contextSummary     String?   @db.Text

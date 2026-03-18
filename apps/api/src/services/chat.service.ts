@@ -14,6 +14,8 @@ import {
   TITLE_MAX_TOKENS,
   SEARCH_RESULTS_LIMIT,
 } from '../constants.js'
+import type { SecretInventory } from './secret-redaction.service.js'
+import { secretRedactionService } from './secret-redaction.service.js'
 
 
 
@@ -113,6 +115,7 @@ export const chatService = {
           capabilitySlug: String(tc.capability ?? ''),
           input: tc.input ?? {},
           output: tc.output != null ? String(tc.output) : null,
+          screenshot: null,
           error: tc.error != null ? String(tc.error) : null,
           exitCode: tc.exitCode != null ? Number(tc.exitCode) : null,
           durationMs: tc.durationMs != null ? Number(tc.durationMs) : null,
@@ -136,10 +139,24 @@ export const chatService = {
     })
   },
 
-  async sendMessage(sessionId: string, content: string, emit: SSEEmit, documentIds?: string[], mentionedSlugs?: string[], attachments?: { name: string; size: number; type: string; storageKey: string; url: string }[]) {
+  async sendMessage(
+    sessionId: string,
+    content: string,
+    emit: SSEEmit,
+    options?: {
+      documentIds?: string[]
+      mentionedSlugs?: string[]
+      attachments?: { name: string; size: number; type: string; storageKey: string; url: string }[]
+      inventory?: SecretInventory
+    },
+  ) {
+    const { documentIds, mentionedSlugs, attachments, inventory } = options ?? {}
     const session = await prisma.chatSession.findUniqueOrThrow({
       where: { id: sessionId },
     })
+    const secretInventory = inventory
+      ?? await secretRedactionService.buildSecretInventory(session.workspaceId)
+    const safeContent = secretRedactionService.redactForPublicStorage(content, secretInventory)
 
     // Store user message (with attachments if any) and bump lastMessageAt for sidebar ordering
     await Promise.all([
@@ -147,7 +164,7 @@ export const chatService = {
         data: {
           sessionId,
           role: 'user',
-          content,
+          content: safeContent,
           ...(attachments?.length ? { attachments } : {}),
         },
       }),
@@ -174,11 +191,11 @@ export const chatService = {
     }
 
     if (hasNonDocCapabilities || hasMentions) {
-      return this._sendWithAgentLoop(session, sessionId, content, emit, mentionedSlugs)
+      return this._sendWithAgentLoop(session, sessionId, safeContent, emit, secretInventory, mentionedSlugs)
     }
 
     // Use classic RAG flow for document-search-only workspaces
-    return this._sendWithRAG(session, sessionId, content, emit, documentIds)
+    return this._sendWithRAG(session, sessionId, safeContent, emit, secretInventory, documentIds)
   },
 
   /**
@@ -189,6 +206,7 @@ export const chatService = {
     sessionId: string,
     content: string,
     emit: SSEEmit,
+    inventory: SecretInventory,
     mentionedSlugs?: string[],
   ) {
     try {
@@ -206,6 +224,8 @@ export const chatService = {
       const result = await agentService.runAgentLoop(sessionId, content, session.workspaceId!, emit, {
         autoApprove: workspace.autoExecute,
         mentionedSlugs,
+        secretInventory: inventory,
+        historyIncludesCurrentUserMessage: true,
       })
 
       await prisma.chatSession.update({
@@ -236,6 +256,7 @@ export const chatService = {
     sessionId: string,
     content: string,
     emit: SSEEmit,
+    inventory: SecretInventory,
     documentIds?: string[],
   ) {
     emit('thinking', { message: 'Searching documents...' })
@@ -294,7 +315,7 @@ export const chatService = {
       { role: 'system', content: systemPrompt },
       { role: 'user', content },
     ])
-    const response = llmResponse.content
+    const response = secretRedactionService.redactForPublicStorage(llmResponse.content, inventory)
 
     recordTokenUsage(llmResponse.usage, sessionId, llm.providerId, llm.modelId)
 

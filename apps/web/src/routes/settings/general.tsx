@@ -4,6 +4,7 @@ import { ModelConfigCard } from './sections/model-config-card'
 import { ApiKeysSection } from './sections/api-keys-section'
 import { GoogleOAuthCard } from './sections/google-oauth-card'
 import { AutoExecuteCard } from './sections/auto-execute-card'
+import { SecretRedactionCard } from './sections/secret-redaction-card'
 import { TokenUsageCard } from './sections/token-usage-card'
 
 export function GeneralSettingsPage() {
@@ -16,6 +17,7 @@ export function GeneralSettingsPage() {
       <ApiKeysSection />
       <GoogleOAuthCard />
       <AutoExecuteCard />
+      <SecretRedactionCard />
       <TokenUsageCard />
     </div>
   )

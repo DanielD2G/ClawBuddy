@@ -82,7 +82,7 @@ const worker = new Worker<IngestionJobData>(
 
       // Fetch document once for workspaceId (instead of per-chunk)
       const document = await prisma.document.findUniqueOrThrow({ where: { id: documentId } })
-      const workspaceId = workspaceId
+      const workspaceId = document.workspaceId
 
       for (let i = 0; i < chunks.length; i += batchSize) {
         const batch = chunks.slice(i, i + batchSize)

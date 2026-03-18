@@ -30,6 +30,10 @@ import { toolDiscoveryService } from './tool-discovery.service.js'
 import type { ToolDefinition } from '../capabilities/types.js'
 import { stripNullBytes } from '../lib/sanitize.js'
 import { extractScreenshotBase64 } from '../lib/screenshot.js'
+import { decrypt, encrypt } from './crypto.service.js'
+import type { SecretInventory } from './secret-redaction.service.js'
+import { secretRedactionService } from './secret-redaction.service.js'
+import { buildConversationMessages } from './agent-message-builder.js'
 
 /** Tools exempt from the argument size guard (they have proper alternatives like sourcePath) */
 const SIZE_GUARD_EXEMPT = new Set(['generate_file', 'save_document', 'search_documents'])
@@ -238,115 +242,154 @@ function ensureLogDir() {
   }
 }
 
-/** Active session log file path (set per runAgentLoop / resumeAgentLoop call) */
-let activeSessionLogFile: string | null = null
+/**
+ * Per-session debug logger. Keeps log file path and inventory as instance state
+ * to avoid module-level mutable globals (which race across concurrent requests).
+ */
+interface SessionLogger {
+  debugLog(label: string, data?: unknown): void
+  logLLMRequest(messages: ChatMessage[], tools: LLMToolDefinition[], iteration: number): void
+  logLLMResponse(response: LLMResponse, durationMs: number, iteration: number): void
+  logToolResult(toolName: string, result: { output?: string; error?: string; exitCode?: number; durationMs: number }): void
+}
 
-function debugLog(label: string, data?: unknown) {
-  if (!DEBUG) return
-  const ts = new Date().toISOString().slice(11, 23)
-  const dataStr = data !== undefined
-    ? (typeof data === 'string' ? data : JSON.stringify(data, null, 2))
-    : ''
-  const line = dataStr ? `[Agent ${ts}] ${label} ${dataStr}` : `[Agent ${ts}] ${label}`
+function createSessionLogger(sessionId: string, inventory: SecretInventory): SessionLogger {
+  let logFile: string | null = null
+  if (DEBUG) {
+    ensureLogDir()
+    const dateStr = new Date().toISOString().slice(0, 10)
+    logFile = join(DEBUG_LOG_DIR, `${dateStr}_${sessionId}.log`)
+  }
 
-  console.debug(line)
+  function redact<T>(value: T): T {
+    return secretRedactionService.redactForPublicStorage(value as never, inventory) as T
+  }
 
-  // Also write to per-session log file
-  if (activeSessionLogFile) {
-    try {
-      appendFileSync(activeSessionLogFile, line + '\n')
-    } catch {
-      // ignore write errors — logging is best-effort
+  function writeLine(line: string) {
+    console.debug(line)
+    if (logFile) {
+      try { appendFileSync(logFile, line + '\n') } catch { /* ignore */ }
     }
+  }
+
+  function writeBlock(lines: string[]) {
+    if (logFile) {
+      try { appendFileSync(logFile, lines.join('\n') + '\n') } catch { /* ignore */ }
+    }
+  }
+
+  const logger: SessionLogger = {
+    debugLog(label, data) {
+      if (!DEBUG) return
+      const ts = new Date().toISOString().slice(11, 23)
+      const safeData = data !== undefined ? redact(data) : undefined
+      const dataStr = data !== undefined
+        ? (typeof safeData === 'string' ? safeData : JSON.stringify(safeData, null, 2))
+        : ''
+      writeLine(dataStr ? `[Agent ${ts}] ${label} ${dataStr}` : `[Agent ${ts}] ${label}`)
+    },
+
+    logLLMRequest(messages, tools, iteration) {
+      if (!DEBUG || !logFile) return
+      const safeMessages = redact(messages)
+      const safeTools = redact(tools)
+      const separator = `\n${'─'.repeat(80)}\n`
+      writeBlock([
+        separator,
+        `>>> LLM REQUEST (iteration ${iteration})`,
+        `>>> ${safeMessages.length} messages, ${safeTools.length} tools`,
+        separator,
+        '>>> SYSTEM PROMPT:',
+        getTextContent(safeMessages[0]?.content ?? '').slice(0, 5000),
+        separator,
+        '>>> TOOLS:',
+        safeTools.map((t) => `  - ${t.name}: ${t.description.slice(0, 120)}`).join('\n'),
+        separator,
+        '>>> MESSAGES (last 5):',
+        ...safeMessages.slice(-5).map((m) => {
+          const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
+          const preview = content.slice(0, 1000)
+          const toolCallsSummary = m.toolCalls?.map((tc) => `    [tool_call: ${tc.name}(${JSON.stringify(tc.arguments).slice(0, 200)})]`).join('\n') ?? ''
+          return `  [${m.role}${m.toolCallId ? ` toolCallId=${m.toolCallId}` : ''}] ${preview}${content.length > 1000 ? `... (${content.length} chars)` : ''}${toolCallsSummary ? '\n' + toolCallsSummary : ''}`
+        }),
+        separator,
+      ])
+    },
+
+    logLLMResponse(response, durationMs, iteration) {
+      if (!DEBUG || !logFile) return
+      const safeResponse = redact(response)
+      const separator = `\n${'─'.repeat(80)}\n`
+      writeBlock([
+        separator,
+        `<<< LLM RESPONSE (iteration ${iteration}, ${durationMs}ms)`,
+        `<<< finishReason: ${safeResponse.finishReason}`,
+        `<<< usage: ${safeResponse.usage ? `in=${safeResponse.usage.inputTokens} out=${safeResponse.usage.outputTokens} total=${safeResponse.usage.totalTokens}` : 'n/a'}`,
+        separator,
+        '<<< CONTENT:',
+        safeResponse.content || '(empty)',
+        ...(safeResponse.toolCalls?.length ? [
+          separator,
+          '<<< TOOL CALLS:',
+          ...safeResponse.toolCalls.map((tc) =>
+            `  - ${tc.name}(${JSON.stringify(tc.arguments, null, 2)})`
+          ),
+        ] : []),
+        separator,
+      ])
+    },
+
+    logToolResult(toolName, result) {
+      if (!DEBUG || !logFile) return
+      const safeResult = redact(result)
+      writeBlock([
+        `  ┌── TOOL RESULT: ${toolName} (${safeResult.durationMs}ms, exit=${safeResult.exitCode ?? 'n/a'})`,
+        safeResult.error ? `  │ ERROR: ${safeResult.error}` : '',
+        `  │ OUTPUT (${(safeResult.output?.length ?? 0)} chars):`,
+        `  │ ${(safeResult.output ?? '').slice(0, 2000)}${(safeResult.output?.length ?? 0) > 2000 ? `\n  │ ... (truncated)` : ''}`,
+        `  └──`,
+      ].filter(Boolean))
+    },
+  }
+
+  logger.debugLog('═══ Session log initialized ═══')
+  return logger
+}
+
+function redactAssistantToolCalls(toolCalls: ToolCall[] | undefined, inventory: SecretInventory): ToolCall[] | undefined {
+  return toolCalls?.map((toolCall) => ({
+    ...toolCall,
+    arguments: secretRedactionService.redactForPublicStorage(toolCall.arguments, inventory),
+  }))
+}
+
+function buildPublicAgentState(state: AgentState, inventory: SecretInventory) {
+  return {
+    iteration: state.iteration,
+    linuxUser: state.linuxUser ?? null,
+    workspaceId: state.workspaceId,
+    sessionId: state.sessionId,
+    pendingToolCalls: state.pendingToolCalls.map((toolCall) => ({
+      id: toolCall.id,
+      name: toolCall.name,
+      arguments: secretRedactionService.redactForPublicStorage(toolCall.arguments, inventory),
+    })),
   }
 }
 
-/**
- * Initialize session log file. Creates a file named by sessionId + timestamp.
- * Returns the file path for reference.
- */
-function initSessionLog(sessionId: string): void {
-  if (!DEBUG) return
-  ensureLogDir()
-  const dateStr = new Date().toISOString().slice(0, 10)
-  activeSessionLogFile = join(DEBUG_LOG_DIR, `${dateStr}_${sessionId}.log`)
-  debugLog('═══ Session log initialized ═══')
+function serializeEncryptedAgentState(state: AgentState): string {
+  return encrypt(JSON.stringify(state))
 }
 
-/**
- * Log the full LLM request (messages + tools) to the session log file.
- */
-function logLLMRequest(messages: ChatMessage[], tools: LLMToolDefinition[], iteration: number): void {
-  if (!DEBUG || !activeSessionLogFile) return
-  const separator = `\n${'─'.repeat(80)}\n`
-  const lines = [
-    separator,
-    `>>> LLM REQUEST (iteration ${iteration})`,
-    `>>> ${messages.length} messages, ${tools.length} tools`,
-    separator,
-    '>>> SYSTEM PROMPT:',
-    getTextContent(messages[0]?.content ?? '').slice(0, 5000),
-    separator,
-    '>>> TOOLS:',
-    tools.map((t) => `  - ${t.name}: ${t.description.slice(0, 120)}`).join('\n'),
-    separator,
-    '>>> MESSAGES (last 5):',
-    ...messages.slice(-5).map((m) => {
-      const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
-      const preview = content.slice(0, 1000)
-      const toolCallsSummary = m.toolCalls?.map((tc) => `    [tool_call: ${tc.name}(${JSON.stringify(tc.arguments).slice(0, 200)})]`).join('\n') ?? ''
-      return `  [${m.role}${m.toolCallId ? ` toolCallId=${m.toolCallId}` : ''}] ${preview}${content.length > 1000 ? `... (${content.length} chars)` : ''}${toolCallsSummary ? '\n' + toolCallsSummary : ''}`
-    }),
-    separator,
-  ]
-  try {
-    appendFileSync(activeSessionLogFile, lines.join('\n') + '\n')
-  } catch { /* ignore */ }
-}
-
-/**
- * Log the full LLM response to the session log file.
- */
-function logLLMResponse(response: LLMResponse, durationMs: number, iteration: number): void {
-  if (!DEBUG || !activeSessionLogFile) return
-  const separator = `\n${'─'.repeat(80)}\n`
-  const lines = [
-    separator,
-    `<<< LLM RESPONSE (iteration ${iteration}, ${durationMs}ms)`,
-    `<<< finishReason: ${response.finishReason}`,
-    `<<< usage: ${response.usage ? `in=${response.usage.inputTokens} out=${response.usage.outputTokens} total=${response.usage.totalTokens}` : 'n/a'}`,
-    separator,
-    '<<< CONTENT:',
-    response.content || '(empty)',
-    ...(response.toolCalls?.length ? [
-      separator,
-      '<<< TOOL CALLS:',
-      ...response.toolCalls.map((tc) =>
-        `  - ${tc.name}(${JSON.stringify(tc.arguments, null, 2)})`
-      ),
-    ] : []),
-    separator,
-  ]
-  try {
-    appendFileSync(activeSessionLogFile, lines.join('\n') + '\n')
-  } catch { /* ignore */ }
-}
-
-/**
- * Log a tool execution result to the session log file.
- */
-function logToolResult(toolName: string, result: { output?: string; error?: string; exitCode?: number; durationMs: number }): void {
-  if (!DEBUG || !activeSessionLogFile) return
-  const lines = [
-    `  ┌── TOOL RESULT: ${toolName} (${result.durationMs}ms, exit=${result.exitCode ?? 'n/a'})`,
-    result.error ? `  │ ERROR: ${result.error}` : '',
-    `  │ OUTPUT (${(result.output?.length ?? 0)} chars):`,
-    `  │ ${(result.output ?? '').slice(0, 2000)}${(result.output?.length ?? 0) > 2000 ? `\n  │ ... (truncated)` : ''}`,
-    `  └──`,
-  ].filter(Boolean)
-  try {
-    appendFileSync(activeSessionLogFile, lines.join('\n') + '\n')
-  } catch { /* ignore */ }
+function deserializeAgentState(session: { agentState: Prisma.JsonValue | null; agentStateEncrypted?: string | null }): AgentState | null {
+  if (session.agentStateEncrypted) {
+    try {
+      return JSON.parse(decrypt(session.agentStateEncrypted)) as AgentState
+    } catch {
+      // Fall through to legacy plain JSON state below.
+    }
+  }
+  return session.agentState as unknown as AgentState | null
 }
 
 interface AgentResult {
@@ -379,6 +422,12 @@ interface AgentState {
   discoveredCapabilitySlugs?: string[]
 }
 
+type ExecutableCapability = {
+  slug: string
+  toolDefinitions: unknown
+  skillType?: string | null
+}
+
 export const agentService = {
   /**
    * Run the agent loop with tool calling and SSE streaming.
@@ -388,10 +437,18 @@ export const agentService = {
     userContent: string,
     workspaceId: string,
     emit?: SSEEmit,
-    options?: { autoApprove?: boolean; mentionedSlugs?: string[] },
+    options?: {
+      autoApprove?: boolean
+      mentionedSlugs?: string[]
+      secretInventory?: SecretInventory
+      historyIncludesCurrentUserMessage?: boolean
+    },
   ): Promise<AgentResult> {
-    initSessionLog(sessionId)
-    debugLog('runAgentLoop START', { sessionId, workspaceId, userContent: userContent.slice(0, 200) })
+    const inventory = options?.secretInventory
+      ?? await secretRedactionService.buildSecretInventory(workspaceId)
+    const safeUserContent = secretRedactionService.redactForPublicStorage(userContent, inventory)
+    const log = createSessionLogger(sessionId, inventory)
+    log.debugLog('runAgentLoop START', { sessionId, workspaceId, userContent: safeUserContent.slice(0, 200) })
     emit?.('thinking', { message: 'Thinking...' })
 
     // Get workspace-scoped capabilities
@@ -416,7 +473,7 @@ export const agentService = {
       const ctx = toolDiscoveryService.buildDiscoveryContext(capabilities, options?.mentionedSlugs)
       tools = ctx.tools
       systemPrompt = ctx.systemPrompt
-      debugLog('Discovery mode ACTIVE', {
+      log.debugLog('Discovery mode ACTIVE', {
         capabilityCount: capabilities.length,
         loadedTools: tools.map((t) => t.name),
         alwaysOnSlugs: ctx.alwaysOnSlugs,
@@ -426,7 +483,7 @@ export const agentService = {
       const enabledSlugs = capabilities
         .map((c) => c.slug)
         .filter((slug) => !ALWAYS_ON_CAPABILITY_SLUGS.includes(slug))
-      const preflightResults = await toolDiscoveryService.search(userContent, enabledSlugs, PREFLIGHT_DISCOVERY_SCORE_THRESHOLD)
+      const preflightResults = await toolDiscoveryService.search(safeUserContent, enabledSlugs, PREFLIGHT_DISCOVERY_SCORE_THRESHOLD)
       if (preflightResults.length) {
         for (const cap of preflightResults) {
           discoveredCapabilities.push({
@@ -446,7 +503,7 @@ export const agentService = {
         const capPrompts = preflightResults.map((c) => `## ${c.name}\n${c.instructions}`).join('\n\n')
         systemPrompt += `\n\n${capPrompts}`
         discoveryCallCount++
-        debugLog('Pre-flight discovery loaded', {
+        log.debugLog('Pre-flight discovery loaded', {
           slugs: preflightResults.map((c) => c.slug),
           toolsAdded: preflightResults.flatMap((c) => c.tools.map((t) => t.name)),
         })
@@ -478,7 +535,7 @@ export const agentService = {
       }
     }
 
-    debugLog('Capabilities loaded', {
+    log.debugLog('Capabilities loaded', {
       count: capabilities.length,
       slugs: capabilities.map((c) => c.slug),
       toolCount: tools.length,
@@ -495,7 +552,7 @@ export const agentService = {
       orderBy: { createdAt: 'asc' },
     })
 
-    debugLog('History loaded', { messageCount: history.length })
+    log.debugLog('History loaded', { messageCount: history.length })
 
     // Context compression — summarize older messages if context is too large
     const sessionData = await prisma.chatSession.findUniqueOrThrow({
@@ -524,40 +581,23 @@ export const agentService = {
       })
       const summarizedCount = history.length - compressed.recentMessages.length
       emit?.('compressing', { status: 'done', summarizedCount, keptCount: compressed.recentMessages.length })
-      debugLog('Context compressed', { summarizedCount, keptCount: compressed.recentMessages.length })
+      log.debugLog('Context compressed', { summarizedCount, keptCount: compressed.recentMessages.length })
     } else {
       emit?.('compressing', { status: 'skipped' })
     }
 
-    // Build message list, merging consecutive messages with the same role
-    // (Gemini rejects consecutive user messages from e.g. failed cron runs)
-    const rawMessages: ChatMessage[] = [
-      { role: 'system', content: systemPrompt },
-      ...(compressed.summary
-        ? [
-            { role: 'user' as const, content: `[Previous conversation summary]\n${compressed.summary}` },
-            { role: 'assistant' as const, content: 'Understood, I have context from our earlier conversation.' },
-          ]
-        : []),
-      ...compressed.recentMessages.map((m) => ({
-        role: m.role as ChatMessage['role'],
-        content: m.content,
+    const messages = buildConversationMessages({
+      systemPrompt,
+      summary: compressed.summary,
+      recentMessages: compressed.recentMessages.map((message) => ({
+        role: message.role as ChatMessage['role'],
+        content: message.content,
       })),
-      { role: 'user', content: userContent },
-    ]
-    // Merge consecutive messages with the same role
-    // (Gemini rejects consecutive same-role messages; also consolidates per-iteration assistant messages for LLM)
-    const messages: ChatMessage[] = []
-    for (const msg of rawMessages) {
-      const prev = messages[messages.length - 1]
-      if (prev && prev.role === msg.role && (msg.role === 'user' || msg.role === 'assistant')) {
-        ;(prev as { content: string }).content += '\n\n' + getTextContent(msg.content)
-      } else {
-        messages.push({ ...msg })
-      }
-    }
+      currentUserContent: safeUserContent,
+      historyIncludesCurrentUserMessage: options?.historyIncludesCurrentUserMessage,
+    })
 
-    debugLog('Messages prepared', {
+    log.debugLog('Messages prepared', {
       totalMessages: messages.length,
       systemPromptLength: systemPrompt.length,
     })
@@ -572,7 +612,7 @@ export const agentService = {
     const allToolNames = tools.map((t) => t.name)
     const needsSandbox = useDiscovery || toolExecutorService.needsSandbox(allToolNames)
 
-    debugLog('Sandbox check', { needsSandbox, allToolNames })
+    log.debugLog('Sandbox check', { needsSandbox, allToolNames })
 
     let linuxUser: string | undefined
 
@@ -594,6 +634,11 @@ export const agentService = {
         Object.keys(mergedEnvVars).length ? mergedEnvVars : undefined,
       )
       linuxUser = await sandboxService.ensureConversationUser(workspaceId, sessionId)
+      const secretEnvRefs = [...new Set(
+        inventory.references
+          .filter((ref) => ref.transport === 'env')
+          .map((ref) => ref.alias),
+      )].sort()
 
       // Inject sandbox context into system prompt so the LLM knows writable paths
       const sandboxContext = `\n\n## Your Sandbox Environment\n` +
@@ -601,7 +646,10 @@ export const agentService = {
         `- Working directory (cwd): /workspace/users/${linuxUser}/ — all relative paths resolve here\n` +
         `- Shared outputs: /workspace/.outputs/ (writable)\n` +
         `- /workspace/ root: READ-ONLY — do not write files there directly\n` +
-        `- When using sourcePath in generate_file, use the full path: /workspace/users/${linuxUser}/filename or /workspace/.outputs/filename`
+        `- When using sourcePath in generate_file, use the full path: /workspace/users/${linuxUser}/filename or /workspace/.outputs/filename` +
+        (inventory.enabled && secretEnvRefs.length
+          ? `\n- Available secret env references (values hidden): ${secretEnvRefs.join(', ')}`
+          : '')
       ;(messages[0] as { content: string }).content += sandboxContext
     }
 
@@ -613,30 +661,32 @@ export const agentService = {
 
     const maxIterations = await settingsService.getMaxAgentIterations()
     for (let i = 0; i < maxIterations; i++) {
-      debugLog(`── Iteration ${i + 1}/${maxIterations} ──`)
+      log.debugLog(`── Iteration ${i + 1}/${maxIterations} ──`)
       emit?.('thinking', { message: 'Thinking...' })
 
       // Prune old tool results to reduce context size
       const prunedCount = pruneOldToolResults(messages, i)
       if (prunedCount > 0) {
-        debugLog('Pruned old tool results', { prunedCount, iteration: i + 1 })
+        log.debugLog('Pruned old tool results', { prunedCount, iteration: i + 1 })
       }
 
-      logLLMRequest(messages, tools, i + 1)
+      log.logLLMRequest(messages, tools, i + 1)
       const llmStart = Date.now()
       const response = await llm.chatWithTools(messages, { tools })
       const llmMs = Date.now() - llmStart
-      logLLMResponse(response, llmMs, i + 1)
+      log.logLLMResponse(response, llmMs, i + 1)
 
       await recordTokenUsage(response.usage, sessionId, llm.providerId, llm.modelId)
+      const safeResponseContent = secretRedactionService.redactForPublicStorage(response.content || '', inventory)
+      const safeResponseToolCalls = redactAssistantToolCalls(response.toolCalls, inventory)
 
-      debugLog('LLM response', {
+      log.debugLog('LLM response', {
         durationMs: llmMs,
         finishReason: response.finishReason,
-        contentLength: response.content?.length ?? 0,
-        contentPreview: response.content?.slice(0, 300) || '(empty)',
-        toolCallCount: response.toolCalls?.length ?? 0,
-        toolCalls: response.toolCalls?.map((tc) => ({
+        contentLength: safeResponseContent.length,
+        contentPreview: safeResponseContent.slice(0, 300) || '(empty)',
+        toolCallCount: safeResponseToolCalls?.length ?? 0,
+        toolCalls: safeResponseToolCalls?.map((tc) => ({
           id: tc.id,
           name: tc.name,
           args: JSON.stringify(tc.arguments).slice(0, 200),
@@ -650,7 +700,7 @@ export const agentService = {
           const argsSize = argsStr.length
           const commandArg = tc.arguments?.command ?? tc.arguments?.code ?? tc.arguments?.content
           const commandSize = typeof commandArg === 'string' ? commandArg.length : 0
-          debugLog(`[TOOL_SIZE] ${tc.name}`, {
+          log.debugLog(`[TOOL_SIZE] ${tc.name}`, {
             totalArgsChars: argsSize,
             commandChars: commandSize,
             linesInCommand: typeof commandArg === 'string' ? commandArg.split('\n').length : 0,
@@ -658,7 +708,7 @@ export const agentService = {
             preview: argsStr.slice(0, 300),
           })
           if (argsSize > LARGE_TOOL_ARG_THRESHOLD) {
-            debugLog(`[TOOL_SIZE_WARN] ${tc.name} generated ${argsSize} chars (${Math.round(argsSize / 1000)}KB) — possible data embedding`, {
+            log.debugLog(`[TOOL_SIZE_WARN] ${tc.name} generated ${argsSize} chars (${Math.round(argsSize / 1000)}KB) — possible data embedding`, {
               firstLines: typeof commandArg === 'string' ? commandArg.split('\n').slice(0, 5).join('\n') : undefined,
               lastLines: typeof commandArg === 'string' ? commandArg.split('\n').slice(-3).join('\n') : undefined,
             })
@@ -668,12 +718,12 @@ export const agentService = {
 
       // No tool calls — we're done
       if (response.finishReason === 'stop' || !response.toolCalls?.length) {
-        debugLog('Agent loop DONE (no more tool calls)', {
+        log.debugLog('Agent loop DONE (no more tool calls)', {
           totalToolExecutions: toolExecutionLog.length,
-          finalContentLength: response.content?.length ?? 0,
+          finalContentLength: safeResponseContent.length,
         })
-        emit?.('content', { text: response.content })
-        const finalContent = (accumulatedContent + (response.content || '')).trim()
+        emit?.('content', { text: safeResponseContent })
+        const finalContent = (accumulatedContent + safeResponseContent).trim()
 
         // Save final assistant message to DB
         try {
@@ -681,12 +731,12 @@ export const agentService = {
             data: {
               sessionId,
               role: 'assistant',
-              content: stripNullBytes(response.content || ''),
+              content: stripNullBytes(safeResponseContent),
               ...(collectedSources.length ? { sources: collectedSources } : {}),
             },
           })
           lastSavedMessageId = finalMsg.id
-          debugLog('Saved final message', { messageId: finalMsg.id })
+          log.debugLog('Saved final message', { messageId: finalMsg.id })
         } catch (saveErr) {
           console.error('[Agent] Failed to save final message:', saveErr)
         }
@@ -700,16 +750,16 @@ export const agentService = {
       }
 
       // Emit intermediate content so the user sees what the LLM is explaining between tool calls
-      if (response.content?.trim()) {
-        emit?.('content', { text: response.content })
-        accumulatedContent += response.content + '\n\n'
+      if (safeResponseContent.trim()) {
+        emit?.('content', { text: safeResponseContent })
+        accumulatedContent += safeResponseContent + '\n\n'
       }
 
       // Add assistant message with tool calls to conversation
       messages.push({
         role: 'assistant',
-        content: response.content,
-        toolCalls: response.toolCalls,
+        content: safeResponseContent,
+        toolCalls: safeResponseToolCalls,
       })
 
       // ── Helper: resolve capability for a tool call ──
@@ -721,27 +771,27 @@ export const agentService = {
           return cap.toolDefinitions?.some((t) => t.name === toolCall.name)
         })
         return {
-          matchedCapability: matched,
+          matchedCapability: matched as ExecutableCapability | undefined,
           capabilitySlug: matched?.slug ?? (toolCall.name === 'discover_tools' ? 'tool-discovery' : 'unknown'),
         }
       }
 
       // ── Helper: run pre-checks (discovery, permission, size) — returns null if OK, or stops the loop ──
-      const preCheckTool = async (toolCall: ToolCall, capabilitySlug: string, matchedCapability: typeof capabilities[0] | undefined) => {
+      const preCheckTool = async (toolCall: ToolCall, capabilitySlug: string, matchedCapability: ExecutableCapability | undefined, publicToolArgs: Record<string, unknown>) => {
         // Discovery mode: reject undiscovered tools
         if (useDiscovery && !tools.some((t) => t.name === toolCall.name)) {
           const rejection = `Tool "${toolCall.name}" is not yet available. Call discover_tools first to find and load the appropriate tools for your task.`
-          debugLog(`[REJECTED] "${toolCall.name}" — not in available tools (discovery mode)`)
-          emit?.('tool_start', { toolName: toolCall.name, capabilitySlug, input: toolCall.arguments })
+          log.debugLog(`[REJECTED] "${toolCall.name}" — not in available tools (discovery mode)`)
+          emit?.('tool_start', { toolName: toolCall.name, capabilitySlug, input: publicToolArgs })
           emit?.('tool_result', { toolName: toolCall.name, error: rejection, exitCode: 1, durationMs: 0 })
-          toolExecutionLog.push({ toolName: toolCall.name, capabilitySlug, input: toolCall.arguments, error: rejection, durationMs: 0 })
+          toolExecutionLog.push({ toolName: toolCall.name, capabilitySlug, input: publicToolArgs, error: rejection, durationMs: 0 })
           messages.push({ role: 'tool', toolCallId: toolCall.id, content: rejection })
           return 'rejected'
         }
 
         // Permission check
         const isAllowed = permissionService.isToolAllowed(toolCall, allowRules)
-        debugLog(`Tool "${toolCall.name}" permission`, { isAllowed, capabilitySlug })
+        log.debugLog(`Tool "${toolCall.name}" permission`, { isAllowed, capabilitySlug })
 
         if (!isAllowed && !options?.autoApprove) {
           const approval = await prisma.toolApproval.create({
@@ -749,26 +799,30 @@ export const agentService = {
               chatSessionId: sessionId,
               toolName: toolCall.name,
               capabilitySlug,
-              input: JSON.parse(JSON.stringify(toolCall.arguments)),
+              input: publicToolArgs as Prisma.InputJsonValue,
               toolCallId: toolCall.id,
             },
           })
-          emit?.('approval_required', { approvalId: approval.id, toolName: toolCall.name, capabilitySlug, input: toolCall.arguments })
+          emit?.('approval_required', { approvalId: approval.id, toolName: toolCall.name, capabilitySlug, input: publicToolArgs })
 
           const agentState: AgentState = {
-            messages, iteration: i, pendingToolCalls: response.toolCalls, completedToolResults: [],
+            messages, iteration: i, pendingToolCalls: response.toolCalls ?? [], completedToolResults: [],
             linuxUser, toolExecutionLog, workspaceId, sessionId,
             discoveredCapabilitySlugs: discoveredCapabilities.map((c) => c.slug),
           }
           await prisma.chatSession.update({
             where: { id: sessionId },
-            data: { agentState: JSON.parse(JSON.stringify(agentState)), agentStatus: 'awaiting_approval' },
+            data: {
+              agentState: buildPublicAgentState(agentState, inventory) as Prisma.InputJsonValue,
+              agentStateEncrypted: serializeEncryptedAgentState(agentState),
+              agentStatus: 'awaiting_approval',
+            },
           })
           const pendingApprovals = await prisma.toolApproval.findMany({
             where: { chatSessionId: sessionId, status: 'pending' },
             select: { id: true },
           })
-          debugLog('Agent PAUSED — awaiting approval', { pendingCount: pendingApprovals.length })
+          log.debugLog('Agent PAUSED — awaiting approval', { pendingCount: pendingApprovals.length })
           emit?.('awaiting_approval', { approvalIds: pendingApprovals.map((a) => a.id) })
           return 'paused'
         }
@@ -776,7 +830,7 @@ export const agentService = {
         // Size guard
         const sizeRejection = checkToolArgSize(toolCall)
         if (sizeRejection) {
-          debugLog(`[BLOCKED] "${toolCall.name}" — args too large`, { size: JSON.stringify(toolCall.arguments).length })
+          log.debugLog(`[BLOCKED] "${toolCall.name}" — args too large`, { size: JSON.stringify(toolCall.arguments).length })
           emit?.('tool_start', { toolName: toolCall.name, capabilitySlug, input: { _blocked: true } })
           emit?.('tool_result', { toolName: toolCall.name, error: sizeRejection, exitCode: 1, durationMs: 0 })
           toolExecutionLog.push({ toolName: toolCall.name, capabilitySlug, input: { _blocked: true }, error: sizeRejection, durationMs: 0 })
@@ -788,17 +842,18 @@ export const agentService = {
       }
 
       // ── Helper: execute a single tool ──
-      const executeSingleTool = async (toolCall: ToolCall, capabilitySlug: string, matchedCapability: typeof capabilities[0] | undefined) => {
-        debugLog(`Executing tool "${toolCall.name}"`, { input: JSON.stringify(toolCall.arguments).slice(0, 500) })
+      const executeSingleTool = async (toolCall: ToolCall, capabilitySlug: string, matchedCapability: ExecutableCapability | undefined, publicToolArgs: Record<string, unknown>) => {
+        log.debugLog(`Executing tool "${toolCall.name}"`, { input: JSON.stringify(publicToolArgs).slice(0, 500) })
         const isDiscoveryTool = toolCall.name === 'discover_tools'
         if (isDiscoveryTool) emit?.('thinking', { message: 'Looking for the right tools...' })
-        emit?.('tool_start', { toolName: toolCall.name, capabilitySlug, input: toolCall.arguments })
+        emit?.('tool_start', { toolName: toolCall.name, capabilitySlug, input: publicToolArgs })
 
         const toolStart = Date.now()
         const result = await toolExecutorService.execute(toolCall, capabilitySlug, {
           workspaceId,
           chatSessionId: sessionId,
           linuxUser: linuxUser ?? '',
+          secretInventory: inventory,
           capability: matchedCapability ? {
             slug: matchedCapability.slug,
             skillType: (matchedCapability as Record<string, unknown>).skillType as string | null,
@@ -806,40 +861,41 @@ export const agentService = {
           } : undefined,
         })
 
-        debugLog(`Tool "${toolCall.name}" result`, {
+        log.debugLog(`Tool "${toolCall.name}" result`, {
           durationMs: Date.now() - toolStart,
           outputLength: result.output?.length ?? 0,
           outputPreview: result.output?.slice(0, 300) || '(empty)',
           error: result.error || null,
           exitCode: result.exitCode,
         })
-        logToolResult(toolCall.name, result)
+        log.logToolResult(toolCall.name, result)
         return result
       }
 
       // ── Execute tool calls (parallel-safe tools run concurrently) ──
       // First pass: pre-check all tools, collect those ready to execute
-      type ReadyTool = { toolCall: ToolCall; capabilitySlug: string; matchedCapability: typeof capabilities[0] | undefined }
+      type ReadyTool = { toolCall: ToolCall; capabilitySlug: string; matchedCapability: ExecutableCapability | undefined; publicToolArgs: Record<string, unknown> }
       const readyTools: ReadyTool[] = []
       let paused = false
 
       for (const toolCall of response.toolCalls) {
         const { matchedCapability, capabilitySlug } = resolveCapability(toolCall)
-        const checkResult = await preCheckTool(toolCall, capabilitySlug, matchedCapability)
+        const publicToolArgs = secretRedactionService.redactForPublicStorage(toolCall.arguments, inventory)
+        const checkResult = await preCheckTool(toolCall, capabilitySlug, matchedCapability, publicToolArgs)
         if (checkResult === 'paused') {
           paused = true
           break
         }
         if (checkResult === 'rejected') continue
-        readyTools.push({ toolCall, capabilitySlug, matchedCapability })
+        readyTools.push({ toolCall, capabilitySlug, matchedCapability, publicToolArgs })
       }
 
       if (paused) {
         // Save the intermediate content before pausing for approval
-        if (response.content?.trim()) {
+        if (safeResponseContent.trim()) {
           try {
             const pauseMsg = await prisma.chatMessage.create({
-              data: { sessionId, role: 'assistant', content: stripNullBytes(response.content) },
+              data: { sessionId, role: 'assistant', content: stripNullBytes(safeResponseContent) },
             })
             lastSavedMessageId = pauseMsg.id
           } catch { /* best effort */ }
@@ -864,14 +920,14 @@ export const agentService = {
         if (batch.length === 0) return
 
         const results = parallel && batch.length > 1
-          ? await Promise.all(batch.map((t) => executeSingleTool(t.toolCall, t.capabilitySlug, t.matchedCapability)))
+          ? await Promise.all(batch.map((t) => executeSingleTool(t.toolCall, t.capabilitySlug, t.matchedCapability, t.publicToolArgs)))
           : []
 
         for (let idx = 0; idx < batch.length; idx++) {
-          const { toolCall, capabilitySlug } = batch[idx]
+          const { toolCall, capabilitySlug, publicToolArgs } = batch[idx]
           const result = parallel && batch.length > 1
             ? results[idx]
-            : await executeSingleTool(toolCall, capabilitySlug, batch[idx].matchedCapability)
+            : await executeSingleTool(toolCall, capabilitySlug, batch[idx].matchedCapability, publicToolArgs)
 
           // ── Post-process: SSE events, discovery injection, message push ──
           const isDiscoveryTool = toolCall.name === 'discover_tools'
@@ -921,7 +977,7 @@ export const agentService = {
                 if (newCaps.length < parsed.discovered.length) {
                   result.output = JSON.stringify({ ...parsed, discovered: newCaps })
                 }
-                debugLog('Tools dynamically injected', {
+                log.debugLog('Tools dynamically injected', {
                   newSlugs: newCaps.map((c: { slug: string }) => c.slug),
                   skippedDuplicates: parsed.discovered.length - newCaps.length,
                   totalTools: tools.length,
@@ -931,7 +987,7 @@ export const agentService = {
           }
 
           toolExecutionLog.push({
-            toolName: toolCall.name, capabilitySlug, input: toolCall.arguments,
+            toolName: toolCall.name, capabilitySlug, input: publicToolArgs,
             output: result.output || undefined, error: result.error, exitCode: result.exitCode, durationMs: result.durationMs,
           })
           if (result.executionId) iterationExecutionIds.push(result.executionId)
@@ -953,20 +1009,20 @@ export const agentService = {
 
       // Execute parallel-safe tools first (concurrently), then sequential ones
       if (parallelBatch.length > 1) {
-        debugLog('Executing parallel batch', { tools: parallelBatch.map((t) => t.toolCall.name) })
+        log.debugLog('Executing parallel batch', { tools: parallelBatch.map((t) => t.toolCall.name) })
       }
       await executeAndProcess(parallelBatch, true)
       await executeAndProcess(sequentialBatch, false)
 
       // ── Per-iteration DB persistence: save this iteration's assistant message ──
       try {
-        const iterContent = response.content || ''
+        const iterContent = safeResponseContent
         const allIterTools = [...readyTools]
         // Also include rejected tools from pre-check that were logged
         const iterToolCalls = allIterTools.map((rt) => ({
           name: rt.toolCall.name,
           capability: rt.capabilitySlug,
-          input: rt.toolCall.arguments,
+          input: rt.publicToolArgs,
         }))
 
         // Build contentBlocks for THIS iteration
@@ -1016,13 +1072,13 @@ export const agentService = {
           })
         }
 
-        debugLog('Saved iteration message', { messageId: iterMsg.id, toolCount: allIterTools.length, executionIds: iterationExecutionIds.length })
+        log.debugLog('Saved iteration message', { messageId: iterMsg.id, toolCount: allIterTools.length, executionIds: iterationExecutionIds.length })
       } catch (saveErr) {
         console.error('[Agent] Failed to save iteration message:', saveErr)
       }
     }
 
-    debugLog('Agent loop DONE (max iterations reached)', { totalToolExecutions: toolExecutionLog.length })
+    log.debugLog('Agent loop DONE (max iterations reached)', { totalToolExecutions: toolExecutionLog.length })
 
     const maxIterContent =
       'I reached the maximum number of tool-calling iterations. Here is what I found so far based on the tool outputs above.'
@@ -1050,15 +1106,17 @@ export const agentService = {
   async resumeAgentLoop(
     sessionId: string,
     emit?: SSEEmit,
+    inventoryArg?: SecretInventory,
   ): Promise<AgentResult> {
-    initSessionLog(sessionId)
-    debugLog('resumeAgentLoop START', { sessionId })
-
     const session = await prisma.chatSession.findUniqueOrThrow({
       where: { id: sessionId },
     })
+    const inventory = inventoryArg
+      ?? await secretRedactionService.buildSecretInventory(session.workspaceId)
+    const log = createSessionLogger(sessionId, inventory)
+    log.debugLog('resumeAgentLoop START', { sessionId })
 
-    const state = session.agentState as unknown as AgentState | null
+    const state = deserializeAgentState(session)
     if (!state) {
       throw new Error('No agent state to resume')
     }
@@ -1069,7 +1127,7 @@ export const agentService = {
       orderBy: { createdAt: 'asc' },
     })
 
-    debugLog('Resuming with approvals', {
+    log.debugLog('Resuming with approvals', {
       totalApprovals: approvals.length,
       decisions: approvals.map((a) => ({ tool: a.toolName, status: a.status })),
       pendingToolCalls: state.pendingToolCalls.map((tc) => tc.name),
@@ -1084,7 +1142,7 @@ export const agentService = {
     // Clear agent state
     await prisma.chatSession.update({
       where: { id: sessionId },
-      data: { agentState: Prisma.DbNull, agentStatus: 'running' },
+      data: { agentState: Prisma.DbNull, agentStateEncrypted: null, agentStatus: 'running' },
     })
 
     const { messages, toolExecutionLog, workspaceId, linuxUser } = state
@@ -1102,7 +1160,7 @@ export const agentService = {
         .filter((tc) => approvals.find((a) => a.toolCallId === tc.id)?.status === 'denied')
         .map((tc) => tc.name)
 
-      debugLog('Agent STOPPED — tool(s) denied', { deniedNames })
+      log.debugLog('Agent STOPPED — tool(s) denied', { deniedNames })
 
       await prisma.toolApproval.deleteMany({
         where: { chatSessionId: sessionId },
@@ -1137,6 +1195,7 @@ export const agentService = {
     // Process approved tool calls
     const resumeExecutionIds: string[] = []
     for (const toolCall of state.pendingToolCalls) {
+      const publicToolArgs = secretRedactionService.redactForPublicStorage(toolCall.arguments, inventory)
       const approval = approvals.find((a) => a.toolCallId === toolCall.id)
       const resumeMatchedCap = resumeCapabilities.find((cap) => {
         const defs = cap.toolDefinitions as Array<{ name: string }>
@@ -1148,13 +1207,14 @@ export const agentService = {
       if (isDiscoveryToolResume) {
         emit?.('thinking', { message: 'Looking for the right tools...' })
       } else {
-        emit?.('tool_start', { toolName: toolCall.name, capabilitySlug, input: toolCall.arguments })
+        emit?.('tool_start', { toolName: toolCall.name, capabilitySlug, input: publicToolArgs })
       }
 
       const result = await toolExecutorService.execute(toolCall, capabilitySlug, {
         workspaceId,
         chatSessionId: sessionId,
         linuxUser: linuxUser ?? '',
+        secretInventory: inventory,
         capability: resumeMatchedCap ? {
           slug: resumeMatchedCap.slug,
           skillType: (resumeMatchedCap as Record<string, unknown>).skillType as string | null,
@@ -1162,7 +1222,7 @@ export const agentService = {
         } : undefined,
       })
 
-      logToolResult(toolCall.name, result)
+      log.logToolResult(toolCall.name, result)
       if (!isDiscoveryToolResume) {
         const resumeSsePayload = prepareToolResultForSSE(toolCall.name, result)
         emit?.('tool_result', {
@@ -1177,7 +1237,7 @@ export const agentService = {
       toolExecutionLog.push({
         toolName: toolCall.name,
         capabilitySlug,
-        input: toolCall.arguments,
+        input: publicToolArgs,
         output: result.output || undefined,
         error: result.error,
         exitCode: result.exitCode,
@@ -1209,7 +1269,7 @@ export const agentService = {
         const approvedToolCalls = state.pendingToolCalls.map((tc) => ({
           name: tc.name,
           capability: approvals.find((a) => a.toolCallId === tc.id)?.capabilitySlug ?? 'unknown',
-          input: tc.arguments,
+          input: secretRedactionService.redactForPublicStorage(tc.arguments, inventory),
         }))
         const approvedBlocks: Array<{ type: 'tool'; toolIndex: number }> = state.pendingToolCalls.map((_, idx) => ({
           type: 'tool' as const, toolIndex: idx,
@@ -1269,22 +1329,24 @@ export const agentService = {
       // Prune old tool results to reduce context size
       const prunedCount = pruneOldToolResults(messages, i)
       if (prunedCount > 0) {
-        debugLog('Pruned old tool results (resume)', { prunedCount, iteration: i + 1 })
+        log.debugLog('Pruned old tool results (resume)', { prunedCount, iteration: i + 1 })
       }
 
-      logLLMRequest(messages, tools, i + 1)
+      log.logLLMRequest(messages, tools, i + 1)
       const llmStart = Date.now()
       const response = await llm.chatWithTools(messages, { tools })
       const llmMs = Date.now() - llmStart
-      logLLMResponse(response, llmMs, i + 1)
+      log.logLLMResponse(response, llmMs, i + 1)
 
       await recordTokenUsage(response.usage, sessionId, llm.providerId, llm.modelId)
+      const safeResponseContent = secretRedactionService.redactForPublicStorage(response.content || '', inventory)
+      const safeResponseToolCalls = redactAssistantToolCalls(response.toolCalls, inventory)
 
-      debugLog('LLM response (resume)', {
+      log.debugLog('LLM response (resume)', {
         durationMs: llmMs,
         finishReason: response.finishReason,
-        contentLength: response.content?.length ?? 0,
-        toolCallCount: response.toolCalls?.length ?? 0,
+        contentLength: safeResponseContent.length,
+        toolCallCount: safeResponseToolCalls?.length ?? 0,
       })
 
       // Log tool call argument sizes for debugging large LLM outputs
@@ -1294,20 +1356,20 @@ export const agentService = {
           const argsSize = argsStr.length
           const commandArg = tc.arguments?.command ?? tc.arguments?.code ?? tc.arguments?.content
           const commandSize = typeof commandArg === 'string' ? commandArg.length : 0
-          debugLog(`[TOOL_SIZE] ${tc.name}`, {
+          log.debugLog(`[TOOL_SIZE] ${tc.name}`, {
             totalArgsChars: argsSize,
             commandChars: commandSize,
             linesInCommand: typeof commandArg === 'string' ? commandArg.split('\n').length : 0,
             isLarge: argsSize > LARGE_TOOL_ARG_THRESHOLD,
           })
           if (argsSize > LARGE_TOOL_ARG_THRESHOLD) {
-            debugLog(`[TOOL_SIZE_WARN] ${tc.name} generated ${argsSize} chars (${Math.round(argsSize / 1000)}KB) — possible data embedding`)
+            log.debugLog(`[TOOL_SIZE_WARN] ${tc.name} generated ${argsSize} chars (${Math.round(argsSize / 1000)}KB) — possible data embedding`)
           }
         }
       }
 
       if (response.finishReason === 'stop' || !response.toolCalls?.length) {
-        emit?.('content', { text: response.content })
+        emit?.('content', { text: safeResponseContent })
 
         // Save final message
         try {
@@ -1315,7 +1377,7 @@ export const agentService = {
             data: {
               sessionId,
               role: 'assistant',
-              content: stripNullBytes(response.content || ''),
+              content: stripNullBytes(safeResponseContent),
               ...(collectedSourcesResume.length ? { sources: collectedSourcesResume } : {}),
             },
           })
@@ -1328,7 +1390,7 @@ export const agentService = {
         })
 
         return {
-          content: response.content,
+          content: safeResponseContent,
           toolExecutions: toolExecutionLog,
           sources: collectedSourcesResume.length ? collectedSourcesResume : undefined,
           lastMessageId: lastSavedMessageId,
@@ -1336,18 +1398,19 @@ export const agentService = {
       }
 
       // Emit intermediate content so the user sees what the LLM is explaining between tool calls
-      if (response.content?.trim()) {
-        emit?.('content', { text: response.content })
+      if (safeResponseContent.trim()) {
+        emit?.('content', { text: safeResponseContent })
       }
 
       messages.push({
         role: 'assistant',
-        content: response.content,
-        toolCalls: response.toolCalls,
+        content: safeResponseContent,
+        toolCalls: safeResponseToolCalls,
       })
 
       const resumeLoopExecIds: string[] = []
       for (const toolCall of response.toolCalls) {
+        const publicToolArgs = secretRedactionService.redactForPublicStorage(toolCall.arguments, inventory)
         const matchedCap = capabilities.find((cap) => {
           const defs = cap.toolDefinitions as Array<{ name: string }>
           return defs?.some((t) => t.name === toolCall.name)
@@ -1360,7 +1423,7 @@ export const agentService = {
               chatSessionId: sessionId,
               toolName: toolCall.name,
               capabilitySlug,
-              input: JSON.parse(JSON.stringify(toolCall.arguments)),
+              input: publicToolArgs as Prisma.InputJsonValue,
               toolCallId: toolCall.id,
             },
           })
@@ -1369,7 +1432,7 @@ export const agentService = {
             approvalId: approval.id,
             toolName: toolCall.name,
             capabilitySlug,
-            input: toolCall.arguments,
+            input: publicToolArgs,
           })
 
           const agentState: AgentState = {
@@ -1386,7 +1449,8 @@ export const agentService = {
           await prisma.chatSession.update({
             where: { id: sessionId },
             data: {
-              agentState: JSON.parse(JSON.stringify(agentState)),
+              agentState: buildPublicAgentState(agentState, inventory) as Prisma.InputJsonValue,
+              agentStateEncrypted: serializeEncryptedAgentState(agentState),
               agentStatus: 'awaiting_approval',
             },
           })
@@ -1403,7 +1467,7 @@ export const agentService = {
         // Guard: reject oversized tool call arguments
         const sizeRejection = checkToolArgSize(toolCall)
         if (sizeRejection) {
-          debugLog(`[BLOCKED] "${toolCall.name}" — args too large (resume)`, { size: JSON.stringify(toolCall.arguments).length })
+          log.debugLog(`[BLOCKED] "${toolCall.name}" — args too large (resume)`, { size: JSON.stringify(toolCall.arguments).length })
           emit?.('tool_start', { toolName: toolCall.name, capabilitySlug, input: { _blocked: true } })
           emit?.('tool_result', { toolName: toolCall.name, error: sizeRejection, exitCode: 1, durationMs: 0 })
           toolExecutionLog.push({ toolName: toolCall.name, capabilitySlug, input: { _blocked: true }, error: sizeRejection, durationMs: 0 })
@@ -1415,13 +1479,14 @@ export const agentService = {
         if (isDiscoveryToolLoop) {
           emit?.('thinking', { message: 'Looking for the right tools...' })
         } else {
-          emit?.('tool_start', { toolName: toolCall.name, capabilitySlug, input: toolCall.arguments })
+          emit?.('tool_start', { toolName: toolCall.name, capabilitySlug, input: publicToolArgs })
         }
 
         const result = await toolExecutorService.execute(toolCall, capabilitySlug, {
           workspaceId,
           chatSessionId: sessionId,
           linuxUser: linuxUser ?? '',
+          secretInventory: inventory,
           capability: matchedCap ? {
             slug: matchedCap.slug,
             skillType: (matchedCap as Record<string, unknown>).skillType as string | null,
@@ -1429,7 +1494,7 @@ export const agentService = {
           } : undefined,
         })
 
-        logToolResult(toolCall.name, result)
+        log.logToolResult(toolCall.name, result)
         if (!isDiscoveryToolLoop) {
           const resumeLoopSsePayload = prepareToolResultForSSE(toolCall.name, result)
           emit?.('tool_result', {
@@ -1454,7 +1519,7 @@ export const agentService = {
         toolExecutionLog.push({
           toolName: toolCall.name,
           capabilitySlug,
-          input: toolCall.arguments,
+          input: publicToolArgs,
           output: result.output || undefined,
           error: result.error,
           exitCode: result.exitCode,
@@ -1487,10 +1552,10 @@ export const agentService = {
 
       // ── Per-iteration DB persistence (resume loop) ──
       try {
-        const iterContent = response.content || ''
+        const iterContent = safeResponseContent
         const iterToolCalls = response.toolCalls.map((tc) => {
           const cap = capabilities.find((c) => (c.toolDefinitions as Array<{ name: string }>)?.some((t) => t.name === tc.name))
-          return { name: tc.name, capability: cap?.slug ?? 'unknown', input: tc.arguments }
+          return { name: tc.name, capability: cap?.slug ?? 'unknown', input: secretRedactionService.redactForPublicStorage(tc.arguments, inventory) }
         })
         const iterBlocks: Array<{ type: 'text'; text: string } | { type: 'tool'; toolIndex: number }> = []
         if (iterContent.trim()) iterBlocks.push({ type: 'text', text: iterContent })
