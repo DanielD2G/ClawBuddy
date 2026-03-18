@@ -90,11 +90,11 @@ export const TOOL_DISCOVERY_COLLECTION = 'agentbuddy_tools'
 export const TOOL_DISCOVERY_EMBEDDING_INSTRUCTIONS_LIMIT = 500
 export const TOOL_DISCOVERY_MAX_CALLS = 3
 export const PREFLIGHT_DISCOVERY_SCORE_THRESHOLD = 0.55
-export const ALWAYS_ON_CAPABILITY_SLUGS = ['document-search', 'agent-memory', 'bash', 'python']
+export const ALWAYS_ON_CAPABILITY_SLUGS = ['document-search', 'agent-memory', 'bash', 'python', 'web-fetch']
 
 // ── Parallel tool execution ─────────────────────
 export const PARALLEL_SAFE_TOOLS = new Set([
-  'web_search', 'search_documents', 'discover_tools', 'list_crons',
+  'web_search', 'web_fetch', 'search_documents', 'discover_tools', 'list_crons',
 ])
 
 // ── API key masking ─────────────────────────────
