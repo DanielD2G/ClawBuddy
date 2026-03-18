@@ -31,9 +31,11 @@ export const toolDiscovery: CapabilityDefinition = {
       },
     },
   ],
-  systemPrompt: `You have a discover_tools tool to find and load capabilities not yet available.
+  systemPrompt: `You have a discover_tools tool to find and load specialized capabilities beyond the generic tools already available (bash, python, document search, memory).
 
-The tools currently loaded (document search, memory, bash, python) can be used directly without discovery. For ANY OTHER tool (web search, browser, AWS, Docker, etc.), call discover_tools first with a short description of what you need.
+IMPORTANT: Before resorting to bash or python to accomplish a task, ALWAYS call discover_tools first to check if a more suitable, purpose-built tool exists. For example, do not use curl/wget in bash or requests/httpx in python for web searches — there may be a dedicated web_search tool. Do not write browser-automation scripts in python when a dedicated browser tool may exist. Specialized tools are faster, more reliable, and produce better results than generic workarounds.
+
+Only fall back to bash or python if discover_tools confirms no specialized tool is available for the task.
 
 After discover_tools returns, the relevant tools are available for the rest of this conversation — do NOT call discover_tools again for the same capability. If no relevant tools are found, try calling discover_tools with list_all: true to see all available capabilities.`,
   sandbox: {},

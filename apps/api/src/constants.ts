@@ -89,6 +89,7 @@ export const TOOL_DISCOVERY_TOP_K = 3
 export const TOOL_DISCOVERY_COLLECTION = 'agentbuddy_tools'
 export const TOOL_DISCOVERY_EMBEDDING_INSTRUCTIONS_LIMIT = 500
 export const TOOL_DISCOVERY_MAX_CALLS = 3
+export const PREFLIGHT_DISCOVERY_SCORE_THRESHOLD = 0.55
 export const ALWAYS_ON_CAPABILITY_SLUGS = ['document-search', 'agent-memory', 'bash', 'python']
 
 // ── Parallel tool execution ─────────────────────
