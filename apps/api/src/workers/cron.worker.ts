@@ -82,7 +82,11 @@ const worker = new Worker<CronJobData>(
         // Agent loop saves ChatMessages per-iteration directly to DB
         try {
           await agentService.runAgentLoop(
-            sessionId, cronJob.prompt, workspaceId, undefined, { autoApprove: true },
+            sessionId,
+            cronJob.prompt,
+            workspaceId,
+            undefined,
+            { autoApprove: true, historyIncludesCurrentUserMessage: true },
           )
         } catch (agentErr) {
           // Save error as assistant message so the chat shows what happened

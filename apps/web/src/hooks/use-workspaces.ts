@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import type { WorkspaceSettings } from '@agentbuddy/shared'
 import { apiClient } from '@/lib/api-client'
 import { useActiveWorkspace } from '@/providers/workspace-provider'
 import { POLL_CONTAINER_STATUS_MS } from '@/constants'
@@ -9,7 +10,7 @@ export interface Workspace {
   description: string | null
   permissions: { allow?: string[] } | null
   color: string | null
-  settings: Record<string, unknown> | null
+  settings: WorkspaceSettings | null
   autoExecute: boolean
   containerId: string | null
   containerStatus: string
@@ -45,7 +46,7 @@ export function useUpdateWorkspace() {
   const queryClient = useQueryClient()
   const { activeWorkspace, setActiveWorkspace } = useActiveWorkspace()
   return useMutation({
-    mutationFn: ({ id, ...data }: { id: string; name?: string; description?: string; color?: string; settings?: Record<string, unknown>; autoExecute?: boolean }) =>
+    mutationFn: ({ id, ...data }: { id: string; name?: string; description?: string; color?: string; settings?: WorkspaceSettings; autoExecute?: boolean }) =>
       apiClient.patch<Workspace>(`/workspaces/${id}`, data),
     onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ['workspaces'] })

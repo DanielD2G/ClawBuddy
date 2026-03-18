@@ -7,6 +7,7 @@ import { prisma } from '../lib/prisma.js'
 import { storageService } from '../services/storage.service.js'
 import { MAX_FILE_UPLOAD_BYTES } from '../constants.js'
 import { sanitizeFileName } from '../lib/sanitize.js'
+import { secretRedactionService } from '../services/secret-redaction.service.js'
 
 const app = new Hono()
 
@@ -14,34 +15,38 @@ app.post('/chat', async (c) => {
   const body = await c.req.json()
   const { content } = body
   let { sessionId } = body
+  let { workspaceId } = body
 
   if (!content) {
     return c.json({ success: false, error: 'content is required' }, 400)
   }
 
   if (!sessionId) {
-    if (!body.workspaceId) {
+    if (!workspaceId) {
       return c.json({ success: false, error: 'workspaceId is required for new sessions' }, 400)
     }
     const session = await chatService.createSession({
-      workspaceId: body.workspaceId,
+      workspaceId,
     })
     sessionId = session.id
+  } else if (!workspaceId) {
+    const session = await chatService.getSession(sessionId)
+    workspaceId = session?.workspaceId ?? undefined
   }
 
   const { cleanedContent, mentionedSlugs } = mentionParserService.parse(content)
 
   const currentSessionId = sessionId
   const attachments = body.attachments ?? undefined
+  const inventory = await secretRedactionService.buildSecretInventory(workspaceId)
   return createSSEStream(async (emit) => {
-    emit('session', { sessionId: currentSessionId })
+    const redactedEmit = secretRedactionService.createRedactedEmit(emit, inventory)
+    redactedEmit('session', { sessionId: currentSessionId })
     await chatService.sendMessage(
       currentSessionId,
       cleanedContent || content,
-      emit,
-      body.documentIds,
-      mentionedSlugs,
-      attachments,
+      redactedEmit,
+      { documentIds: body.documentIds, mentionedSlugs, attachments, inventory },
     )
   })
 })
@@ -101,11 +106,13 @@ app.post('/chat/sessions/:sessionId/approve', async (c) => {
     return c.json({ success: true, data: { status: 'waiting', pendingCount: pendingApprovals.length } })
   }
 
+  const inventory = await secretRedactionService.buildSecretInventory(session.workspaceId)
   return createSSEStream(async (emit) => {
+    const redactedEmit = secretRedactionService.createRedactedEmit(emit, inventory)
     // Agent loop now saves ChatMessages per-iteration directly
-    const result = await agentService.resumeAgentLoop(sessionId, emit)
+    const result = await agentService.resumeAgentLoop(sessionId, redactedEmit, inventory)
 
-    emit('done', { messageId: result.lastMessageId, sessionId })
+    redactedEmit('done', { messageId: result.lastMessageId, sessionId })
 
     const sessionData = await prisma.chatSession.findUnique({
       where: { id: sessionId },
@@ -178,14 +185,13 @@ app.delete('/chat/sessions/:sessionId', async (c) => {
 
 app.get('/chat/sessions/:sessionId/messages', async (c) => {
   const { sessionId } = c.req.param()
-  const messages = await chatService.getMessages(sessionId)
-
-  // Include pending approval state so the UI can restore after reload
   const session = await prisma.chatSession.findUnique({
     where: { id: sessionId },
     select: { agentStatus: true },
   })
+  const messages = await chatService.getMessages(sessionId)
 
+  // Include pending approval state so the UI can restore after reload
   let pendingApprovals: Array<{ id: string; toolName: string; capabilitySlug: string; input: unknown }> = []
   if (session?.agentStatus === 'awaiting_approval') {
     pendingApprovals = await prisma.toolApproval.findMany({

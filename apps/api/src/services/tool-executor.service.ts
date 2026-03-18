@@ -13,11 +13,14 @@ import { SEARCH_RESULTS_LIMIT, ALWAYS_ON_CAPABILITY_SLUGS } from '../constants.j
 import { toolDiscoveryService } from './tool-discovery.service.js'
 import { stripNullBytes, stripNullBytesOrNull } from '../lib/sanitize.js'
 import { extractScreenshotBase64 } from '../lib/screenshot.js'
+import type { SecretInventory } from './secret-redaction.service.js'
+import { secretRedactionService } from './secret-redaction.service.js'
 
 interface ExecutionContext {
   workspaceId: string
   chatSessionId: string
   linuxUser: string
+  secretInventory?: SecretInventory
   /** Pre-loaded capability data to avoid redundant DB lookups during tool execution */
   capability?: {
     slug: string
@@ -70,6 +73,12 @@ export const toolExecutorService = {
     context: ExecutionContext,
   ): Promise<ExecutionResult> {
     const startTime = Date.now()
+    const inventory = context.secretInventory
+      ?? await secretRedactionService.buildSecretInventory(context.workspaceId)
+    const publicInput = secretRedactionService.redactForPublicStorage(
+      toolCall.arguments as Record<string, unknown>,
+      inventory,
+    )
 
     try {
       let result: ExecutionResult
@@ -108,26 +117,42 @@ export const toolExecutorService = {
         }
       }
 
+      const publicOutput = result.output
+        ? secretRedactionService.redactSerializedText(result.output, inventory, { skipKeys: ['screenshot'] })
+        : ''
+      const publicDbOutput = outputForDb
+        ? secretRedactionService.redactSerializedText(outputForDb, inventory, { skipKeys: ['screenshot'] })
+        : null
+      const publicError = result.error
+        ? secretRedactionService.redactSerializedText(result.error, inventory, { skipKeys: ['screenshot'] })
+        : undefined
+
       // Record execution (sanitize output to strip null bytes)
       const execution = await prisma.toolExecution.create({
         data: {
           capabilitySlug,
           toolName: toolCall.name,
-          input: JSON.parse(JSON.stringify(toolCall.arguments)) as Prisma.InputJsonValue,
-          output: stripNullBytesOrNull(outputForDb),
+          input: publicInput as Prisma.InputJsonValue,
+          output: stripNullBytesOrNull(publicDbOutput),
           screenshot: screenshotData,
-          error: stripNullBytesOrNull(result.error),
+          error: stripNullBytesOrNull(publicError),
           exitCode: result.exitCode,
           durationMs: result.durationMs,
           status: result.error ? 'failed' : 'completed',
         },
       })
 
-      return { ...result, executionId: execution.id }
+      return {
+        ...result,
+        output: publicOutput,
+        error: publicError,
+        executionId: execution.id,
+      }
     } catch (err) {
       const durationMs = Date.now() - startTime
-      const error = err instanceof Error ? err.message : String(err)
-      console.error(`[ToolExecutor] Tool "${toolCall.name}" threw:`, err)
+      const rawError = err instanceof Error ? err.message : String(err)
+      const error = secretRedactionService.redactSerializedText(rawError, inventory)
+      console.error(`[ToolExecutor] Tool "${toolCall.name}" threw:`, error)
 
       let executionId: string | undefined
       try {
@@ -135,7 +160,7 @@ export const toolExecutorService = {
           data: {
             capabilitySlug,
             toolName: toolCall.name,
-            input: JSON.parse(JSON.stringify(toolCall.arguments)) as Prisma.InputJsonValue,
+            input: publicInput as Prisma.InputJsonValue,
             error: stripNullBytesOrNull(error),
             durationMs,
             status: 'failed',
