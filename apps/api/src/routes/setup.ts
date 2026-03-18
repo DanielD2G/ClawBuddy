@@ -554,7 +554,7 @@ app.post('/complete', async (c) => {
   await settingsService.completeOnboarding()
 
   // Enable base capabilities on the workspace
-  const baseSlugs = ['document-search', 'bash', 'agent-memory', 'cron-management', 'python']
+  const baseSlugs = ['document-search', 'bash', 'agent-memory', 'cron-management', 'python', 'web-fetch']
 
   // Auto-enable capabilities whose required API key is available
   for (const [slug, provider] of Object.entries(capabilityService.REQUIRES_API_KEY)) {

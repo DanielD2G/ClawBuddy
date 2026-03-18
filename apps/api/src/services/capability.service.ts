@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma.js'
 import { Prisma } from '@prisma/client'
 import { BUILTIN_CAPABILITIES } from '../capabilities/builtin/index.js'
+import { ALWAYS_ON_CAPABILITY_SLUGS } from '../constants.js'
 import type { ToolDefinition, ConfigFieldDefinition } from '../capabilities/types.js'
 import type { LLMToolDefinition } from '../providers/llm.interface.js'
 import {
@@ -77,6 +78,40 @@ export const capabilityService = {
           skillType: cap.skillType ?? null,
         },
       })
+    }
+
+    // Auto-enable always-on capabilities for all existing workspaces
+    await this.ensureAlwaysOnCapabilities()
+  },
+
+  /**
+   * Ensure all always-on capabilities are enabled for every workspace.
+   * Creates missing WorkspaceCapability records so new core tools
+   * are active immediately without manual activation.
+   */
+  async ensureAlwaysOnCapabilities() {
+    const workspaces = await prisma.workspace.findMany({ select: { id: true } })
+    if (!workspaces.length) return
+
+    const alwaysOnCaps = await prisma.capability.findMany({
+      where: { slug: { in: ALWAYS_ON_CAPABILITY_SLUGS } },
+      select: { id: true, slug: true },
+    })
+
+    for (const ws of workspaces) {
+      const existing = await prisma.workspaceCapability.findMany({
+        where: { workspaceId: ws.id, capabilityId: { in: alwaysOnCaps.map((c) => c.id) } },
+        select: { capabilityId: true },
+      })
+      const existingIds = new Set(existing.map((e) => e.capabilityId))
+
+      for (const cap of alwaysOnCaps) {
+        if (!existingIds.has(cap.id)) {
+          await prisma.workspaceCapability.create({
+            data: { workspaceId: ws.id, capabilityId: cap.id, enabled: true },
+          })
+        }
+      }
     }
   },
 
