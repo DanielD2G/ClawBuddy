@@ -1,5 +1,6 @@
 import { useTheme } from '@/providers/theme-provider'
 import { AppearanceCard } from './sections/appearance-card'
+import { TimezoneCard } from './sections/timezone-card'
 import { ModelConfigCard } from './sections/model-config-card'
 import { ApiKeysSection } from './sections/api-keys-section'
 import { GoogleOAuthCard } from './sections/google-oauth-card'
@@ -13,6 +14,7 @@ export function GeneralSettingsPage() {
   return (
     <div className="flex flex-col gap-4 md:gap-6 max-w-2xl">
       <AppearanceCard theme={theme} setTheme={setTheme} />
+      <TimezoneCard />
       <ModelConfigCard />
       <ApiKeysSection />
       <GoogleOAuthCard />

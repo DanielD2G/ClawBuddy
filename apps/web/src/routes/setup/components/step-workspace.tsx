@@ -3,12 +3,15 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ChevronRight, ChevronLeft } from 'lucide-react'
 import { WORKSPACE_COLORS } from '@/constants'
+import { TimezoneSelect } from '@/components/timezone-select'
 
 interface StepWorkspaceProps {
   name: string
   color: string
+  timezone: string
   onNameChange: (name: string) => void
   onColorChange: (color: string) => void
+  onTimezoneChange: (tz: string) => void
   onBack: () => void
   onNext: () => void
 }
@@ -16,8 +19,10 @@ interface StepWorkspaceProps {
 export function StepWorkspace({
   name,
   color,
+  timezone,
   onNameChange,
   onColorChange,
+  onTimezoneChange,
   onBack,
   onNext,
 }: StepWorkspaceProps) {
@@ -54,6 +59,11 @@ export function StepWorkspace({
               />
             ))}
           </div>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium">Timezone</label>
+          <TimezoneSelect value={timezone} onChange={onTimezoneChange} />
+          <p className="text-xs text-muted-foreground">Auto-detected from your browser. Change if needed.</p>
         </div>
         <div className="flex justify-between mt-4">
           <Button variant="outline" onClick={onBack}>

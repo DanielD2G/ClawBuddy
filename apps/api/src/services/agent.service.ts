@@ -469,8 +469,10 @@ export const agentService = {
     }> = []
     let discoveryCallCount = 0
 
+    const timezone = await settingsService.getTimezone()
+
     if (useDiscovery) {
-      const ctx = toolDiscoveryService.buildDiscoveryContext(capabilities, options?.mentionedSlugs)
+      const ctx = toolDiscoveryService.buildDiscoveryContext(capabilities, options?.mentionedSlugs, timezone)
       tools = ctx.tools
       systemPrompt = ctx.systemPrompt
       log.debugLog('Discovery mode ACTIVE', {
@@ -510,7 +512,7 @@ export const agentService = {
       }
     } else {
       tools = capabilityService.buildToolDefinitions(capabilities)
-      systemPrompt = capabilityService.buildSystemPrompt(capabilities)
+      systemPrompt = capabilityService.buildSystemPrompt(capabilities, timezone)
     }
 
     // Inject document manifest so the model knows what's searchable

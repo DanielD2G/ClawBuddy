@@ -157,6 +157,7 @@ model AppSettings {
   browserGridBrowser String?
   browserModel       String?
   maxAgentIterations Int      @default(50)
+  timezone           String?
   updatedAt         DateTime @updatedAt
 }
 

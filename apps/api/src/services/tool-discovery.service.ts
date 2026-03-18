@@ -224,6 +224,7 @@ export const toolDiscoveryService = {
       networkAccess?: boolean
     }>,
     mentionedSlugs?: string[],
+    timezone?: string,
   ): DiscoveryContext {
     // Always-on capabilities
     const alwaysOnSlugs = [...ALWAYS_ON_CAPABILITY_SLUGS]
@@ -238,7 +239,7 @@ export const toolDiscoveryService = {
     const systemPrompt = capabilityService.buildSystemPrompt([
       ...loadedCaps,
       { name: toolDiscovery.name, systemPrompt: toolDiscovery.systemPrompt },
-    ])
+    ], timezone)
 
     // Build tool definitions: always-on tools + mentioned tools + discover_tools
     const tools: LLMToolDefinition[] = capabilityService.buildToolDefinitions(loadedCaps)

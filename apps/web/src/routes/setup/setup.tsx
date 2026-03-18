@@ -42,6 +42,7 @@ export function SetupPage() {
   const [capabilityConfigs, setCapabilityConfigs] = useState<Record<string, Record<string, unknown>>>({})
   const [workspaceName, setWorkspaceName] = useState('Default')
   const [workspaceColor, setWorkspaceColor] = useState(WORKSPACE_COLORS[0])
+  const [timezone, setTimezone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone)
   const [browserGridUrl, setBrowserGridUrl] = useState('http://localhost:9090')
   const [telegramEnabled, setTelegramEnabled] = useState(false)
   const [telegramToken, setTelegramToken] = useState('')
@@ -107,6 +108,7 @@ export function SetupPage() {
         capabilityConfigs: configs,
         workspaceName,
         workspaceColor,
+        timezone,
         ...(telegramEnabled && telegramToken.trim() ? { telegramBotToken: telegramToken.trim(), telegramTokenTested } : {}),
       })
       if (result.workspace) {
@@ -167,8 +169,10 @@ export function SetupPage() {
           <StepWorkspace
             name={workspaceName}
             color={workspaceColor}
+            timezone={timezone}
             onNameChange={setWorkspaceName}
             onColorChange={setWorkspaceColor}
+            onTimezoneChange={setTimezone}
             onBack={() => setStep(3)}
             onNext={() => setStep(5)}
           />

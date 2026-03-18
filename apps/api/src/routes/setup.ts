@@ -512,7 +512,7 @@ app.post('/complete', async (c) => {
   if (blocked) return blocked
 
   const body = await c.req.json()
-  const { capabilities, capabilityConfigs, workspaceName, workspaceColor, telegramBotToken, telegramTokenTested } = body
+  const { capabilities, capabilityConfigs, workspaceName, workspaceColor, telegramBotToken, telegramTokenTested, timezone } = body
 
   const settings = await settingsService.get()
 
@@ -549,6 +549,11 @@ app.post('/complete', async (c) => {
       color: workspaceColor || null,
     },
   })
+
+  // Save timezone if provided
+  if (timezone !== undefined) {
+    await settingsService.update({ timezone })
+  }
 
   // Mark onboarding as complete
   await settingsService.completeOnboarding()

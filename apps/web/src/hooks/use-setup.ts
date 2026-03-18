@@ -29,6 +29,7 @@ export function useCompleteSetup() {
       capabilityConfigs?: Record<string, Record<string, unknown>>
       workspaceName?: string
       workspaceColor?: string
+      timezone?: string
       telegramBotToken?: string
     }) =>
       apiClient.post<{ onboardingComplete: boolean; workspace?: Workspace }>('/setup/complete', data),

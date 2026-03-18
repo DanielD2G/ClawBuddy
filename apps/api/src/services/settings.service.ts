@@ -78,6 +78,11 @@ export const settingsService = {
     return (s as Record<string, unknown>).contextLimitTokens as number ?? DEFAULT_CONTEXT_LIMIT_TOKENS
   },
 
+  async getTimezone(): Promise<string> {
+    const s = await this.get()
+    return s.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
+  },
+
   async getMaxAgentIterations(): Promise<number> {
     const s = await this.get()
     return (s as Record<string, unknown>).maxAgentIterations as number ?? DEFAULT_MAX_AGENT_ITERATIONS
@@ -226,6 +231,7 @@ export const settingsService = {
     browserGridBrowser?: string
     browserModel?: string
     maxAgentIterations?: number
+    timezone?: string
   }) {
     const settings = await this.get()
     const available = await this.getAvailableProviders()

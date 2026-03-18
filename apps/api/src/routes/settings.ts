@@ -24,7 +24,7 @@ app.get('/settings/providers', async (c) => {
 
 // Model configuration
 app.get('/settings/models', async (c) => {
-  const [provider, primary, light, title, compact, embeddingModel, useLightModel, contextLimitTokens, maxAgentIterations, available] = await Promise.all([
+  const [provider, primary, light, title, compact, embeddingModel, useLightModel, contextLimitTokens, maxAgentIterations, available, timezone] = await Promise.all([
     settingsService.getAIProvider(),
     settingsService.getAIModel(),
     settingsService.getLightModel(),
@@ -35,6 +35,7 @@ app.get('/settings/models', async (c) => {
     settingsService.getContextLimitTokens(),
     settingsService.getMaxAgentIterations(),
     settingsService.getAvailableProviders(),
+    settingsService.getTimezone(),
   ])
 
   // Build per-provider catalogs for all available LLM providers
@@ -54,6 +55,7 @@ app.get('/settings/models', async (c) => {
       maxAgentIterations,
       availableProviders: available.llm,
       catalogs,
+      timezone,
     },
   })
 })
@@ -69,6 +71,7 @@ app.patch('/settings/models', async (c) => {
   if (body.useLightModel !== undefined) updateData.useLightModel = body.useLightModel
   if (body.contextLimitTokens !== undefined) updateData.contextLimitTokens = body.contextLimitTokens
   if (body.maxAgentIterations !== undefined) updateData.maxAgentIterations = body.maxAgentIterations
+  if (body.timezone !== undefined) updateData.timezone = body.timezone
 
   await settingsService.update(updateData as Parameters<typeof settingsService.update>[0])
   return c.json({ success: true })
