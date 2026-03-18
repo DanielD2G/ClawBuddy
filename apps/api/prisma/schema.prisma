@@ -27,6 +27,7 @@ model Workspace {
   chatSessions           ChatSession[]
   workspaceCapabilities  WorkspaceCapability[]
   sandboxSessions        SandboxSession[]
+  channels               Channel[]
 }
 
 model Folder {
@@ -92,6 +93,8 @@ model ChatSession {
   lastInputTokens    Int?
   linuxUser          String?
   sessionAllowRules  Json?
+  source             String?
+  externalChatId     String?
   lastMessageAt      DateTime  @default(now())
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
@@ -99,6 +102,21 @@ model ChatSession {
   messages        ChatMessage[]
   sandboxSessions SandboxSession[]
   toolApprovals   ToolApproval[]
+}
+
+model Channel {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  type        String
+  name        String
+  enabled     Boolean   @default(false)
+  config      Json
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([workspaceId, type])
+  @@index([workspaceId])
 }
 
 model ChatMessage {

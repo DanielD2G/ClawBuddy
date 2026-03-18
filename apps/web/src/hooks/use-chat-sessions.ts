@@ -9,6 +9,7 @@ export interface ChatSession {
   agentStatus: string
   unreadCount: number
   activeSandbox: boolean
+  source: string | null
   lastInputTokens: number | null
   createdAt: string
   updatedAt: string

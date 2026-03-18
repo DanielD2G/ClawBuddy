@@ -15,9 +15,9 @@
     "db:studio": "prisma studio"
   },
   "dependencies": {
+    "@agentbuddy/shared": "workspace:*",
     "@anthropic-ai/sdk": "^0.39",
     "@aws-sdk/client-s3": "^3",
-    "@agentbuddy/shared": "workspace:*",
     "@google/generative-ai": "^0.24",
     "@hono/swagger-ui": "^0.5",
     "@hono/zod-openapi": "^0.18",
@@ -27,6 +27,7 @@
     "browsergrid-sdk": "^0.1.0",
     "bullmq": "^5",
     "dockerode": "^4.0.9",
+    "grammy": "^1.41.1",
     "hono": "^4",
     "openai": "^4",
     "playwright-core": "^1.50",

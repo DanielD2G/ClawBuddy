@@ -8,6 +8,9 @@ import { cronService } from './services/cron.service.js'
 import { prisma } from './lib/prisma.js'
 import { browserService } from './services/browser.service.js'
 import { settingsService } from './services/settings.service.js'
+import { channelService } from './services/channel.service.js'
+import { telegramBotManager } from './channels/telegram/telegram-bot-manager.js'
+import { decrypt } from './services/crypto.service.js'
 
 // Sync built-in capabilities on startup, then sync skills from MinIO
 capabilityService
@@ -37,6 +40,22 @@ prisma.globalSettings.upsert({
   console.error('[Settings] Failed to ensure global settings:', err)
 })
 
+// Boot all enabled Telegram channels
+channelService.getAllEnabled().then(async (channels) => {
+  for (const ch of channels) {
+    if (ch.type === 'telegram') {
+      try {
+        const config = ch.config as Record<string, string>
+        await telegramBotManager.startBot(ch.id, decrypt(config.botToken), ch.workspaceId)
+      } catch (err) {
+        console.error(`[Telegram] Failed to start bot for channel ${ch.id}:`, err)
+      }
+    }
+  }
+}).catch((err) => {
+  console.error('[Telegram] Failed to boot channels:', err)
+})
+
 // Periodic cleanup of idle browser sessions (every 60 seconds)
 setInterval(() => {
   browserService.cleanupIdleSessions().catch((err) => {
@@ -48,7 +67,10 @@ setInterval(() => {
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, async () => {
     console.log(`[Server] ${signal} received, shutting down...`)
-    await browserService.shutdown()
+    await Promise.allSettled([
+      browserService.shutdown(),
+      telegramBotManager.stopAll(),
+    ])
     process.exit(0)
   })
 }

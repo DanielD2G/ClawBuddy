@@ -19,6 +19,7 @@ import skillRoutes from './routes/skills.js'
 import cronRoutes from './routes/cron.js'
 import oauthRoutes from './routes/oauth.js'
 import browserRoutes from './routes/browser.js'
+import channelRoutes from './routes/channels.js'
 
 const app = new OpenAPIHono()
 
@@ -63,5 +64,6 @@ app.route('/api', skillRoutes)
 app.route('/api', cronRoutes)
 app.route('/api/oauth', oauthRoutes)
 app.route('/api/browser', browserRoutes)
+app.route('/api/channels', channelRoutes)
 
 export default app
