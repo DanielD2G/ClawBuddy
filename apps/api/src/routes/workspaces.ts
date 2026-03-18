@@ -3,6 +3,7 @@ import { createWorkspaceSchema, updateWorkspaceSchema } from '@agentbuddy/shared
 import { workspaceService } from '../services/workspace.service.js'
 import { capabilityService } from '../services/capability.service.js'
 import { sandboxService } from '../services/sandbox.service.js'
+import { validateBody } from '../lib/validate.js'
 
 const app = new Hono()
 
@@ -13,7 +14,7 @@ app.get('/', async (c) => {
 
 app.post('/', async (c) => {
   const body = await c.req.json()
-  const parsed = createWorkspaceSchema.parse(body)
+  const parsed = validateBody(createWorkspaceSchema, body)
   const workspace = await workspaceService.create(parsed)
   return c.json({ success: true, data: workspace }, 201)
 })
@@ -30,7 +31,7 @@ app.get('/:id', async (c) => {
 app.patch('/:id', async (c) => {
   const { id } = c.req.param()
   const body = await c.req.json()
-  const parsed = updateWorkspaceSchema.parse(body)
+  const parsed = validateBody(updateWorkspaceSchema, body)
   const workspace = await workspaceService.update(id, parsed)
   return c.json({ success: true, data: workspace })
 })
