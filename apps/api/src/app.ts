@@ -41,7 +41,7 @@ app.get('/api/health', (c) => {
 app.doc('/api/openapi', {
   openapi: '3.1.0',
   info: {
-    title: 'AgentBuddy API',
+    title: 'ClawBuddy API',
     version: '0.0.0',
   },
 })

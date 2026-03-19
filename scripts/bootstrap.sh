@@ -17,7 +17,7 @@ fail()  { echo -e "${RED}  ✗  $*${NC}"; exit 1; }
 step_header() { echo -e "\n${BOLD}${CYAN}━━━ Step $1/$TOTAL_STEPS: $2 ━━━${NC}\n"; }
 
 TOTAL_STEPS=5
-RAW_BASE="https://raw.githubusercontent.com/DanielD2G/AgentBuddy/main"
+RAW_BASE="https://raw.githubusercontent.com/DanielD2G/ClawBuddy/main"
 
 # ── Collected config (globals) ───────────────────────
 AI_PROVIDER=""
@@ -235,7 +235,7 @@ show_banner() {
   echo -e "${BOLD}${CYAN}"
   echo "  ╔══════════════════════════════════════════════╗"
   echo "  ║                                              ║"
-  echo "  ║            AgentBuddy Setup Wizard           ║"
+  echo "  ║            ClawBuddy Setup Wizard           ║"
   echo "  ║                                              ║"
   echo "  ║   Self-hosted AI agent platform              ║"
   echo "  ║   with sandboxed tool execution              ║"
@@ -379,7 +379,7 @@ step_pull_images() {
 
   # Download files if not present
   if [[ ! -f "docker-compose.yml" ]]; then
-    mkdir -p AgentBuddy && cd AgentBuddy
+    mkdir -p ClawBuddy && cd ClawBuddy
     info "Downloading docker-compose.yml..."
     curl -fsSL "$RAW_BASE/docker-compose.yml" -o docker-compose.yml || \
       fail "Could not download docker-compose.yml. Check your internet connection."
@@ -406,7 +406,7 @@ step_pull_images() {
     echo ""
     echo -e "  ${RED}The following ports are already in use: ${BOLD}${BUSY[*]}${NC}"
     echo ""
-    echo -e "  AgentBuddy needs these ports:"
+    echo -e "  ClawBuddy needs these ports:"
     echo -e "    4321 - Web app       4000 - API"
     echo -e "    5433 - PostgreSQL    6333 - Qdrant"
     echo -e "    6380 - Redis         9000 - MinIO"
@@ -541,7 +541,7 @@ step_api_keys() {
     echo ""
     show_guide "Google OAuth Setup:" \
       "1. Go to: ${CYAN}https://console.cloud.google.com${NC}" \
-      "2. Create a new project (e.g., 'AgentBuddy')" \
+      "2. Create a new project (e.g., 'ClawBuddy')" \
       "3. Go to ${BOLD}APIs & Services > Library${NC} and enable:" \
       "   - Gmail API" \
       "   - Google Calendar API" \
@@ -563,7 +563,7 @@ step_api_keys() {
       ok "Google OAuth configured"
 
       echo ""
-      echo -e "  ${DIM}If AgentBuddy will NOT run on localhost:4321, enter your URL below.${NC}"
+      echo -e "  ${DIM}If ClawBuddy will NOT run on localhost:4321, enter your URL below.${NC}"
       echo -e "  ${DIM}Otherwise just press Enter to skip.${NC}"
       read_input "App URL (e.g., https://your-domain.com):" APP_URL
     fi
@@ -665,7 +665,7 @@ step_start_services() {
   # Success banner
   echo ""
   echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-  echo -e "${GREEN}${BOLD}  AgentBuddy is running!${NC}"
+  echo -e "${GREEN}${BOLD}  ClawBuddy is running!${NC}"
   echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
   echo ""
   echo -e "  ${BOLD}Open in your browser:${NC}"
@@ -687,16 +687,16 @@ step_start_services() {
 
 do_update() {
   echo ""
-  echo -e "${BOLD}${CYAN}━━━ AgentBuddy Update ━━━${NC}"
+  echo -e "${BOLD}${CYAN}━━━ ClawBuddy Update ━━━${NC}"
   echo ""
 
   # Find installation
   if [[ -f "docker-compose.yml" ]]; then
     : # we're in the right directory
-  elif [[ -f "AgentBuddy/docker-compose.yml" ]]; then
-    cd AgentBuddy
+  elif [[ -f "ClawBuddy/docker-compose.yml" ]]; then
+    cd ClawBuddy
   else
-    fail "No AgentBuddy installation found. Run this script without --update to install."
+    fail "No ClawBuddy installation found. Run this script without --update to install."
   fi
 
   # Backup current compose file
@@ -763,7 +763,7 @@ do_update() {
   # Done
   echo ""
   echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-  echo -e "${GREEN}${BOLD}  AgentBuddy has been updated!${NC}"
+  echo -e "${GREEN}${BOLD}  ClawBuddy has been updated!${NC}"
   echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
   echo ""
   echo -e "  ${BOLD}Open in your browser:${NC}"
@@ -784,7 +784,7 @@ main() {
       echo "Usage: bootstrap.sh [OPTIONS]"
       echo ""
       echo "Options:"
-      echo "  --update, -u    Update an existing AgentBuddy installation"
+      echo "  --update, -u    Update an existing ClawBuddy installation"
       echo "  --help, -h      Show this help message"
       echo ""
       echo "Run without arguments for first-time setup."

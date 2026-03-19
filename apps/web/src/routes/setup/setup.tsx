@@ -176,7 +176,7 @@ export function SetupPage() {
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-2 mb-2">
             <span className="size-2.5 rounded-full bg-brand" />
-            <span className="text-lg font-semibold tracking-tight">AgentBuddy</span>
+            <span className="text-lg font-semibold tracking-tight">ClawBuddy</span>
           </div>
           <p className="text-sm text-muted-foreground">Initial setup</p>
         </div>

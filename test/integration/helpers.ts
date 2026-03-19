@@ -1,5 +1,5 @@
 /**
- * Integration test helpers for AgentBuddy API.
+ * Integration test helpers for ClawBuddy API.
  * Sends real HTTP requests to the running API server.
  */
 

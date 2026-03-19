@@ -107,7 +107,7 @@ export function AppSidebar() {
                 <span className="size-3 shrink-0 rounded-full bg-brand" />
               )}
               <span className="flex-1 truncate text-sm font-semibold">
-                {activeWorkspace?.name ?? 'AgentBuddy'}
+                {activeWorkspace?.name ?? 'ClawBuddy'}
               </span>
               <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" />
             </button>
@@ -302,7 +302,7 @@ export function AppSidebar() {
           </div>
         ) : (
           <div className="flex items-center gap-2 px-2 py-1.5">
-            <span className="text-sm font-medium text-muted-foreground">AgentBuddy</span>
+            <span className="text-sm font-medium text-muted-foreground">ClawBuddy</span>
           </div>
         )}
       </SidebarFooter>

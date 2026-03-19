@@ -12,7 +12,7 @@ export function AppearanceCard({ theme, setTheme }: AppearanceCardProps) {
     <Card>
       <CardHeader>
         <CardTitle>Appearance</CardTitle>
-        <CardDescription>Customize how AgentBuddy looks.</CardDescription>
+        <CardDescription>Customize how ClawBuddy looks.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
         <div className="flex flex-col gap-2">

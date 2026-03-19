@@ -1,6 +1,6 @@
-# Creating Skills for AgentBuddy
+# Creating Skills for ClawBuddy
 
-Skills are plugins that extend AgentBuddy's agent with new capabilities. A skill is a `.skill` file (JSON) that defines what the tool does, how to install its dependencies, and how to execute it inside a sandboxed Docker container.
+Skills are plugins that extend ClawBuddy's agent with new capabilities. A skill is a `.skill` file (JSON) that defines what the tool does, how to install its dependencies, and how to execute it inside a sandboxed Docker container.
 
 ## Skill File Format
 
@@ -256,7 +256,7 @@ Tips:
 
 ## Installing a Skill
 
-1. Go to **Admin > Skills** in the AgentBuddy UI
+1. Go to **Admin > Skills** in the ClawBuddy UI
 2. Click **Upload Skill** and select your `.skill` file
 3. If the skill has an `installation` script, a Docker build runs — you'll see the build logs in real time
 4. If the build succeeds, the skill is saved and appears in the list

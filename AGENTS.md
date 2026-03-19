@@ -7,7 +7,7 @@
 
 ## Project Snapshot
 
-AgentBuddy is a Self-hosted, privacy-first AI agent platform with sandboxed tool execution. Inspired by Openclaw in many ways, but trying to improve the formula by adding more capabilities
+ClawBuddy is a Self-hosted, privacy-first AI agent platform with sandboxed tool execution. Inspired by Openclaw in many ways, but trying to improve the formula by adding more capabilities
 
 This repository is a VERY EARLY WIP. Proposing sweeping changes that improve long-term maintainability is encouraged.
 

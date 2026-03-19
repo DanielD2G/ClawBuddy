@@ -29,7 +29,7 @@ export function StepWelcome({ onNext, onImport, isImporting }: StepWelcomeProps)
   return (
     <Card>
       <CardHeader className="text-center">
-        <CardTitle className="text-xl">Welcome to AgentBuddy</CardTitle>
+        <CardTitle className="text-xl">Welcome to ClawBuddy</CardTitle>
         <CardDescription>
           Let's configure your instance. This will only take a minute.
         </CardDescription>

@@ -199,7 +199,7 @@ async function executeWebFetch(toolCall: ToolCall): Promise<ExecutionResult> {
 
     const res = await fetch(url, {
       method,
-      headers: { 'User-Agent': 'AgentBuddy/1.0', Accept: 'text/html,application/xhtml+xml,*/*', ...customHeaders },
+      headers: { 'User-Agent': 'ClawBuddy/1.0', Accept: 'text/html,application/xhtml+xml,*/*', ...customHeaders },
       body: ['POST', 'PUT', 'PATCH'].includes(method) ? body : undefined,
       signal: controller.signal,
       redirect: 'follow',

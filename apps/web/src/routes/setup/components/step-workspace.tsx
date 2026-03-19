@@ -31,7 +31,7 @@ export function StepWorkspace({
       <CardHeader>
         <CardTitle>Create Workspace</CardTitle>
         <CardDescription>
-          Everything in AgentBuddy lives inside a workspace — documents, chats, and capabilities.
+          Everything in ClawBuddy lives inside a workspace — documents, chats, and capabilities.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
