@@ -5,14 +5,14 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 <p align="center">
-  <img src="docs/images/chat.png" alt="ClawBuddy – Main Chat" width="720" />
+  <img src="docs/images/chat.jpeg" alt="ClawBuddy – Main Chat" width="720" />
 </p>
 
 <details>
 <summary><strong>More screenshots</strong></summary>
 <br>
 <p align="center">
-  <img src="docs/images/capabilities.png" alt="ClawBuddy – Capabilities Overview" width="720" />
+  <img src="docs/images/capabilities.jpeg" alt="ClawBuddy – Capabilities Overview" width="720" />
 </p>
 <p align="center">
   <img src="docs/images/products.png" alt="ClawBuddy – Product Search" width="720" />
