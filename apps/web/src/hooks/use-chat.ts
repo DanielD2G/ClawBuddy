@@ -654,21 +654,33 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
         if (contentType.includes('text/event-stream')) {
           setIsPending(true)
 
-          const assistantId = uid()
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: assistantId,
-              role: 'assistant',
-              content: '',
-              toolExecutions: [],
-              contentBlocks: [],
-              createdAt: new Date().toISOString(),
-            },
-          ])
+          // Reuse the existing assistant message so streamed tool blocks
+          // append to the same message instead of creating a duplicate.
+          let assistantId: string | undefined
+          setMessages((prev) => {
+            for (let i = prev.length - 1; i >= 0; i--) {
+              if (prev[i].role === 'assistant') {
+                assistantId = prev[i].id
+                return prev
+              }
+            }
+            // Fallback: create new if none found
+            assistantId = uid()
+            return [
+              ...prev,
+              {
+                id: assistantId,
+                role: 'assistant',
+                content: '',
+                toolExecutions: [],
+                contentBlocks: [],
+                createdAt: new Date().toISOString(),
+              },
+            ]
+          })
 
           streamingRef.current = true
-          const approvalStreamResult = await processSSEStream(res, assistantId, undefined, controller.signal)
+          const approvalStreamResult = await processSSEStream(res, assistantId!, undefined, controller.signal)
           const finalSessionId = sessionIdRef.current
           if (finalSessionId && approvalStreamResult.receivedDone) {
             try {

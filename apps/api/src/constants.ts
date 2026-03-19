@@ -126,6 +126,7 @@ export const DELEGATION_ONLY_TOOLS = new Set(['run_browser_script'])
 export const ALWAYS_ALLOWED_TOOLS = new Set([
   'search_documents', 'save_document', 'generate_file',
   'create_cron', 'list_crons', 'delete_cron', 'web_search', 'web_fetch',
+  'discover_tools',
 ])
 
 // ── Parallel tool execution ─────────────────────
