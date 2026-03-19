@@ -3,6 +3,8 @@ import { redisConnection } from '../lib/redis.js'
 import { prisma } from '../lib/prisma.js'
 import { CRON_HANDLERS } from './cron-handlers.js'
 import { agentService } from '../services/agent.service.js'
+import { createTelegramEmit } from '../channels/telegram/telegram-emit.js'
+import type { SSEEmit } from '../lib/sse.js'
 
 export const CRON_QUEUE_NAME = 'cron-jobs'
 
@@ -78,14 +80,24 @@ const worker = new Worker<CronJobData>(
           },
         })
 
-        // Run agent headless (no SSE emit, auto-approve tools since no user to decide)
+        // If the session is linked to Telegram, forward responses there
+        let cronEmit: SSEEmit | undefined
+        const cronSession = await prisma.chatSession.findUnique({
+          where: { id: sessionId },
+          select: { source: true, externalChatId: true, workspaceId: true },
+        })
+        if (cronSession?.source === 'telegram' && cronSession.externalChatId && cronSession.workspaceId) {
+          cronEmit = createTelegramEmit(cronSession.workspaceId, cronSession.externalChatId)
+        }
+
+        // Run agent (headless unless Telegram-linked, auto-approve tools since no user to decide)
         // Agent loop saves ChatMessages per-iteration directly to DB
         try {
           await agentService.runAgentLoop(
             sessionId,
             cronJob.prompt,
             workspaceId,
-            undefined,
+            cronEmit,
             { autoApprove: true, historyIncludesCurrentUserMessage: true },
           )
         } catch (agentErr) {
