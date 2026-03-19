@@ -99,6 +99,7 @@ export const ALWAYS_ON_CAPABILITY_SLUGS = [
   'python',
   'web-fetch',
   'sub-agent-delegation',
+  'tool-discovery',
 ]
 
 // ── Sub-agent delegation ────────────────────────
