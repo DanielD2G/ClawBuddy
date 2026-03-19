@@ -104,15 +104,7 @@ export const TOOL_DISCOVERY_COLLECTION = 'clawbuddy_tools'
 export const TOOL_DISCOVERY_EMBEDDING_INSTRUCTIONS_LIMIT = 500
 export const TOOL_DISCOVERY_MAX_CALLS = 3
 export const PREFLIGHT_DISCOVERY_SCORE_THRESHOLD = 0.55
-export const ALWAYS_ON_CAPABILITY_SLUGS = [
-  'document-search',
-  'agent-memory',
-  'bash',
-  'python',
-  'web-fetch',
-  'sub-agent-delegation',
-  'tool-discovery',
-]
+export { ALWAYS_ON_CAPABILITY_SLUGS } from '@clawbuddy/shared'
 
 // ── Sub-agent delegation ────────────────────────
 export const SUB_AGENT_EXPLORE_MAX_ITERATIONS = 50

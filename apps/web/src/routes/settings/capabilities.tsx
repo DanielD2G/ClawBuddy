@@ -77,6 +77,7 @@ interface WorkspaceCapability {
   configSchema: ConfigFieldDefinition[] | null
   authType: string | null
   enabled: boolean
+  alwaysOn: boolean
   config: Record<string, unknown> | null
   workspaceCapabilityId: string | null
 }
@@ -416,9 +417,9 @@ function CapabilityCard({ capability, googleOAuthConfigured, onCapabilityToggled
             </div>
             {!isOAuth && (
               <Switch
-                checked={capability.enabled}
+                checked={capability.alwaysOn || capability.enabled}
                 onCheckedChange={handleToggle}
-                disabled={toggleMutation.isPending}
+                disabled={capability.alwaysOn || toggleMutation.isPending}
               />
             )}
           </div>
@@ -441,7 +442,11 @@ function CapabilityCard({ capability, googleOAuthConfigured, onCapabilityToggled
             <>
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <div className="flex items-center gap-1.5">
-                  {capability.enabled && (
+                  {capability.alwaysOn ? (
+                    <Badge variant="secondary" className="text-[10px]">
+                      Always on
+                    </Badge>
+                  ) : capability.enabled && (
                     <Badge variant="default" className="text-[10px] bg-brand">
                       Enabled
                     </Badge>

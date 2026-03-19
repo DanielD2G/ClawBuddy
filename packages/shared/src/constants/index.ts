@@ -7,6 +7,17 @@ export const EMBEDDING_DIMENSIONS: Record<string, number> = {
   'gemini-embedding-2-preview': 3072,
 }
 
+// ── Always-on capabilities ──────────────────────
+export const ALWAYS_ON_CAPABILITY_SLUGS = [
+  'document-search',
+  'agent-memory',
+  'bash',
+  'python',
+  'web-fetch',
+  'sub-agent-delegation',
+  'tool-discovery',
+]
+
 export const CHUNK_SIZE = 512
 export const CHUNK_OVERLAP = 50
 export const QDRANT_COLLECTION_NAME = 'clawbuddy_chunks'
