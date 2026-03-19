@@ -31,14 +31,7 @@ export const DEFAULT_SUB_AGENT_ANALYZE_MAX_ITERATIONS = 25
 export const DEFAULT_SUB_AGENT_EXECUTE_MAX_ITERATIONS = 50
 
 // ── Feature flags ────────────────────────────────
-export const ALWAYS_ON_CAPABILITY_SLUGS = [
-  'document-search',
-  'agent-memory',
-  'bash',
-  'python',
-  'web-fetch',
-  'sub-agent-delegation',
-]
+export { ALWAYS_ON_CAPABILITY_SLUGS } from '@clawbuddy/shared'
 
 // ── Workspace colors ─────────────────────────────
 export const WORKSPACE_COLORS = [
