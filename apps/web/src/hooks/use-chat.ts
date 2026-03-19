@@ -74,7 +74,14 @@ export interface PendingApproval {
 }
 
 function mapPendingApprovals(
-  approvals: Array<{ id: string; toolName: string; capabilitySlug: string; input: Record<string, unknown> }> | undefined,
+  approvals:
+    | Array<{
+        id: string
+        toolName: string
+        capabilitySlug: string
+        input: Record<string, unknown>
+      }>
+    | undefined,
 ): PendingApproval[] {
   return (approvals ?? []).map((a) => ({
     approvalId: a.id,
@@ -153,12 +160,17 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
   const [isCompressing, setIsCompressing] = useState(false)
   const [thinkingMessage, setThinkingMessage] = useState<string | null>(null)
   const [pendingApprovals, setPendingApprovals] = useState<PendingApproval[]>([])
+  const messagesRef = useRef<ChatMessage[]>([])
   const sessionIdRef = useRef<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const streamingRef = useRef(false)
   const onSessionCreatedRef = useRef(onSessionCreated)
   onSessionCreatedRef.current = onSessionCreated
   const queryClient = useQueryClient()
+
+  useEffect(() => {
+    messagesRef.current = messages
+  }, [messages])
 
   const fetchSessionSnapshot = useCallback(async (sessionId: string) => {
     return apiClient.get<{
@@ -173,29 +185,32 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
     }>(`/chat/sessions/${sessionId}/messages`)
   }, [])
 
-  const loadSession = useCallback(async (sessionId: string) => {
-    // Abort any in-flight SSE stream from the previous session
-    if (abortRef.current) {
-      abortRef.current.abort()
-      abortRef.current = null
-    }
-    setIsPending(false)
-    setThinkingMessage(null)
-    sessionIdRef.current = sessionId
-    try {
-      const data = await fetchSessionSnapshot(sessionId)
-      setMessages(data?.messages ?? [])
-      // If agent is still processing, show pending state and poll for updates
-      if (data?.agentStatus === 'running') {
-        setIsPending(true)
-        setThinkingMessage('Processing...')
+  const loadSession = useCallback(
+    async (sessionId: string) => {
+      // Abort any in-flight SSE stream from the previous session
+      if (abortRef.current) {
+        abortRef.current.abort()
+        abortRef.current = null
       }
-      // Restore pending approvals if agent is paused awaiting approval
-      setPendingApprovals(mapPendingApprovals(data?.pendingApprovals))
-    } catch (error) {
-      console.error('Failed to load session:', error)
-    }
-  }, [fetchSessionSnapshot])
+      setIsPending(false)
+      setThinkingMessage(null)
+      sessionIdRef.current = sessionId
+      try {
+        const data = await fetchSessionSnapshot(sessionId)
+        setMessages(data?.messages ?? [])
+        // If agent is still processing, show pending state and poll for updates
+        if (data?.agentStatus === 'running') {
+          setIsPending(true)
+          setThinkingMessage('Processing...')
+        }
+        // Restore pending approvals if agent is paused awaiting approval
+        setPendingApprovals(mapPendingApprovals(data?.pendingApprovals))
+      } catch (error) {
+        console.error('Failed to load session:', error)
+      }
+    },
+    [fetchSessionSnapshot],
+  )
 
   const processSSEStream = useCallback(
     async (
@@ -227,7 +242,23 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
           }
 
           const updateAssistant = (updater: (msg: ChatMessage) => ChatMessage) => {
-            setMessages((prev) => prev.map((msg) => (msg.id === assistantId ? updater(msg) : msg)))
+            setMessages((prev) => {
+              const existing = prev.find((msg) => msg.id === assistantId)
+              if (!existing) {
+                return [
+                  ...prev,
+                  updater({
+                    id: assistantId,
+                    role: 'assistant',
+                    content: '',
+                    toolExecutions: [],
+                    contentBlocks: [],
+                    createdAt: new Date().toISOString(),
+                  }),
+                ]
+              }
+              return prev.map((msg) => (msg.id === assistantId ? updater(msg) : msg))
+            })
           }
 
           switch (event) {
@@ -620,6 +651,15 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
     }
   }, [fetchSessionSnapshot])
 
+  const getLatestAssistantMessageId = useCallback(() => {
+    for (let i = messagesRef.current.length - 1; i >= 0; i--) {
+      if (messagesRef.current[i].role === 'assistant') {
+        return messagesRef.current[i].id
+      }
+    }
+    return null
+  }, [])
+
   const approveToolCall = useCallback(
     async (
       approvalId: string,
@@ -654,21 +694,32 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
         if (contentType.includes('text/event-stream')) {
           setIsPending(true)
 
-          const assistantId = uid()
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: assistantId,
-              role: 'assistant',
-              content: '',
-              toolExecutions: [],
-              contentBlocks: [],
-              createdAt: new Date().toISOString(),
-            },
-          ])
+          // Reuse the existing assistant message so streamed tool blocks
+          // append to the same message instead of creating a duplicate.
+          let assistantId = getLatestAssistantMessageId()
+          if (!assistantId) {
+            const newAssistantId = uid()
+            assistantId = newAssistantId
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: newAssistantId,
+                role: 'assistant',
+                content: '',
+                toolExecutions: [],
+                contentBlocks: [],
+                createdAt: new Date().toISOString(),
+              },
+            ])
+          }
 
           streamingRef.current = true
-          const approvalStreamResult = await processSSEStream(res, assistantId, undefined, controller.signal)
+          const approvalStreamResult = await processSSEStream(
+            res,
+            assistantId,
+            undefined,
+            controller.signal,
+          )
           const finalSessionId = sessionIdRef.current
           if (finalSessionId && approvalStreamResult.receivedDone) {
             try {
@@ -689,7 +740,7 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
         console.error('Approval error:', error)
       }
     },
-    [processSSEStream, fetchSessionSnapshot],
+    [processSSEStream, fetchSessionSnapshot, getLatestAssistantMessageId],
   )
 
   // Poll for messages — aggressive (1.5s) when agent running but disconnected, normal (10s) otherwise

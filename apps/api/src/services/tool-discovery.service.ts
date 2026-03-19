@@ -244,13 +244,15 @@ export const toolDiscoveryService = {
     // Build tool definitions: always-on tools + mentioned tools + discover_tools
     const tools: LLMToolDefinition[] = capabilityService.buildToolDefinitions(loadedCaps)
 
-    // Add discover_tools
+    // Add discover_tools (if not already loaded via always-on capabilities)
     for (const tool of toolDiscovery.tools) {
-      tools.push({
-        name: tool.name,
-        description: tool.description,
-        parameters: tool.parameters,
-      })
+      if (!tools.some((t) => t.name === tool.name)) {
+        tools.push({
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.parameters,
+        })
+      }
     }
 
     return { systemPrompt, tools, alwaysOnSlugs }
