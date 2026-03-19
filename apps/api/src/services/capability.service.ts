@@ -13,6 +13,9 @@ import {
 } from './config-validation.service.js'
 import { buildSystemPrompt as buildSystemPromptText } from './system-prompt-builder.js'
 
+/** Capability slugs that are always enabled and hidden from the management UI */
+const HIDDEN_CAPABILITY_SLUGS = ['sub-agent-delegation']
+
 export const capabilityService = {
   /**
    * Upsert all built-in capability definitions into the database.
@@ -170,9 +173,6 @@ export const capabilityService = {
   /**
    * Get all workspace capabilities (enabled and disabled) for management.
    */
-  /** Capability slugs that are always enabled and hidden from the management UI */
-  HIDDEN_CAPABILITY_SLUGS: ['sub-agent-delegation'] as string[],
-
   async getWorkspaceCapabilitySettings(workspaceId: string) {
     const [allCapabilities, workspaceCapabilities] = await Promise.all([
       prisma.capability.findMany({ orderBy: { category: 'asc' } }),
@@ -182,7 +182,7 @@ export const capabilityService = {
     const wcMap = new Map(workspaceCapabilities.map((wc) => [wc.capabilityId, wc]))
 
     return allCapabilities
-      .filter((cap) => !this.HIDDEN_CAPABILITY_SLUGS.includes(cap.slug))
+      .filter((cap) => !HIDDEN_CAPABILITY_SLUGS.includes(cap.slug))
       .map((cap) => {
         const wc = wcMap.get(cap.id)
         const schema = cap.configSchema as ConfigFieldDefinition[] | null

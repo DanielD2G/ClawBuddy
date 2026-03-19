@@ -49,6 +49,24 @@ import {
   buildPublicAgentState,
 } from './agent-state.service.js'
 
+/** Resolve sub-agent metadata for delegate_task approval events. */
+function resolveSubAgentMeta(
+  toolCall: ToolCall,
+  capabilities: Array<{ toolDefinitions: unknown; slug: string }>,
+): Record<string, unknown> {
+  if (toolCall.name !== 'delegate_task') return {}
+  const role = (toolCall.arguments as { role?: string }).role
+  const roleConfig = role ? SUB_AGENT_ROLES[role as SubAgentRole] : undefined
+  if (!roleConfig) return {}
+  const allTools = capabilityService.buildToolDefinitions(capabilities)
+  const resolved = filterTools(allTools, roleConfig)
+  return {
+    subAgentRole: role,
+    subAgentDescription: roleConfig.description,
+    subAgentToolNames: resolved.map((t) => t.name),
+  }
+}
+
 /** Tools exempt from the argument size guard (they have proper alternatives like sourcePath) */
 const SIZE_GUARD_EXEMPT = new Set(['generate_file', 'save_document', 'search_documents'])
 
@@ -585,28 +603,12 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
             },
           })
 
-          // Resolve sub-agent tool list for delegate_task approvals
-          let subAgentMeta: Record<string, unknown> = {}
-          if (toolCall.name === 'delegate_task') {
-            const role = (toolCall.arguments as { role?: string }).role
-            const roleConfig = role ? SUB_AGENT_ROLES[role as SubAgentRole] : undefined
-            if (roleConfig) {
-              const allTools = capabilityService.buildToolDefinitions(capabilities)
-              const resolved = filterTools(allTools, roleConfig)
-              subAgentMeta = {
-                subAgentRole: role,
-                subAgentDescription: roleConfig.description,
-                subAgentToolNames: resolved.map((t) => t.name),
-              }
-            }
-          }
-
           emit?.('approval_required', {
             approvalId: approval.id,
             toolName: toolCall.name,
             capabilitySlug,
             input: publicToolArgs,
-            ...subAgentMeta,
+            ...resolveSubAgentMeta(toolCall, capabilities),
           })
 
           const agentState: AgentState = {
@@ -926,7 +928,7 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
           const messageContent: MessageContent =
             toolCall.name === 'run_browser_script'
               ? buildToolResultContent(
-                  typeof toolContent === 'string' ? toolContent : toolContent,
+                  toolContent,
                   llm.modelId,
                 )
               : toolContent
@@ -1442,28 +1444,12 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
             },
           })
 
-          // Resolve sub-agent tool list for delegate_task approvals
-          let subAgentMeta: Record<string, unknown> = {}
-          if (toolCall.name === 'delegate_task') {
-            const role = (toolCall.arguments as { role?: string }).role
-            const roleConfig = role ? SUB_AGENT_ROLES[role as SubAgentRole] : undefined
-            if (roleConfig) {
-              const allTools = capabilityService.buildToolDefinitions(capabilities)
-              const resolved = filterTools(allTools, roleConfig)
-              subAgentMeta = {
-                subAgentRole: role,
-                subAgentDescription: roleConfig.description,
-                subAgentToolNames: resolved.map((t) => t.name),
-              }
-            }
-          }
-
           emit?.('approval_required', {
             approvalId: approval.id,
             toolName: toolCall.name,
             capabilitySlug,
             input: publicToolArgs,
-            ...subAgentMeta,
+            ...resolveSubAgentMeta(toolCall, capabilities),
           })
 
           const agentState: AgentState = {
@@ -1670,7 +1656,7 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
           const resumeMessageContent: MessageContent =
             toolCall.name === 'run_browser_script'
               ? buildToolResultContent(
-                  typeof toolContent === 'string' ? toolContent : toolContent,
+                  toolContent,
                   llm.modelId,
                 )
               : toolContent
