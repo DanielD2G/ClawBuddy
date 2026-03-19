@@ -23,9 +23,7 @@ export function ImageBlock({ src, alt }: ImageBlockProps) {
 
   return (
     <div className="my-3">
-      {!loaded && (
-        <div className="h-40 animate-pulse rounded-lg bg-muted/40" />
-      )}
+      {!loaded && <div className="h-40 animate-pulse rounded-lg bg-muted/40" />}
       <img
         src={src}
         alt={alt ?? ''}
@@ -33,9 +31,7 @@ export function ImageBlock({ src, alt }: ImageBlockProps) {
         onLoad={() => setLoaded(true)}
         onError={() => setError(true)}
       />
-      {alt && loaded && (
-        <p className="mt-1 text-xs text-muted-foreground">{alt}</p>
-      )}
+      {alt && loaded && <p className="mt-1 text-xs text-muted-foreground">{alt}</p>}
     </div>
   )
 }

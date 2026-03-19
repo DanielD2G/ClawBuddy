@@ -89,7 +89,9 @@ export async function getMessages(sessionId: string): Promise<{
   }>
 }> {
   const res = await fetch(`${API_BASE}/chat/sessions/${sessionId}/messages`)
-  const json = (await res.json()) as { data: ReturnType<typeof getMessages> extends Promise<infer T> ? T : never }
+  const json = (await res.json()) as {
+    data: ReturnType<typeof getMessages> extends Promise<infer T> ? T : never
+  }
   return json.data as Awaited<ReturnType<typeof getMessages>>
 }
 
@@ -163,12 +165,13 @@ export async function sendMessage(
   // Extract session ID
   const sessionEvent = events.find((e) => e.event === 'session')
   const doneEvent = events.find((e) => e.event === 'done')
-  const sid = (sessionEvent?.data?.sessionId ?? doneEvent?.data?.sessionId ?? sessionId ?? '') as string
+  const sid = (sessionEvent?.data?.sessionId ??
+    doneEvent?.data?.sessionId ??
+    sessionId ??
+    '') as string
 
   // Collect content
-  const contentParts = events
-    .filter((e) => e.event === 'content')
-    .map((e) => e.data.text as string)
+  const contentParts = events.filter((e) => e.event === 'content').map((e) => e.data.text as string)
   const fullContent = contentParts.join('')
 
   // Collect tool executions
@@ -209,7 +212,7 @@ export async function approveTool(
 
   const contentType = res.headers.get('content-type') ?? ''
   if (contentType.includes('application/json')) {
-    const json = await res.json() as { data?: { status?: 'waiting'; pendingCount?: number } }
+    const json = (await res.json()) as { data?: { status?: 'waiting'; pendingCount?: number } }
     return {
       status: json.data?.status ?? 'waiting',
       pendingCount: json.data?.pendingCount ?? 0,
@@ -249,7 +252,10 @@ export async function approveTool(
 
 // ─── Assertion Helpers ───
 
-export function assertToolUsed(result: TestResult, toolName: string): TestResult['toolExecutions'][0] {
+export function assertToolUsed(
+  result: TestResult,
+  toolName: string,
+): TestResult['toolExecutions'][0] {
   const tool = result.toolExecutions.find((t) => t.toolName === toolName)
   if (!tool) {
     const used = result.toolExecutions.map((t) => t.toolName).join(', ') || '(none)'
@@ -281,8 +287,6 @@ export function assertNoError(tool: TestResult['toolExecutions'][0]): void {
 
 export function assertContentContains(result: TestResult, text: string): void {
   if (!result.content.toLowerCase().includes(text.toLowerCase())) {
-    throw new Error(
-      `Expected content to contain "${text}". Got: ${result.content.slice(0, 300)}`,
-    )
+    throw new Error(`Expected content to contain "${text}". Got: ${result.content.slice(0, 300)}`)
   }
 }

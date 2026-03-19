@@ -56,9 +56,7 @@ function normalizeToolCall(toolCall: ToolCall): { type: string; value: string } 
  */
 function globMatch(pattern: string, value: string): boolean {
   // Convert glob pattern to regex
-  const escaped = pattern
-    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-    .replace(/\*/g, '.*')
+  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')
   const regex = new RegExp(`^${escaped}$`)
   return regex.test(value)
 }

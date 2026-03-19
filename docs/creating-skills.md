@@ -23,20 +23,20 @@ Skills are plugins that extend ClawBuddy's agent with new capabilities. A skill 
 
 ## Field Reference
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `name` | Yes | Display name shown in the UI |
-| `slug` | Yes | Unique identifier. Lowercase, hyphens only (e.g. `ml-search`) |
-| `description` | Yes | Short description of the skill |
-| `version` | No | Semver string. Defaults to `"1.0.0"` |
-| `icon` | No | Lucide icon name (e.g. `Terminal`, `Cloud`, `ShoppingCart`) |
-| `category` | No | Grouping label. Defaults to `"general"`. Examples: `cloud`, `devops`, `search`, `languages` |
-| `type` | Yes | Runtime: `"bash"`, `"python"`, or `"js"` |
-| `networkAccess` | No | Whether the sandbox container gets network access. Defaults to `false` |
-| `instructions` | Yes | Markdown prompt injected into the LLM system prompt. Tells the AI when and how to use the tool |
-| `installation` | No | Shell commands to install dependencies in the Docker image (runs as root) |
-| `tools` | Yes | Array of tool definitions (at least one) |
-| `inputs` | No | Configuration inputs the admin provides (API keys, settings) |
+| Field           | Required | Description                                                                                    |
+| --------------- | -------- | ---------------------------------------------------------------------------------------------- |
+| `name`          | Yes      | Display name shown in the UI                                                                   |
+| `slug`          | Yes      | Unique identifier. Lowercase, hyphens only (e.g. `ml-search`)                                  |
+| `description`   | Yes      | Short description of the skill                                                                 |
+| `version`       | No       | Semver string. Defaults to `"1.0.0"`                                                           |
+| `icon`          | No       | Lucide icon name (e.g. `Terminal`, `Cloud`, `ShoppingCart`)                                    |
+| `category`      | No       | Grouping label. Defaults to `"general"`. Examples: `cloud`, `devops`, `search`, `languages`    |
+| `type`          | Yes      | Runtime: `"bash"`, `"python"`, or `"js"`                                                       |
+| `networkAccess` | No       | Whether the sandbox container gets network access. Defaults to `false`                         |
+| `instructions`  | Yes      | Markdown prompt injected into the LLM system prompt. Tells the AI when and how to use the tool |
+| `installation`  | No       | Shell commands to install dependencies in the Docker image (runs as root)                      |
+| `tools`         | Yes      | Array of tool definitions (at least one)                                                       |
+| `inputs`        | No       | Configuration inputs the admin provides (API keys, settings)                                   |
 
 ## Tools
 
@@ -83,10 +83,12 @@ The tool embeds the full source code. Arguments are passed as CLI positional arg
 ```
 
 When the LLM calls `ml_search(query="rtx 3090")`, the sandbox:
+
 1. Writes the script to `/tmp/_skill_ml_search.py`
 2. Runs `python3 /tmp/_skill_ml_search.py "rtx 3090"`
 
 The script reads arguments via:
+
 - **Python**: `sys.argv[1]`, `sys.argv[2]`, ...
 - **Bash**: `$1`, `$2`, ...
 - **JavaScript**: `process.argv[2]`, `process.argv[3]`, ...
@@ -96,6 +98,7 @@ Output goes to stdout and is returned to the LLM.
 ### Mode 3: Generic executor (no `prefix` or `script`)
 
 Falls back to the runtime's default behavior based on `type`:
+
 - `bash` → executes `args.command` directly
 - `python` → runs `python3 -c <args.code>`
 - `js` → runs `node -e <args.code>`
@@ -150,6 +153,7 @@ The `installation` field contains shell commands that run as `root` during Docke
 ```
 
 Tips:
+
 - The base image is Ubuntu 22.04 with `curl`, `wget`, `jq`, and `git` pre-installed
 - Always clean up apt lists: `rm -rf /var/lib/apt/lists/*`
 - For multi-arch support, use `dpkg --print-architecture` to detect `arm64` vs `amd64`
@@ -180,7 +184,10 @@ Tips:
       "parameters": {
         "type": "object",
         "properties": {
-          "command": { "type": "string", "description": "e.g. 'init', 'plan', 'apply -auto-approve'" }
+          "command": {
+            "type": "string",
+            "description": "e.g. 'init', 'plan', 'apply -auto-approve'"
+          }
         },
         "required": ["command"]
       }

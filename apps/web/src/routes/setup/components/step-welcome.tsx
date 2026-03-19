@@ -31,12 +31,12 @@ export function StepWelcome({ onNext, onImport, isImporting }: StepWelcomeProps)
       <CardHeader className="text-center">
         <CardTitle className="text-xl">Welcome to ClawBuddy</CardTitle>
         <CardDescription>
-          Let's configure your instance. This will only take a minute.
+          Let&apos;s configure your instance. This will only take a minute.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <div className="text-sm text-muted-foreground space-y-2">
-          <p>We'll set up:</p>
+          <p>We&apos;ll set up:</p>
           <ul className="list-disc list-inside space-y-1">
             <li>API keys for your AI providers</li>
             <li>Embedding model for document search</li>
@@ -58,7 +58,11 @@ export function StepWelcome({ onNext, onImport, isImporting }: StepWelcomeProps)
               onClick={() => fileRef.current?.click()}
               disabled={isImporting}
             >
-              {isImporting ? <Spinner data-icon="inline-start" /> : <Upload data-icon="inline-start" />}
+              {isImporting ? (
+                <Spinner data-icon="inline-start" />
+              ) : (
+                <Upload data-icon="inline-start" />
+              )}
               {isImporting ? 'Importing...' : 'Import from file'}
             </Button>
           </div>

@@ -82,7 +82,6 @@ export function ChatPage() {
     retryLastMessage,
     loadSession,
     clearMessages,
-    getSessionId,
     isCompressing,
   } = useChat(workspaceId ?? '', (sid) => {
     // Navigate to session URL immediately when session is created
@@ -142,7 +141,7 @@ export function ChatPage() {
       navigatedRef.current = false
       clearMessages()
     }
-  }, [sessionId, loadSession, clearMessages])
+  }, [sessionId, loadSession, clearMessages, queryClient])
 
   // Auto-send initial message from landing page
   useEffect(() => {
@@ -158,7 +157,7 @@ export function ChatPage() {
     if (!showScrollDown) {
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
-  }, [messages, isPending, thinkingMessage, pendingApprovals])
+  }, [messages, isPending, thinkingMessage, pendingApprovals, showScrollDown])
 
   const handleScroll = () => {
     const el = scrollContainerRef.current
@@ -386,12 +385,12 @@ export function ChatPage() {
                                         ? `/workspaces/${s.workspaceId}/documents/${s.documentId}`
                                         : '#'
                                     }
-                                    className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground no-underline transition-colors hover:bg-muted/80 hover:text-foreground"
-                                  >
-                                    <FileText className="size-3" />
-                                    {s.documentTitle}
-                                  </Link>
-                                ))}
+                                    const Renderer = richBlockRenderers[segment.type]
+                                    return Renderer ? (
+                                      <Renderer key={`rich-${j}`} {...segment} />
+                                    ) : null
+                                  })
+                                )}
                               </div>
                             )
                           })()}
@@ -601,33 +600,32 @@ export function ChatPage() {
                         </div>
                       )}
 
-                      {isPending ? (
-                        <button
-                          type="button"
-                          onClick={abortAgent}
-                          className="flex size-8 shrink-0 items-center justify-center rounded-full bg-brand text-brand-foreground shadow-md transition-all duration-200 hover:opacity-90"
-                          title="Stop generation"
-                        >
-                          <Square className="size-3.5" strokeWidth={2.5} />
-                        </button>
-                      ) : (
-                        <button
-                          type="submit"
-                          disabled={(!input.trim() && !pendingFiles.length) || isCompressing}
-                          className={`
-                            flex size-8 shrink-0 items-center justify-center rounded-full
-                            transition-all duration-200
-                            ${
-                              (input.trim() || pendingFiles.length) && !isCompressing
-                                ? 'bg-brand text-brand-foreground shadow-md hover:opacity-90'
-                                : 'cursor-not-allowed bg-muted-foreground/20 text-muted-foreground/50'
-                            }
-                          `}
-                        >
-                          <Send className="size-4" strokeWidth={2} />
-                        </button>
-                      )}
-                    </div>
+                    {isPending ? (
+                      <button
+                        type="button"
+                        onClick={abortAgent}
+                        className="flex size-8 shrink-0 items-center justify-center rounded-full bg-brand text-brand-foreground shadow-md transition-all duration-200 hover:opacity-90"
+                        title="Stop generation"
+                      >
+                        <Square className="size-3.5" strokeWidth={2.5} />
+                      </button>
+                    ) : (
+                      <button
+                        type="submit"
+                        disabled={(!input.trim() && !pendingFiles.length) || isCompressing}
+                        className={`
+                          flex size-8 shrink-0 items-center justify-center rounded-full
+                          transition-all duration-200
+                          ${
+                            (input.trim() || pendingFiles.length) && !isCompressing
+                              ? 'bg-brand text-brand-foreground shadow-md hover:opacity-90'
+                              : 'bg-muted-foreground/20 text-muted-foreground/50 cursor-not-allowed'
+                          }
+                        `}
+                      >
+                        <Send className="size-4" strokeWidth={2} />
+                      </button>
+                    )}
                   </div>
                 </form>
               </>

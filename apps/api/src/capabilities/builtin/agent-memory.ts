@@ -45,7 +45,8 @@ export const agentMemory: CapabilityDefinition = {
           },
           sourcePath: {
             type: 'string',
-            description: 'Path to a sandbox file to use as content (e.g. /workspace/.outputs/abc.txt or $HOME/report.md). Use this instead of content for large files.',
+            description:
+              'Path to a sandbox file to use as content (e.g. /workspace/.outputs/abc.txt or $HOME/report.md). Use this instead of content for large files.',
           },
         },
         required: ['filename'],

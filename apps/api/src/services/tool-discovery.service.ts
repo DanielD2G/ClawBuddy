@@ -120,8 +120,9 @@ export const toolDiscoveryService = {
     }))
 
     await qdrant.upsert(TOOL_DISCOVERY_COLLECTION, { points })
-    console.log(`[ToolDiscovery] Indexed ${points.length} capabilities into ${TOOL_DISCOVERY_COLLECTION}:`,
-      ids.map((slug, i) => `${slug} (${slugToUUID(slug)})`).join(', '),
+    console.log(
+      `[ToolDiscovery] Indexed ${points.length} capabilities into ${TOOL_DISCOVERY_COLLECTION}:`,
+      ids.map((slug) => `${slug} (${slugToUUID(slug)})`).join(', '),
     )
   },
 
@@ -155,7 +156,11 @@ export const toolDiscoveryService = {
    * Search for relevant capabilities based on a natural language query.
    * Filters results to only include capabilities enabled for the workspace.
    */
-  async search(query: string, enabledSlugs: string[], scoreThreshold = 0.3): Promise<DiscoveredCapability[]> {
+  async search(
+    query: string,
+    enabledSlugs: string[],
+    scoreThreshold = 0.3,
+  ): Promise<DiscoveredCapability[]> {
     const queryVector = await embeddingService.embed(query)
 
     // Search with a higher limit to account for post-filtering
@@ -166,7 +171,8 @@ export const toolDiscoveryService = {
       score_threshold: scoreThreshold,
     })
 
-    console.log(`[ToolDiscovery] Search "${query.slice(0, 80)}" returned ${results.length} results:`,
+    console.log(
+      `[ToolDiscovery] Search "${query.slice(0, 80)}" returned ${results.length} results:`,
       results.map((r) => ({
         slug: (r.payload as unknown as CapabilityPayload).slug,
         score: r.score,
@@ -236,10 +242,10 @@ export const toolDiscoveryService = {
     )
 
     // Build system prompt with only loaded capabilities + discovery instructions
-    const systemPrompt = capabilityService.buildSystemPrompt([
-      ...loadedCaps,
-      { name: toolDiscovery.name, systemPrompt: toolDiscovery.systemPrompt },
-    ], timezone)
+    const systemPrompt = capabilityService.buildSystemPrompt(
+      [...loadedCaps, { name: toolDiscovery.name, systemPrompt: toolDiscovery.systemPrompt }],
+      timezone,
+    )
 
     // Build tool definitions: always-on tools + mentioned tools + discover_tools
     const tools: LLMToolDefinition[] = capabilityService.buildToolDefinitions(loadedCaps)

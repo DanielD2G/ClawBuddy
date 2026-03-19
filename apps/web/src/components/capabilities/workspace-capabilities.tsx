@@ -92,18 +92,14 @@ export function WorkspaceCapabilities({ workspaceId }: WorkspaceCapabilitiesProp
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex flex-col gap-1">
                         <CardTitle className="text-sm">{cap.name}</CardTitle>
-                        <CardDescription className="text-xs">
-                          {cap.description}
-                        </CardDescription>
+                        <CardDescription className="text-xs">{cap.description}</CardDescription>
                       </div>
                       <div className="flex items-center gap-1.5">
                         {cap.enabled && hasConfig && (
                           <Button
                             variant="ghost"
                             size="icon-xs"
-                            onClick={() =>
-                              setConfigDialog({ capability: cap, mode: 'edit' })
-                            }
+                            onClick={() => setConfigDialog({ capability: cap, mode: 'edit' })}
                           >
                             <Settings className="size-3.5" />
                           </Button>
@@ -112,9 +108,7 @@ export function WorkspaceCapabilities({ workspaceId }: WorkspaceCapabilitiesProp
                           variant={cap.enabled ? 'secondary' : 'outline'}
                           size="xs"
                           onClick={() => handleToggle(cap)}
-                          disabled={
-                            enableMutation.isPending || disableMutation.isPending
-                          }
+                          disabled={enableMutation.isPending || disableMutation.isPending}
                         >
                           {cap.enabled ? 'Disable' : 'Enable'}
                         </Button>
@@ -152,14 +146,10 @@ export function WorkspaceCapabilities({ workspaceId }: WorkspaceCapabilitiesProp
           capabilityName={configDialog.capability.name}
           schema={configDialog.capability.configSchema as ConfigFieldDefinition[]}
           initialValues={
-            configDialog.mode === 'edit'
-              ? (configDialog.capability.config ?? undefined)
-              : undefined
+            configDialog.mode === 'edit' ? (configDialog.capability.config ?? undefined) : undefined
           }
           onSubmit={handleConfigSubmit}
-          isLoading={
-            enableMutation.isPending || updateConfigMutation.isPending
-          }
+          isLoading={enableMutation.isPending || updateConfigMutation.isPending}
         />
       )}
     </div>

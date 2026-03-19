@@ -25,7 +25,10 @@ export function buildConversationMessages({
     ...(summary
       ? [
           { role: 'user' as const, content: `[Previous conversation summary]\n${summary}` },
-          { role: 'assistant' as const, content: 'Understood, I have context from our earlier conversation.' },
+          {
+            role: 'assistant' as const,
+            content: 'Understood, I have context from our earlier conversation.',
+          },
         ]
       : []),
     ...recentMessages.map((message) => ({
@@ -42,9 +45,9 @@ export function buildConversationMessages({
   for (const message of rawMessages) {
     const previous = messages[messages.length - 1]
     if (
-      previous
-      && previous.role === message.role
-      && (message.role === 'user' || message.role === 'assistant')
+      previous &&
+      previous.role === message.role &&
+      (message.role === 'user' || message.role === 'assistant')
     ) {
       ;(previous as { content: string }).content += '\n\n' + getTextContent(message.content)
       continue

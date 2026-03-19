@@ -2,7 +2,6 @@ import { Hono } from 'hono'
 import { Bot } from 'grammy'
 import { channelService } from '../services/channel.service.js'
 import { telegramBotManager } from '../channels/telegram/telegram-bot-manager.js'
-import { decrypt } from '../services/crypto.service.js'
 import type { TelegramChannelConfig } from '../channels/types.js'
 import { ok, fail } from '../lib/responses.js'
 

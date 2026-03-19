@@ -32,17 +32,19 @@ const SkillDefinitionSchema = z.object({
   instructions: z.string(),
   installation: z.string().optional(),
   tools: z.array(ToolDefinitionSchema).min(1),
-  inputs: z.record(
-    z.union([
-      z.enum(['var', 'secret', 'textarea']),
-      z.object({
-        type: z.enum(['var', 'secret', 'textarea']),
-        default: z.string().optional(),
-        description: z.string().optional(),
-        placeholder: z.string().optional(),
-      }),
-    ]),
-  ).optional(),
+  inputs: z
+    .record(
+      z.union([
+        z.enum(['var', 'secret', 'textarea']),
+        z.object({
+          type: z.enum(['var', 'secret', 'textarea']),
+          default: z.string().optional(),
+          description: z.string().optional(),
+          placeholder: z.string().optional(),
+        }),
+      ]),
+    )
+    .optional(),
 })
 
 /**
@@ -60,9 +62,7 @@ function humanizeKey(key: string): string {
  * Convert skill inputs to ConfigFieldDefinition array.
  * Supports both short form ("var"/"secret") and object form ({ type, default, ... }).
  */
-function inputsToConfigSchema(
-  inputs: Record<string, SkillInput>,
-): ConfigFieldDefinition[] {
+function inputsToConfigSchema(inputs: Record<string, SkillInput>): ConfigFieldDefinition[] {
   return Object.entries(inputs).map(([key, input]) => {
     const isObject = typeof input === 'object'
     const inputType = isObject ? input.type : input
@@ -70,7 +70,12 @@ function inputsToConfigSchema(
     return {
       key,
       label: humanizeKey(key),
-      type: inputType === 'secret' ? ('password' as const) : inputType === 'textarea' ? ('textarea' as const) : ('string' as const),
+      type:
+        inputType === 'secret'
+          ? ('password' as const)
+          : inputType === 'textarea'
+            ? ('textarea' as const)
+            : ('string' as const),
       required: false,
       envVar: key.toUpperCase(),
       default: isObject ? input.default : undefined,
@@ -108,9 +113,7 @@ export function parseSkillFile(raw: unknown): {
 } {
   const skill = SkillDefinitionSchema.parse(raw)
 
-  const configSchema = skill.inputs
-    ? inputsToConfigSchema(skill.inputs)
-    : undefined
+  const configSchema = skill.inputs ? inputsToConfigSchema(skill.inputs) : undefined
 
   const capability: CapabilityDefinition = {
     slug: skill.slug,

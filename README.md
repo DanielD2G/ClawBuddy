@@ -56,14 +56,14 @@ ClawBuddy is an open-source AI agent platform that runs entirely on your infrast
 
 Six sandboxed tools your AI can use, each running in isolated Docker containers:
 
-| Tool | What it does |
-|------|-------------|
-| **Bash** | Shell commands with curl, wget, jq, git |
-| **Python** | Full Python 3 with venv, data analysis, scripting |
-| **Docker** | Build, run, and manage containers |
-| **Kubectl** | Kubernetes cluster management |
-| **AWS CLI** | S3, EC2, Lambda, CloudFormation, and 200+ AWS services |
-| **GitHub CLI** | Repos, issues, PRs, actions, releases, secrets |
+| Tool           | What it does                                           |
+| -------------- | ------------------------------------------------------ |
+| **Bash**       | Shell commands with curl, wget, jq, git                |
+| **Python**     | Full Python 3 with venv, data analysis, scripting      |
+| **Docker**     | Build, run, and manage containers                      |
+| **Kubectl**    | Kubernetes cluster management                          |
+| **AWS CLI**    | S3, EC2, Lambda, CloudFormation, and 200+ AWS services |
+| **GitHub CLI** | Repos, issues, PRs, actions, releases, secrets         |
 
 Each capability is defined as a `.skill` file — easy to read, modify, or create new ones. See [Creating Skills](docs/creating-skills.md).
 
@@ -71,11 +71,11 @@ Each capability is defined as a `.skill` file — easy to read, modify, or creat
 
 The primary agent can delegate tasks to lightweight sub-agents that run on smaller, faster models (Haiku/Flash). Each sub-agent is assigned a role that determines which tools it can access:
 
-| Role | Access | Use case |
-|------|--------|----------|
-| **Explore** | Read-only tools (web search, web fetch, document search) | Research and information gathering |
-| **Analyze** | Read-only tools | Data analysis and summarization |
-| **Execute** | Full tool access (bash, python, docker, etc.) | Running commands and performing actions |
+| Role        | Access                                                   | Use case                                |
+| ----------- | -------------------------------------------------------- | --------------------------------------- |
+| **Explore** | Read-only tools (web search, web fetch, document search) | Research and information gathering      |
+| **Analyze** | Read-only tools                                          | Data analysis and summarization         |
+| **Execute** | Full tool access (bash, python, docker, etc.)            | Running commands and performing actions |
 
 Sub-agents run independently and return their results to the primary agent, keeping the main conversation context clean while parallelizing work.
 
@@ -83,11 +83,11 @@ Sub-agents run independently and return their results to the primary agent, keep
 
 Built-in skills that let the AI search external platforms directly from the chat:
 
-| Skill | What it does |
-|-------|-------------|
-| **Amazon Search** | Search products on Amazon.com — returns names, prices, links, and images with rich product cards |
-| **MercadoLibre Search** | Search products on MercadoLibre Argentina — prices in ARS, direct links, and product images |
-| **YouTube Search** | Search YouTube videos — returns titles, channels, durations, view counts, and embedded video players |
+| Skill                   | What it does                                                                                         |
+| ----------------------- | ---------------------------------------------------------------------------------------------------- |
+| **Amazon Search**       | Search products on Amazon.com — returns names, prices, links, and images with rich product cards     |
+| **MercadoLibre Search** | Search products on MercadoLibre Argentina — prices in ARS, direct links, and product images          |
+| **YouTube Search**      | Search YouTube videos — returns titles, channels, durations, view counts, and embedded video players |
 
 Skills run inside sandboxed Python containers with network access, so your credentials stay safe.
 
@@ -132,15 +132,15 @@ Real-time web search via Google Search API. The AI automatically uses web search
 
 Full integration with Google Workspace via OAuth:
 
-| Service | Capabilities |
-|---------|-------------|
-| **Gmail** | Read, search, send, and manage emails |
+| Service      | Capabilities                          |
+| ------------ | ------------------------------------- |
+| **Gmail**    | Read, search, send, and manage emails |
 | **Calendar** | View agenda, create and manage events |
-| **Drive** | List, upload, and download files |
-| **Tasks** | Create and manage task lists |
-| **Docs** | Read and create documents |
-| **Sheets** | Read and create spreadsheets |
-| **Slides** | Read and create presentations |
+| **Drive**    | List, upload, and download files      |
+| **Tasks**    | Create and manage task lists          |
+| **Docs**     | Read and create documents             |
+| **Sheets**   | Read and create spreadsheets          |
+| **Slides**   | Read and create presentations         |
 
 ### Cron Scheduling
 
@@ -244,24 +244,24 @@ Workspaces can be **exported** as a full backup (configuration, capabilities, do
 
 ### Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Frontend | React 19, Vite, TailwindCSS v4, Radix UI |
-| Backend | Hono, Bun, TypeScript |
-| Database | PostgreSQL 16, Prisma 6 |
-| Vector DB | Qdrant |
-| Object Storage | MinIO (S3-compatible) |
-| Queue | BullMQ + Redis 7 |
-| Browser | BrowserGrid (Playwright + Camoufox) |
-| Sandboxing | Docker containers with resource limits |
+| Layer          | Technology                               |
+| -------------- | ---------------------------------------- |
+| Frontend       | React 19, Vite, TailwindCSS v4, Radix UI |
+| Backend        | Hono, Bun, TypeScript                    |
+| Database       | PostgreSQL 16, Prisma 6                  |
+| Vector DB      | Qdrant                                   |
+| Object Storage | MinIO (S3-compatible)                    |
+| Queue          | BullMQ + Redis 7                         |
+| Browser        | BrowserGrid (Playwright + Camoufox)      |
+| Sandboxing     | Docker containers with resource limits   |
 
 ### LLM Support
 
-| Provider | Chat Models | Embedding Models |
-|----------|------------|-----------------|
-| **OpenAI** | GPT-5.4, GPT-5, GPT-4.1, GPT-4o, O3, O3-mini | text-embedding-3-small, text-embedding-3-large |
-| **Anthropic** | Claude Opus 4.6, Sonnet 4.6, Haiku 4.5 | — |
-| **Google** | Gemini 3.1 Pro, 3 Flash, 2.5 Pro/Flash | gemini-embedding-001, gemini-embedding-002 (beta) |
+| Provider      | Chat Models                                  | Embedding Models                                  |
+| ------------- | -------------------------------------------- | ------------------------------------------------- |
+| **OpenAI**    | GPT-5.4, GPT-5, GPT-4.1, GPT-4o, O3, O3-mini | text-embedding-3-small, text-embedding-3-large    |
+| **Anthropic** | Claude Opus 4.6, Sonnet 4.6, Haiku 4.5       | —                                                 |
+| **Google**    | Gemini 3.1 Pro, 3 Flash, 2.5 Pro/Flash       | gemini-embedding-001, gemini-embedding-002 (beta) |
 
 ---
 
@@ -302,28 +302,25 @@ bun install
 cp .env.example .env
 # Edit .env with your API keys (see docs/api-keys-setup.md)
 
-# Start infrastructure (Postgres, Redis, Qdrant, MinIO, BrowserGrid)
-make docker-up
-
-# Push database schema
-make db-push
-
-# Start dev servers (API + Web)
+# Start the development stack in Docker Compose with live reload
 make dev
+
+# Rebuild the development images when Docker deps change
+make dev-build
 ```
 
 ---
 
 ## Service URLs
 
-| Service | URL |
-|---------|-----|
-| Web App | http://localhost:4321 |
-| API | http://localhost:4000 |
-| API Docs (Swagger) | http://localhost:4000/api/docs |
-| Qdrant Dashboard | http://localhost:6333/dashboard |
-| MinIO Console | http://localhost:9001 |
-| BrowserGrid Dashboard | http://localhost:9090 |
+| Service               | URL                             |
+| --------------------- | ------------------------------- |
+| Web App               | http://localhost:4321           |
+| API                   | http://localhost:4000           |
+| API Docs (Swagger)    | http://localhost:4000/api/docs  |
+| Qdrant Dashboard      | http://localhost:6333/dashboard |
+| MinIO Console         | http://localhost:9001           |
+| BrowserGrid Dashboard | http://localhost:9090           |
 
 ---
 

@@ -1,5 +1,12 @@
 import { useState } from 'react'
-import { FolderOpen, FileText, MessageSquare, ChevronLeft, ChevronRight, Search } from 'lucide-react'
+import {
+  FolderOpen,
+  FileText,
+  MessageSquare,
+  ChevronLeft,
+  ChevronRight,
+  Search,
+} from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -121,7 +128,9 @@ function WorkspacesSection() {
               Array.from({ length: 5 }).map((_, i) => (
                 <TableRow key={i}>
                   {Array.from({ length: 5 }).map((_, j) => (
-                    <TableCell key={j}><Skeleton className="h-4 w-20" /></TableCell>
+                    <TableCell key={j}>
+                      <Skeleton className="h-4 w-20" />
+                    </TableCell>
                   ))}
                 </TableRow>
               ))
@@ -154,13 +163,23 @@ function WorkspacesSection() {
             {data?.total} workspace{data?.total !== 1 ? 's' : ''} total
           </p>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setPage(page - 1)}
+            >
               <ChevronLeft className="size-4" />
             </Button>
             <span className="text-sm">
               {page} / {totalPages}
             </span>
-            <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page >= totalPages}
+              onClick={() => setPage(page + 1)}
+            >
               <ChevronRight className="size-4" />
             </Button>
           </div>
@@ -232,7 +251,9 @@ function DocumentsSection() {
               Array.from({ length: 5 }).map((_, i) => (
                 <TableRow key={i}>
                   {Array.from({ length: 6 }).map((_, j) => (
-                    <TableCell key={j}><Skeleton className="h-4 w-20" /></TableCell>
+                    <TableCell key={j}>
+                      <Skeleton className="h-4 w-20" />
+                    </TableCell>
                   ))}
                 </TableRow>
               ))
@@ -268,13 +289,23 @@ function DocumentsSection() {
             {data?.total} document{data?.total !== 1 ? 's' : ''} total
           </p>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setPage(page - 1)}
+            >
               <ChevronLeft className="size-4" />
             </Button>
             <span className="text-sm">
               {page} / {totalPages}
             </span>
-            <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page >= totalPages}
+              onClick={() => setPage(page + 1)}
+            >
               <ChevronRight className="size-4" />
             </Button>
           </div>
@@ -323,7 +354,9 @@ function ConversationsSection() {
               Array.from({ length: 5 }).map((_, i) => (
                 <TableRow key={i}>
                   {Array.from({ length: 4 }).map((_, j) => (
-                    <TableCell key={j}><Skeleton className="h-4 w-20" /></TableCell>
+                    <TableCell key={j}>
+                      <Skeleton className="h-4 w-20" />
+                    </TableCell>
                   ))}
                 </TableRow>
               ))
@@ -355,13 +388,23 @@ function ConversationsSection() {
             {data?.total} conversation{data?.total !== 1 ? 's' : ''} total
           </p>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setPage(page - 1)}
+            >
               <ChevronLeft className="size-4" />
             </Button>
             <span className="text-sm">
               {page} / {totalPages}
             </span>
-            <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page >= totalPages}
+              onClick={() => setPage(page + 1)}
+            >
               <ChevronRight className="size-4" />
             </Button>
           </div>

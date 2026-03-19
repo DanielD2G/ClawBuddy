@@ -3,9 +3,7 @@ import { markdownToTelegramHtml, splitHtmlMessage } from './format-telegram.js'
 
 describe('markdownToTelegramHtml', () => {
   test('escapes HTML entities', () => {
-    expect(markdownToTelegramHtml('Tom & Jerry <script>')).toBe(
-      'Tom &amp; Jerry &lt;script&gt;',
-    )
+    expect(markdownToTelegramHtml('Tom & Jerry <script>')).toBe('Tom &amp; Jerry &lt;script&gt;')
   })
 
   test('converts headings to bold', () => {
@@ -15,15 +13,11 @@ describe('markdownToTelegramHtml', () => {
   })
 
   test('converts bold **text**', () => {
-    expect(markdownToTelegramHtml('This is **bold** text')).toBe(
-      'This is <b>bold</b> text',
-    )
+    expect(markdownToTelegramHtml('This is **bold** text')).toBe('This is <b>bold</b> text')
   })
 
   test('converts italic *text*', () => {
-    expect(markdownToTelegramHtml('This is *italic* text')).toBe(
-      'This is <i>italic</i> text',
-    )
+    expect(markdownToTelegramHtml('This is *italic* text')).toBe('This is <i>italic</i> text')
   })
 
   test('converts bullet points and does not treat them as italic', () => {
@@ -33,15 +27,11 @@ describe('markdownToTelegramHtml', () => {
   })
 
   test('converts inline code', () => {
-    expect(markdownToTelegramHtml('Use `foo()` here')).toBe(
-      'Use <code>foo()</code> here',
-    )
+    expect(markdownToTelegramHtml('Use `foo()` here')).toBe('Use <code>foo()</code> here')
   })
 
   test('escapes HTML inside inline code', () => {
-    expect(markdownToTelegramHtml('Use `<div>` tag')).toBe(
-      'Use <code>&lt;div&gt;</code> tag',
-    )
+    expect(markdownToTelegramHtml('Use `<div>` tag')).toBe('Use <code>&lt;div&gt;</code> tag')
   })
 
   test('converts fenced code blocks', () => {
@@ -51,9 +41,7 @@ describe('markdownToTelegramHtml', () => {
 
   test('escapes HTML inside code blocks', () => {
     const input = '```\n<div class="a">\n```'
-    expect(markdownToTelegramHtml(input)).toBe(
-      '<pre>&lt;div class="a"&gt;</pre>',
-    )
+    expect(markdownToTelegramHtml(input)).toBe('<pre>&lt;div class="a"&gt;</pre>')
   })
 
   test('does not apply formatting inside code blocks', () => {

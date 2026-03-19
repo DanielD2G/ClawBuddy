@@ -8,7 +8,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { FolderOpen, FileText, Trash2, FolderPlus, Upload, MoreVertical, Loader2, RotateCcw } from 'lucide-react'
+import {
+  FolderOpen,
+  FileText,
+  Trash2,
+  FolderPlus,
+  Upload,
+  MoreVertical,
+  Loader2,
+  RotateCcw,
+} from 'lucide-react'
 import { FolderDropTarget } from '@/components/explorer/drop-zone'
 import type { Folder } from '@/hooks/use-folders'
 import type { Document } from '@/hooks/use-documents'
@@ -113,9 +122,7 @@ export function ExplorerItemList({
                 >
                   <CardContent className="flex items-center gap-3 p-3">
                     <FolderOpen className="size-5 text-brand shrink-0" />
-                    <span className="text-sm font-medium truncate flex-1">
-                      {folder.name}
-                    </span>
+                    <span className="text-sm font-medium truncate flex-1">{folder.name}</span>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button
@@ -190,7 +197,8 @@ export function ExplorerItemList({
                           variant={statusVariant[doc.status] ?? 'secondary'}
                           className="text-[10px] px-1.5 py-0"
                         >
-                          {(doc.status === 'PROCESSING' || doc.status === 'PENDING') && doc.processingStep
+                          {(doc.status === 'PROCESSING' || doc.status === 'PENDING') &&
+                          doc.processingStep
                             ? doc.processingStep
                             : doc.status}
                         </Badge>

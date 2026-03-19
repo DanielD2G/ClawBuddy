@@ -10,8 +10,7 @@ export const docker: CapabilityDefinition = {
   tools: [
     {
       name: 'docker_command',
-      description:
-        'Execute a Docker command. The command should NOT include the "docker" prefix.',
+      description: 'Execute a Docker command. The command should NOT include the "docker" prefix.',
       parameters: {
         type: 'object',
         properties: {
@@ -31,7 +30,14 @@ export const docker: CapabilityDefinition = {
   systemPrompt:
     'You can execute Docker commands to manage containers and images in the sandbox environment.',
   configSchema: [
-    { key: 'dockerHost', label: 'Docker Host', type: 'string', required: false, envVar: 'DOCKER_HOST', default: 'unix:///var/run/docker.sock' },
+    {
+      key: 'dockerHost',
+      label: 'Docker Host',
+      type: 'string',
+      required: false,
+      envVar: 'DOCKER_HOST',
+      default: 'unix:///var/run/docker.sock',
+    },
   ],
   sandbox: {
     dockerImage: 'clawbuddy-sandbox-full',

@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "lint": "eslint src/",
+    "lint": "bun --cwd ../.. run lint:files apps/web/src",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {

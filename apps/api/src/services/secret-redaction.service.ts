@@ -78,8 +78,8 @@ function collectStringLeaves(value: unknown, output: Set<string>) {
 function stripWrappingQuotes(value: string): string {
   const trimmed = value.trim()
   if (
-    (trimmed.startsWith('"') && trimmed.endsWith('"'))
-    || (trimmed.startsWith('\'') && trimmed.endsWith('\''))
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
   ) {
     return trimmed.slice(1, -1)
   }
@@ -217,8 +217,9 @@ export const secretRedactionService = {
       }
     }
 
-    const uniqueSecrets = [...new Set([...secretValues].filter(Boolean))]
-      .sort((a, b) => b.length - a.length)
+    const uniqueSecrets = [...new Set([...secretValues].filter(Boolean))].sort(
+      (a, b) => b.length - a.length,
+    )
 
     return {
       workspaceId: workspaceId ?? undefined,
@@ -236,7 +237,11 @@ export const secretRedactionService = {
     return text.replace(inventory.secretPattern, SECRET_REDACTION_MASK)
   },
 
-  redactObject<T extends JsonLike>(value: T, inventory: SecretInventory, options?: RedactOptions): T {
+  redactObject<T extends JsonLike>(
+    value: T,
+    inventory: SecretInventory,
+    options?: RedactOptions,
+  ): T {
     if (inventory.enabled === false) return value
     const skipKeys = new Set(options?.skipKeys ?? [])
 

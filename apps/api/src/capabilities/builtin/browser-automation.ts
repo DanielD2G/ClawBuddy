@@ -36,7 +36,8 @@ Example — searching on a site takes 3+ separate calls:
         properties: {
           script: {
             type: 'string',
-            description: 'Playwright script with access to page object. Use await for async ops. Return results.',
+            description:
+              'Playwright script with access to page object. Use await for async ops. Return results.',
           },
           timeout: {
             type: 'number',

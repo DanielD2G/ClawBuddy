@@ -14,7 +14,11 @@ import { ChevronLeft, Eye, EyeOff } from 'lucide-react'
 import type { ConfigFieldDefinition } from '@/types/capability-config'
 
 interface StepConfigureProps {
-  capsNeedingConfig: Array<{ slug: string; name: string; configSchema: ConfigFieldDefinition[] | null }>
+  capsNeedingConfig: Array<{
+    slug: string
+    name: string
+    configSchema: ConfigFieldDefinition[] | null
+  }>
   configs: Record<string, Record<string, unknown>>
   onConfigChange: (slug: string, config: Record<string, unknown>) => void
   onBack: () => void
@@ -67,7 +71,8 @@ export function StepConfigure({
       <CardHeader>
         <CardTitle>Configure Credentials</CardTitle>
         <CardDescription>
-          Enter credentials for the capabilities you selected. You can skip this and configure later in settings.
+          Enter credentials for the capabilities you selected. You can skip this and configure later
+          in settings.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
@@ -126,7 +131,11 @@ export function StepConfigure({
                         className="absolute top-1/2 right-1 -translate-y-1/2 size-7"
                         onClick={() => togglePassword(fieldKey)}
                       >
-                        {showPasswords[fieldKey] ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                        {showPasswords[fieldKey] ? (
+                          <EyeOff className="size-3.5" />
+                        ) : (
+                          <Eye className="size-3.5" />
+                        )}
                       </Button>
                     </div>
                   ) : (

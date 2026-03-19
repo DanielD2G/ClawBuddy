@@ -1,9 +1,25 @@
+x-dev-app: &dev-app
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+    target: base
+  working_dir: /app
+  env_file: .env
+  entrypoint: ['sh', '/app/docker/dev-entrypoint.sh']
+  volumes:
+    - .:/app
+    - workspace_node_modules:/app/node_modules
+
 services:
+  workspace:
+    <<: *dev-app
+    command: ['true']
+
   postgres:
-    profiles: ["infra", "app"]
+    profiles: ['infra', 'app']
     image: postgres:16-alpine
     ports:
-      - "5433:5432"
+      - '5433:5432'
     environment:
       POSTGRES_USER: clawbuddy
       POSTGRES_PASSWORD: clawbuddy
@@ -11,44 +27,44 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U clawbuddy"]
+      test: ['CMD-SHELL', 'pg_isready -U clawbuddy']
       interval: 5s
       timeout: 5s
       retries: 5
 
   redis:
-    profiles: ["infra", "app"]
+    profiles: ['infra', 'app']
     image: redis:7-alpine
     ports:
-      - "6380:6379"
+      - '6380:6379'
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
       timeout: 5s
       retries: 5
 
   qdrant:
-    profiles: ["infra", "app"]
+    profiles: ['infra', 'app']
     image: qdrant/qdrant:latest
     ports:
-      - "6333:6333"
-      - "6334:6334"
+      - '6333:6333'
+      - '6334:6334'
     volumes:
       - qdrant_data:/qdrant/storage
     healthcheck:
-      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/localhost/6333'"]
+      test: ['CMD-SHELL', "bash -c ':> /dev/tcp/localhost/6333'"]
       interval: 5s
       timeout: 5s
       retries: 5
 
   minio:
-    profiles: ["infra", "app"]
+    profiles: ['infra', 'app']
     image: minio/minio:latest
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - '9000:9000'
+      - '9001:9001'
     environment:
       MINIO_ROOT_USER: clawbuddy
       MINIO_ROOT_PASSWORD: clawbuddy123
@@ -56,13 +72,13 @@ services:
       - minio_data:/data
     command: server /data --console-address ":9001"
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ['CMD', 'mc', 'ready', 'local']
       interval: 5s
       timeout: 5s
       retries: 5
 
   minio-init:
-    profiles: ["infra", "app"]
+    profiles: ['infra', 'app']
     image: minio/mc:latest
     depends_on:
       minio:
@@ -75,30 +91,31 @@ services:
       "
 
   browsergrid:
-    profiles: ["infra", "app"]
+    profiles: ['infra', 'app']
     image: ghcr.io/danield2g/browsergrid-standalone:latest
     platform: linux/amd64
     ports:
-      - "9090:9090"
+      - '9090:9090'
     environment:
       MAX_WORKERS: 5
       IDLE_TIMEOUT: 300
     shm_size: '2gb'
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9090/api/health"]
+      test: ['CMD', 'curl', '-f', 'http://localhost:9090/api/health']
       interval: 10s
       timeout: 5s
       retries: 5
 
   api:
-    profiles: ["app"]
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-      target: api
+    <<: *dev-app
+    profiles: ['app']
+    command: >
+      sh -lc "cd apps/api &&
+      bun run db:generate &&
+      bun x prisma db push --skip-generate &&
+      bun --watch src/index.ts"
     ports:
-      - "4000:4000"
-    env_file: .env
+      - '4000:4000'
     environment:
       DATABASE_URL: postgresql://clawbuddy:clawbuddy@postgres:5432/clawbuddy
       REDIS_URL: redis://redis:6379
@@ -106,6 +123,8 @@ services:
       MINIO_ENDPOINT: http://minio:9000
       BROWSER_GRID_URL: http://browsergrid:9090
     volumes:
+      - .:/app
+      - workspace_node_modules:/app/node_modules
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       postgres:
@@ -119,20 +138,42 @@ services:
       browsergrid:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "bun", "--eval", "fetch('http://localhost:4000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      test:
+        [
+          'CMD',
+          'bun',
+          '--eval',
+          "fetch('http://localhost:4000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 30s
 
   web:
-    profiles: ["app"]
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-      target: web
+    <<: *dev-app
+    profiles: ['app']
+    command: >
+      sh -lc "cd apps/web &&
+      bun run dev --host 0.0.0.0 --port 4321"
     ports:
-      - "4321:80"
+      - '4321:4321'
+    environment:
+      CHOKIDAR_USEPOLLING: 'true'
+      VITE_API_PROXY_TARGET: http://api:4000
+    volumes:
+      - .:/app
+      - workspace_node_modules:/app/node_modules
+    depends_on:
+      api:
+        condition: service_healthy
+
+  test:
+    <<: *dev-app
+    profiles: ['app']
+    environment:
+      API_BASE: http://api:4000/api
+    command: ['sh', '-lc', 'bun run db:generate && bun run test']
     depends_on:
       api:
         condition: service_healthy
@@ -142,3 +183,4 @@ volumes:
   redis_data:
   qdrant_data:
   minio_data:
+  workspace_node_modules:

@@ -10,8 +10,7 @@ export const bash: CapabilityDefinition = {
   tools: [
     {
       name: 'run_bash',
-      description:
-        'Execute a bash command in the sandbox. Returns stdout, stderr, and exit code.',
+      description: 'Execute a bash command in the sandbox. Returns stdout, stderr, and exit code.',
       parameters: {
         type: 'object',
         properties: {

@@ -35,7 +35,6 @@ export function StepApiKeys({
         {['openai', 'gemini', 'claude'].map((provider) => (
           <ApiKeyInput
             key={provider}
-            provider={provider}
             label={PROVIDER_LABELS[provider] ?? provider}
             info={apiKeys[provider]}
             onSave={(key) => onSaveKey(provider, key)}
@@ -63,13 +62,11 @@ export function StepApiKeys({
 }
 
 function ApiKeyInput({
-  provider,
   label,
   info,
   onSave,
   isSaving,
 }: {
-  provider: string
   label: string
   info: { source: 'env' | 'db' | null; masked: string | null }
   onSave: (key: string) => void
@@ -105,7 +102,10 @@ function ApiKeyInput({
         />
         <Button
           size="sm"
-          onClick={() => { onSave(value.trim()); setValue('') }}
+          onClick={() => {
+            onSave(value.trim())
+            setValue('')
+          }}
           disabled={isSaving || !value.trim()}
         >
           Save

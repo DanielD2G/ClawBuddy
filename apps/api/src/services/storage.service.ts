@@ -15,7 +15,7 @@ export const storageService = {
         Key: key,
         Body: body,
         ContentType: contentType,
-      })
+      }),
     )
     return { key }
   },
@@ -25,7 +25,7 @@ export const storageService = {
       new GetObjectCommand({
         Bucket: env.MINIO_BUCKET,
         Key: key,
-      })
+      }),
     )
     return response.Body
   },
@@ -35,7 +35,7 @@ export const storageService = {
       new ListObjectsV2Command({
         Bucket: env.MINIO_BUCKET,
         Prefix: prefix,
-      })
+      }),
     )
     return response.Contents ?? []
   },
@@ -45,7 +45,7 @@ export const storageService = {
       new DeleteObjectCommand({
         Bucket: env.MINIO_BUCKET,
         Key: key,
-      })
+      }),
     )
   },
 }

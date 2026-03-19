@@ -32,29 +32,34 @@ cronService.registerBuiltinJobs().catch((err) => {
 })
 
 // Ensure GlobalSettings singleton exists
-prisma.globalSettings.upsert({
-  where: { id: 'singleton' },
-  create: { id: 'singleton' },
-  update: {},
-}).catch((err) => {
-  console.error('[Settings] Failed to ensure global settings:', err)
-})
+prisma.globalSettings
+  .upsert({
+    where: { id: 'singleton' },
+    create: { id: 'singleton' },
+    update: {},
+  })
+  .catch((err) => {
+    console.error('[Settings] Failed to ensure global settings:', err)
+  })
 
 // Boot all enabled Telegram channels
-channelService.getAllEnabled().then(async (channels) => {
-  for (const ch of channels) {
-    if (ch.type === 'telegram') {
-      try {
-        const config = ch.config as Record<string, string>
-        await telegramBotManager.startBot(ch.id, decrypt(config.botToken), ch.workspaceId)
-      } catch (err) {
-        console.error(`[Telegram] Failed to start bot for channel ${ch.id}:`, err)
+channelService
+  .getAllEnabled()
+  .then(async (channels) => {
+    for (const ch of channels) {
+      if (ch.type === 'telegram') {
+        try {
+          const config = ch.config as Record<string, string>
+          await telegramBotManager.startBot(ch.id, decrypt(config.botToken), ch.workspaceId)
+        } catch (err) {
+          console.error(`[Telegram] Failed to start bot for channel ${ch.id}:`, err)
+        }
       }
     }
-  }
-}).catch((err) => {
-  console.error('[Telegram] Failed to boot channels:', err)
-})
+  })
+  .catch((err) => {
+    console.error('[Telegram] Failed to boot channels:', err)
+  })
 
 // Periodic cleanup of idle browser sessions (every 60 seconds)
 setInterval(() => {
@@ -67,10 +72,7 @@ setInterval(() => {
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, async () => {
     console.log(`[Server] ${signal} received, shutting down...`)
-    await Promise.allSettled([
-      browserService.shutdown(),
-      telegramBotManager.stopAll(),
-    ])
+    await Promise.allSettled([browserService.shutdown(), telegramBotManager.stopAll()])
     process.exit(0)
   })
 }

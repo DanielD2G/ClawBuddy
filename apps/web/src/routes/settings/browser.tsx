@@ -50,8 +50,7 @@ export function BrowserSettingsPage() {
   })
 
   const updateConfig = useMutation({
-    mutationFn: (data: Record<string, unknown>) =>
-      apiClient.patch('/browser/config', data),
+    mutationFn: (data: Record<string, unknown>) => apiClient.patch('/browser/config', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['browser-config'] })
       queryClient.invalidateQueries({ queryKey: ['browser-health'] })
@@ -98,9 +97,13 @@ export function BrowserSettingsPage() {
             </div>
             <Badge variant={health?.healthy ? 'default' : 'secondary'}>
               {health?.healthy ? (
-                <><CheckCircle2 className="mr-1 h-3 w-3" /> Connected</>
+                <>
+                  <CheckCircle2 className="mr-1 h-3 w-3" /> Connected
+                </>
               ) : (
-                <><XCircle className="mr-1 h-3 w-3" /> Disconnected</>
+                <>
+                  <XCircle className="mr-1 h-3 w-3" /> Disconnected
+                </>
               )}
             </Badge>
           </div>
@@ -142,11 +145,7 @@ export function BrowserSettingsPage() {
                 onChange={(e) => setApiKey(e.target.value)}
                 placeholder={config?.hasApiKey ? '••••••••' : 'No API key set'}
               />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowApiKey(!showApiKey)}
-              >
+              <Button variant="outline" size="sm" onClick={() => setShowApiKey(!showApiKey)}>
                 {showApiKey ? 'Hide' : 'Show'}
               </Button>
               <Button
@@ -221,9 +220,7 @@ export function BrowserSettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Active Sessions</CardTitle>
-          <CardDescription>
-            Browser sessions tied to active chat conversations.
-          </CardDescription>
+          <CardDescription>Browser sessions tied to active chat conversations.</CardDescription>
         </CardHeader>
         <CardContent>
           {sessions.length === 0 ? (

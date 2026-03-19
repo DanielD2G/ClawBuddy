@@ -34,12 +34,11 @@ const worker = new Worker<IngestionJobData>(
       let text: string
       if (fileUrl) {
         const fileStream = await storageService.download(fileUrl)
-        const chunks_raw: Buffer[] = []
-        // @ts-ignore - ReadableStream from S3
-        for await (const chunk of fileStream as any) {
-          chunks_raw.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk)
+        const chunksRaw: Buffer[] = []
+        for await (const chunk of fileStream as AsyncIterable<string | Uint8Array>) {
+          chunksRaw.push(typeof chunk === 'string' ? Buffer.from(chunk) : Buffer.from(chunk))
         }
-        text = Buffer.concat(chunks_raw).toString('utf-8')
+        text = Buffer.concat(chunksRaw).toString('utf-8')
       } else {
         // Inline content (e.g. from save_document tool)
         const doc = await prisma.document.findUniqueOrThrow({ where: { id: documentId } })

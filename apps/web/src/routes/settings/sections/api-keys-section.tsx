@@ -36,14 +36,14 @@ export function ApiKeysSection() {
       <CardHeader>
         <CardTitle>API Keys</CardTitle>
         <CardDescription>
-          Manage API keys for each provider. Keys set in the environment take priority over database keys.
+          Manage API keys for each provider. Keys set in the environment take priority over database
+          keys.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {['openai', 'gemini', 'claude'].map((provider) => (
           <ApiKeyRow
             key={provider}
-            provider={provider}
             label={PROVIDER_LABELS[provider] ?? provider}
             info={apiKeys[provider]}
             onSave={(key) => setApiKey.mutate({ provider, key })}
@@ -58,7 +58,6 @@ export function ApiKeysSection() {
 }
 
 function ApiKeyRow({
-  provider,
   label,
   info,
   onSave,
@@ -66,7 +65,6 @@ function ApiKeyRow({
   isSaving,
   isRemoving,
 }: {
-  provider: string
   label: string
   info: { source: 'env' | 'db' | null; masked: string | null }
   onSave: (key: string) => void
@@ -91,13 +89,19 @@ function ApiKeyRow({
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium">{label}</span>
           {info.source === 'env' && (
-            <Badge variant="secondary" className="text-xs">ENV</Badge>
+            <Badge variant="secondary" className="text-xs">
+              ENV
+            </Badge>
           )}
           {info.source === 'db' && (
-            <Badge variant="outline" className="text-xs">Database</Badge>
+            <Badge variant="outline" className="text-xs">
+              Database
+            </Badge>
           )}
           {!info.source && (
-            <Badge variant="destructive" className="text-xs">Not configured</Badge>
+            <Badge variant="destructive" className="text-xs">
+              Not configured
+            </Badge>
           )}
         </div>
         <div className="flex items-center gap-1">
@@ -137,7 +141,14 @@ function ApiKeyRow({
           <Button size="sm" onClick={handleSave} disabled={isSaving || !value.trim()}>
             Save
           </Button>
-          <Button size="sm" variant="outline" onClick={() => { setEditing(false); setValue('') }}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setEditing(false)
+              setValue('')
+            }}
+          >
             Cancel
           </Button>
         </div>
@@ -149,7 +160,11 @@ function ApiKeyRow({
           onClick={() => setEditing(true)}
           disabled={info.source === 'env'}
         >
-          {info.source === 'env' ? 'Set via environment' : info.source === 'db' ? 'Update key' : 'Add key'}
+          {info.source === 'env'
+            ? 'Set via environment'
+            : info.source === 'db'
+              ? 'Update key'
+              : 'Add key'}
         </Button>
       )}
     </div>
