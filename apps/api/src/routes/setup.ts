@@ -6,7 +6,7 @@ import { searchService } from '../services/search.service.js'
 import { capabilityService } from '../services/capability.service.js'
 import { toolDiscoveryService } from '../services/tool-discovery.service.js'
 import { prisma } from '../lib/prisma.js'
-import { EMBEDDING_DIMENSIONS } from '@agentbuddy/shared'
+import { EMBEDDING_DIMENSIONS, workspaceExportSchema } from '@agentbuddy/shared'
 import { imageBuilderService } from '../services/image-builder.service.js'
 import { qdrant } from '../lib/qdrant.js'
 import { s3 } from '../lib/s3.js'
@@ -14,6 +14,7 @@ import { embeddingService } from '../services/embedding.service.js'
 import { env } from '../env.js'
 import { TOOL_DISCOVERY_COLLECTION } from '../constants.js'
 import { ListBucketsCommand } from '@aws-sdk/client-s3'
+import { validateBody } from '../lib/validate.js'
 import Docker from 'dockerode'
 
 const app = new Hono()
@@ -546,6 +547,51 @@ app.post('/preflight', async (c) => {
   return c.json({
     success: true,
     data: { checks, allPassed },
+  })
+})
+
+// ── Import workspace config during setup ─────────────────
+app.post('/import', async (c) => {
+  const blocked = await requireSetupIncomplete(c)
+  if (blocked) return blocked
+
+  const body = await c.req.json()
+  const parsed = validateBody(workspaceExportSchema, body)
+
+  // Apply model config including embedding (safe during setup — embedding is only locked after onboarding)
+  try {
+    await settingsService.update({
+      aiProvider: parsed.modelConfig.aiProvider,
+      aiModel: parsed.modelConfig.aiModel ?? undefined,
+      mediumModel: parsed.modelConfig.mediumModel ?? undefined,
+      lightModel: parsed.modelConfig.lightModel ?? undefined,
+      exploreModel: parsed.modelConfig.exploreModel ?? undefined,
+      executeModel: parsed.modelConfig.executeModel ?? undefined,
+      titleModel: parsed.modelConfig.titleModel ?? undefined,
+      compactModel: parsed.modelConfig.compactModel ?? undefined,
+      advancedModelConfig: parsed.modelConfig.advancedModelConfig,
+      embeddingProvider: parsed.modelConfig.embeddingProvider,
+      embeddingModel: parsed.modelConfig.embeddingModel ?? undefined,
+      contextLimitTokens: parsed.modelConfig.contextLimitTokens,
+      maxAgentIterations: parsed.modelConfig.maxAgentIterations,
+      subAgentExploreMaxIterations: parsed.modelConfig.subAgentExploreMaxIterations,
+      subAgentAnalyzeMaxIterations: parsed.modelConfig.subAgentAnalyzeMaxIterations,
+      subAgentExecuteMaxIterations: parsed.modelConfig.subAgentExecuteMaxIterations,
+      timezone: parsed.modelConfig.timezone ?? undefined,
+    })
+  } catch {
+    // Model config may fail if provider keys aren't set yet — that's OK during setup
+  }
+
+  // Return parsed data for the frontend to pre-fill the wizard
+  return c.json({
+    success: true,
+    data: {
+      workspace: parsed.workspace,
+      capabilities: parsed.capabilities,
+      channels: parsed.channels,
+      modelConfig: parsed.modelConfig,
+    },
   })
 })
 
