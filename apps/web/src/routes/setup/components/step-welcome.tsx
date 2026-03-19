@@ -1,12 +1,31 @@
+import { useRef } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { ChevronRight } from 'lucide-react'
+import { Spinner } from '@/components/ui/spinner'
+import { ChevronRight, Upload } from 'lucide-react'
 
 interface StepWelcomeProps {
   onNext: () => void
+  onImport?: (data: Record<string, unknown>) => void
+  isImporting?: boolean
 }
 
-export function StepWelcome({ onNext }: StepWelcomeProps) {
+export function StepWelcome({ onNext, onImport, isImporting }: StepWelcomeProps) {
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !onImport) return
+    try {
+      const text = await file.text()
+      const data = JSON.parse(text)
+      onImport(data)
+    } catch {
+      // Reset on error
+    }
+    if (fileRef.current) fileRef.current.value = ''
+  }
+
   return (
     <Card>
       <CardHeader className="text-center">
@@ -25,7 +44,24 @@ export function StepWelcome({ onNext }: StepWelcomeProps) {
             <li>Agent capabilities</li>
           </ul>
         </div>
-        <div className="flex justify-end mt-2">
+        <div className="flex items-center justify-between mt-2">
+          <div>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".json"
+              onChange={handleFile}
+              className="hidden"
+            />
+            <Button
+              variant="outline"
+              onClick={() => fileRef.current?.click()}
+              disabled={isImporting}
+            >
+              {isImporting ? <Spinner data-icon="inline-start" /> : <Upload data-icon="inline-start" />}
+              {isImporting ? 'Importing...' : 'Import from file'}
+            </Button>
+          </div>
           <Button onClick={onNext} className="bg-brand text-brand-foreground hover:bg-brand/90">
             Get started
             <ChevronRight className="size-4 ml-1" />

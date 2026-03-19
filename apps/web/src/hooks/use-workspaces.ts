@@ -3,7 +3,7 @@ import type { WorkspaceSettings } from '@agentbuddy/shared'
 import { apiClient } from '@/lib/api-client'
 import { useActiveWorkspace } from '@/providers/workspace-provider'
 import { POLL_CONTAINER_STATUS_MS } from '@/constants'
-import { createMutation, createMutationWithContext } from './create-mutation'
+import { createMutation, createMutationWithContext, createCustomMutation } from './create-mutation'
 
 export interface Workspace {
   id: string
@@ -98,3 +98,24 @@ export const useStopWorkspaceContainer = createMutation<unknown, string>(
     ['workspaces', id],
   ],
 )
+
+export const useExportWorkspace = createCustomMutation<void, string>(
+  async (id) => {
+    const res = await fetch(`/api/workspaces/${id}/export`, { credentials: 'include' })
+    if (!res.ok) throw new Error('Export failed')
+    const json = await res.json()
+    const exportData = json.data
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `workspace-export.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  },
+)
+
+export const useImportWorkspace = createMutation<
+  { workspace: Workspace; skippedCapabilities: string[]; warnings: string[] },
+  Record<string, unknown>
+>('post', '/workspaces/import', [['workspaces']])

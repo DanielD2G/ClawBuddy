@@ -5,7 +5,7 @@ import { useActiveWorkspace } from '@/providers/workspace-provider'
 import { Spinner } from '@/components/ui/spinner'
 import { Sparkles, Key, Brain, MessageSquare, FolderOpen, Puzzle, Container, ShieldCheck, Settings, Send } from 'lucide-react'
 import { toast } from 'sonner'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
 import { ALWAYS_ON_CAPABILITY_SLUGS, WORKSPACE_COLORS } from '@/constants'
 import { hexToOklch } from '@/lib/color'
@@ -36,6 +36,7 @@ const ALL_STEPS = [
 ]
 
 export function SetupPage() {
+  const queryClient = useQueryClient()
   const { onboardingComplete, isLoading: statusLoading } = useSetupStatus()
   const [step, setStep] = useState(0)
   const [selectedCapabilities, setSelectedCapabilities] = useState<string[]>([...ALWAYS_ON_CAPABILITY_SLUGS])
@@ -68,6 +69,52 @@ export function SetupPage() {
     queryFn: () => apiClient.get<{ configured: boolean }>('/setup/google-oauth'),
   })
   const googleOAuthConfigured = googleOAuthConfig?.configured ?? false
+
+  const importMutation = useMutation({
+    mutationFn: (data: Record<string, unknown>) =>
+      apiClient.post<{
+        workspace: { name: string; description: string | null; color: string | null; autoExecute: boolean; settings: Record<string, unknown> | null; permissions: { allow: string[] } | null }
+        capabilities: Array<{ slug: string; enabled: boolean; config: Record<string, unknown> | null }>
+        channels: Array<{ type: string; name: string; enabled: boolean; config: Record<string, unknown> }>
+        modelConfig: Record<string, unknown>
+      }>('/setup/import', data),
+  })
+
+  const handleImport = async (data: Record<string, unknown>) => {
+    try {
+      const result = await importMutation.mutateAsync(data)
+      // Pre-fill workspace settings
+      if (result.workspace.name) setWorkspaceName(result.workspace.name)
+      if (result.workspace.color) setWorkspaceColor(result.workspace.color)
+      // Pre-fill capabilities
+      const enabledSlugs = result.capabilities
+        .filter((c) => c.enabled)
+        .map((c) => c.slug)
+      setSelectedCapabilities((prev) => [...new Set([...prev, ...enabledSlugs])])
+      // Pre-fill capability configs
+      const configs: Record<string, Record<string, unknown>> = {}
+      for (const cap of result.capabilities) {
+        if (cap.config) configs[cap.slug] = cap.config
+      }
+      setCapabilityConfigs((prev) => ({ ...prev, ...configs }))
+      // Pre-fill Telegram
+      const telegramChannel = result.channels.find((ch) => ch.type === 'telegram')
+      if (telegramChannel?.config?.botToken) {
+        setTelegramEnabled(true)
+        setTelegramToken(telegramChannel.config.botToken as string)
+      }
+      // Pre-fill timezone
+      if (result.modelConfig.timezone) {
+        setTimezone(result.modelConfig.timezone as string)
+      }
+      // Invalidate setup-settings so Embeddings/Chat steps fetch updated model config
+      await queryClient.invalidateQueries({ queryKey: ['setup-settings'] })
+      toast.success('Configuration imported — review each step and enter your API keys')
+      setStep(1) // Go to API Keys step
+    } catch {
+      toast.error('Failed to import — check that the file is a valid workspace export')
+    }
+  }
 
   // Redirect if setup already done
   if (!statusLoading && onboardingComplete === true) {
@@ -115,7 +162,8 @@ export function SetupPage() {
         setActiveWorkspace(result.workspace)
       }
       toast.success('Setup complete!')
-      navigate('/')
+      // Full reload so workspace color and all fresh state are applied
+      window.location.href = '/'
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Setup failed')
     }
@@ -136,7 +184,7 @@ export function SetupPage() {
         <StepNav visibleSteps={visibleSteps} currentStep={step} />
 
         {/* Steps */}
-        {step === 0 && <StepWelcome onNext={() => setStep(1)} />}
+        {step === 0 && <StepWelcome onNext={() => setStep(1)} onImport={handleImport} isImporting={importMutation.isPending} />}
         {step === 1 && (
           <StepApiKeys
             apiKeys={apiKeys}
