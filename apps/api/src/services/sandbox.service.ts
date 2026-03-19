@@ -15,11 +15,10 @@ import {
   EXEC_OUTPUT_MAX_BYTES,
   SANDBOX_TIMEOUT_EXIT_CODE,
   SANDBOX_STOP_TIMEOUT_S,
+  SANDBOX_BASE_IMAGE,
+  SANDBOX_FALLBACK_IMAGE,
 } from '../constants.js'
 import { stripNullBytes } from '../lib/sanitize.js'
-
-const SANDBOX_BASE_IMAGE = 'agentbuddy-sandbox-base'
-const SANDBOX_FALLBACK_IMAGE = 'ubuntu:22.04'
 
 interface ExecResult {
   stdout: string
@@ -428,16 +427,16 @@ export const sandboxService = {
   async startWorkspaceContainerWithCapabilities(workspaceId: string): Promise<string> {
     const { capabilityService } = await import('./capability.service.js')
     const configEnvVars = await capabilityService.getDecryptedCapabilityConfigsForWorkspace(workspaceId)
+    if (!configEnvVars.size) {
+      return this.getOrCreateWorkspaceContainer(workspaceId, { networkAccess: true })
+    }
+
     const mergedEnvVars: Record<string, string> = {}
     for (const envMap of configEnvVars.values()) {
       Object.assign(mergedEnvVars, envMap)
     }
 
-    return this.getOrCreateWorkspaceContainer(
-      workspaceId,
-      { networkAccess: true },
-      Object.keys(mergedEnvVars).length ? mergedEnvVars : undefined,
-    )
+    return this.getOrCreateWorkspaceContainer(workspaceId, { networkAccess: true }, mergedEnvVars)
   },
 
   /**

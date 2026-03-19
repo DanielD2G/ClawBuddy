@@ -127,6 +127,7 @@ export const chatService = {
           type: string
           text?: string
           toolIndex?: number
+          subAgentId?: string
           role?: string
           task?: string
           subToolIds?: string[]
@@ -138,6 +139,7 @@ export const chatService = {
               | {
                   type: 'sub_agent'
                   subAgent: {
+                    id?: string
                     role: string
                     task: string
                     tools: (typeof toolExecs)[number][]
@@ -176,13 +178,17 @@ export const chatService = {
             subToolExecMap = new Map(subToolExecs.map((e) => [e.id, e]))
           }
 
+          // Filter out sub-agent tools so toolIndex maps correctly to main-agent tools
+          const subToolIdSet = new Set(allSubToolIds)
+          const mainToolExecs = toolExecs.filter((te) => !subToolIdSet.has(te.id))
+
           contentBlocks = storedBlocks.map((block) => {
             if (
               block.type === 'sub_agent' &&
               block.toolIndex != null &&
-              toolExecs[block.toolIndex]
+              mainToolExecs[block.toolIndex]
             ) {
-              const te = toolExecs[block.toolIndex]
+              const te = mainToolExecs[block.toolIndex]
               // Resolve individual sub-agent tool executions from stored IDs
               const subTools = (block.subToolIds ?? [])
                 .map((id) => subToolExecMap.get(id))
@@ -190,6 +196,7 @@ export const chatService = {
               return {
                 type: 'sub_agent' as const,
                 subAgent: {
+                  id: block.subAgentId ?? te.id,
                   role: block.role ?? 'execute',
                   task: block.task ?? '',
                   tools: subTools,
@@ -199,8 +206,8 @@ export const chatService = {
                 },
               }
             }
-            if (block.type === 'tool' && block.toolIndex != null && toolExecs[block.toolIndex]) {
-              return { type: 'tool' as const, tool: toolExecs[block.toolIndex] }
+            if (block.type === 'tool' && block.toolIndex != null && mainToolExecs[block.toolIndex]) {
+              return { type: 'tool' as const, tool: mainToolExecs[block.toolIndex] }
             }
             return { type: 'text' as const, text: block.text ?? '' }
           })
@@ -318,12 +325,13 @@ export const chatService = {
         },
       )
 
-      await prisma.chatSession.update({
-        where: { id: sessionId },
-        data: { agentStatus: 'idle' },
-      })
-
-      emit('done', { messageId: result.lastMessageId, sessionId })
+      if (!result.paused) {
+        await prisma.chatSession.update({
+          where: { id: sessionId },
+          data: { agentStatus: 'idle' },
+        })
+        emit('done', { messageId: result.lastMessageId, sessionId })
+      }
     } catch (err) {
       console.error('[ChatService] Agent loop error:', err)
 

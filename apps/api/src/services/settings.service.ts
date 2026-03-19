@@ -21,6 +21,9 @@ import {
   MAX_CONTEXT_LIMIT_TOKENS,
   KEY_MASK_THRESHOLD,
   DEFAULT_MAX_AGENT_ITERATIONS,
+  SUB_AGENT_EXPLORE_MAX_ITERATIONS,
+  SUB_AGENT_ANALYZE_MAX_ITERATIONS,
+  SUB_AGENT_EXECUTE_MAX_ITERATIONS,
 } from '../constants.js'
 import type { AppSettings } from '@prisma/client'
 
@@ -144,6 +147,27 @@ export const settingsService = {
     const s = await this.get()
     return (
       ((s as Record<string, unknown>).maxAgentIterations as number) ?? DEFAULT_MAX_AGENT_ITERATIONS
+    )
+  },
+
+  async getSubAgentExploreMaxIterations(): Promise<number> {
+    const s = await this.get()
+    return (
+      ((s as Record<string, unknown>).subAgentExploreMaxIterations as number) ?? SUB_AGENT_EXPLORE_MAX_ITERATIONS
+    )
+  },
+
+  async getSubAgentAnalyzeMaxIterations(): Promise<number> {
+    const s = await this.get()
+    return (
+      ((s as Record<string, unknown>).subAgentAnalyzeMaxIterations as number) ?? SUB_AGENT_ANALYZE_MAX_ITERATIONS
+    )
+  },
+
+  async getSubAgentExecuteMaxIterations(): Promise<number> {
+    const s = await this.get()
+    return (
+      ((s as Record<string, unknown>).subAgentExecuteMaxIterations as number) ?? SUB_AGENT_EXECUTE_MAX_ITERATIONS
     )
   },
 
@@ -302,6 +326,9 @@ export const settingsService = {
     browserGridBrowser?: string
     browserModel?: string
     maxAgentIterations?: number
+    subAgentExploreMaxIterations?: number
+    subAgentAnalyzeMaxIterations?: number
+    subAgentExecuteMaxIterations?: number
     timezone?: string
   }) {
     const settings = await this.get()

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import {
@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/select'
 import { ChevronRight, ChevronLeft } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { PROVIDER_LABELS } from '@/constants'
+import { PROVIDER_LABELS, inferProvider } from '@/constants'
 import type { ProvidersData } from '@/hooks/use-providers'
 
 interface StepChatModelProps {
@@ -35,6 +35,16 @@ const ADVANCED_ROLES = [
   { key: 'compact', label: 'Compact', description: 'Context compression' },
 ]
 
+const MODEL_FIELD_MAP: Record<string, string> = {
+  main: 'llmModel',
+  medium: 'mediumModel',
+  light: 'lightModel',
+  explore: 'exploreModel',
+  execute: 'executeModel',
+  title: 'titleModel',
+  compact: 'compactModel',
+}
+
 export function StepChatModel({
   providers,
   onUpdate,
@@ -42,25 +52,62 @@ export function StepChatModel({
   onBack,
   onNext,
 }: StepChatModelProps) {
-  const [advancedMode, setAdvancedMode] = useState(false)
-  const roles = advancedMode ? ADVANCED_ROLES : SIMPLE_TIERS
+  const [advancedMode, setAdvancedMode] = useState(providers.active.advancedModelConfig ?? false)
+  const [models, setModels] = useState<Record<string, string>>({})
+  const [roleProviders, setRoleProviders] = useState<Record<string, string>>({})
 
-  const handleProviderChange = (value: string) => {
-    const defaultModel = providers.models.llm[value]?.[0]
-    onUpdate({ llm: value, llmModel: defaultModel })
+  const roles = advancedMode ? ADVANCED_ROLES : SIMPLE_TIERS
+  const availableProviders = providers.available.llm
+
+  // Initialize state from server data
+  useEffect(() => {
+    const active = providers.active
+    const serverModels: Record<string, string> = {}
+    const serverProviders: Record<string, string> = {}
+
+    const entries: [string, string | null][] = [
+      ['main', active.llmModel],
+      ['medium', active.mediumModel],
+      ['light', active.lightModel],
+      ['explore', active.exploreModel],
+      ['execute', active.executeModel],
+      ['title', active.titleModel],
+      ['compact', active.compactModel],
+    ]
+
+    for (const [key, modelId] of entries) {
+      if (modelId) {
+        serverModels[key] = modelId
+        serverProviders[key] = inferProvider(modelId, availableProviders)
+      }
+    }
+
+    // For keys without a saved model, default to main's provider
+    const mainProvider = serverProviders.main ?? active.llm
+    for (const role of [...SIMPLE_TIERS, ...ADVANCED_ROLES]) {
+      if (!serverProviders[role.key]) {
+        serverProviders[role.key] = mainProvider
+      }
+    }
+
+    setModels(serverModels)
+    setRoleProviders(serverProviders)
+    setAdvancedMode(active.advancedModelConfig ?? false)
+  }, [providers, availableProviders])
+
+  const handleProviderChange = (roleKey: string, provider: string) => {
+    setRoleProviders((prev) => ({ ...prev, [roleKey]: provider }))
+    const firstModel = providers.models.llm[provider]?.[0]
+    if (firstModel) {
+      setModels((prev) => ({ ...prev, [roleKey]: firstModel }))
+      const field = MODEL_FIELD_MAP[roleKey]
+      if (field) onUpdate({ [field]: firstModel })
+    }
   }
 
-  const handleModelUpdate = (key: string, modelId: string) => {
-    const fieldMap: Record<string, string> = {
-      main: 'llmModel',
-      medium: 'mediumModel',
-      light: 'lightModel',
-      explore: 'exploreModel',
-      execute: 'executeModel',
-      title: 'titleModel',
-      compact: 'compactModel',
-    }
-    const field = fieldMap[key]
+  const handleModelChange = (roleKey: string, modelId: string) => {
+    setModels((prev) => ({ ...prev, [roleKey]: modelId }))
+    const field = MODEL_FIELD_MAP[roleKey]
     if (field) onUpdate({ [field]: modelId })
   }
 
@@ -69,9 +116,6 @@ export function StepChatModel({
     setAdvancedMode(next)
     onUpdate({ advancedModelConfig: next })
   }
-
-  const currentProvider = providers.active.llm
-  const providerModels = providers.models.llm[currentProvider] ?? []
 
   return (
     <Card>
@@ -82,27 +126,6 @@ export function StepChatModel({
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        {/* Provider selector */}
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium">Provider</label>
-          <Select
-            value={currentProvider}
-            onValueChange={handleProviderChange}
-            disabled={isUpdating}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {providers.available.llm.map((p: string) => (
-                <SelectItem key={p} value={p}>
-                  {PROVIDER_LABELS[p] ?? p}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
         {/* Advanced toggle */}
         <div className="flex items-center justify-between gap-3 rounded-xl border bg-muted/30 px-3 py-2">
           <div>
@@ -129,30 +152,54 @@ export function StepChatModel({
 
         {/* Model selectors per tier/role */}
         <div className="space-y-3">
-          {roles.map((role) => (
-            <div key={role.key} className="flex flex-col gap-1">
-              <div className="flex items-baseline gap-2">
-                <label className="text-sm font-medium">{role.label}</label>
-                <span className="text-xs text-muted-foreground">{role.description}</span>
+          {roles.map((role) => {
+            const currentProvider = roleProviders[role.key] ?? providers.active.llm
+            const providerModels = providers.models.llm[currentProvider] ?? []
+            const currentModel = models[role.key] ?? ''
+
+            return (
+              <div key={role.key} className="flex flex-col gap-1">
+                <div className="flex items-baseline gap-2">
+                  <label className="text-sm font-medium">{role.label}</label>
+                  <span className="text-xs text-muted-foreground">{role.description}</span>
+                </div>
+                <div className="flex gap-2">
+                  <Select
+                    value={currentProvider}
+                    onValueChange={(value) => handleProviderChange(role.key, value)}
+                    disabled={isUpdating}
+                  >
+                    <SelectTrigger className="w-[140px] shrink-0">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableProviders.map((p: string) => (
+                        <SelectItem key={p} value={p}>
+                          {PROVIDER_LABELS[p] ?? p}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={currentModel}
+                    onValueChange={(value) => handleModelChange(role.key, value)}
+                    disabled={isUpdating}
+                  >
+                    <SelectTrigger className="w-full font-mono text-xs">
+                      <SelectValue placeholder="Default" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {providerModels.map((m: string) => (
+                        <SelectItem key={m} value={m}>
+                          {m}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <Select
-                value={role.key === 'main' ? (providers.active.llmModel ?? '') : ''}
-                onValueChange={(value) => handleModelUpdate(role.key, value)}
-                disabled={isUpdating}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Default" />
-                </SelectTrigger>
-                <SelectContent>
-                  {providerModels.map((m: string) => (
-                    <SelectItem key={m} value={m}>
-                      {m}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          ))}
+            )
+          })}
         </div>
 
         <div className="flex justify-between mt-4">

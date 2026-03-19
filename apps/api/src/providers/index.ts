@@ -32,7 +32,7 @@ export async function createEmbeddingProvider(): Promise<EmbeddingProvider> {
   return new Provider(model, apiKey)
 }
 
-async function createLLMForModel(model: string): Promise<LLMProvider> {
+export async function createLLMForModel(model: string): Promise<LLMProvider> {
   // Infer provider from the model name; fall back to the global aiProvider setting
   const provider = inferProviderFromModel(model) ?? (await settingsService.getAIProvider())
   const apiKey = await settingsService.getApiKey(provider)

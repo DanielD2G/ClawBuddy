@@ -8,6 +8,7 @@ const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36)
 
 export interface ToolExecutionData {
   id?: string
+  toolCallId?: string
   toolName: string
   capabilitySlug?: string
   input: Record<string, unknown>
@@ -30,6 +31,7 @@ export interface ChatAttachment {
 export type SubAgentRole = 'explore' | 'analyze' | 'execute'
 
 export interface SubAgentData {
+  id?: string
   role: SubAgentRole
   task: string
   tools: ToolExecutionData[]
@@ -47,7 +49,13 @@ export interface ChatMessage {
   id: string
   role: 'user' | 'assistant'
   content: string
-  sources?: { documentId: string; documentTitle: string; workspaceId?: string; chunkId: string; chunkIndex: number }[]
+  sources?: {
+    documentId: string
+    documentTitle: string
+    workspaceId?: string
+    chunkId: string
+    chunkIndex: number
+  }[]
   toolExecutions?: ToolExecutionData[]
   contentBlocks?: ContentBlock[]
   attachments?: ChatAttachment[]
@@ -60,9 +68,37 @@ export interface PendingApproval {
   toolName: string
   capabilitySlug: string
   input: Record<string, unknown>
+  subAgentRole?: string
+  subAgentDescription?: string
+  subAgentToolNames?: string[]
 }
 
-function parseSSEEvents(buffer: string): { events: Array<{ event: string; data: string }>; remaining: string } {
+function findSubAgentBlockIndex(blocks: ContentBlock[], subAgentId?: string): number {
+  if (subAgentId) {
+    const matchedIndex = blocks.findIndex(
+      (block) => block.type === 'sub_agent' && block.subAgent.id === subAgentId,
+    )
+    if (matchedIndex >= 0) return matchedIndex
+  }
+
+  return blocks.findLastIndex(
+    (block) => block.type === 'sub_agent' && block.subAgent.status === 'running',
+  )
+}
+
+function matchesToolExecution(
+  tool: ToolExecutionData,
+  toolName: string,
+  toolCallId?: string,
+): boolean {
+  if (toolCallId) return tool.toolCallId === toolCallId
+  return tool.toolName === toolName && tool.status === 'running'
+}
+
+function parseSSEEvents(buffer: string): {
+  events: Array<{ event: string; data: string }>
+  remaining: string
+} {
   const events: Array<{ event: string; data: string }> = []
   const lines = buffer.split('\n')
   let currentEvent = ''
@@ -113,6 +149,19 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
   onSessionCreatedRef.current = onSessionCreated
   const queryClient = useQueryClient()
 
+  const fetchSessionSnapshot = useCallback(async (sessionId: string) => {
+    return apiClient.get<{
+      messages: ChatMessage[]
+      agentStatus: string
+      pendingApprovals: Array<{
+        id: string
+        toolName: string
+        capabilitySlug: string
+        input: Record<string, unknown>
+      }>
+    }>(`/chat/sessions/${sessionId}/messages`)
+  }, [])
+
   const loadSession = useCallback(async (sessionId: string) => {
     // Abort any in-flight SSE stream from the previous session
     if (abortRef.current) {
@@ -123,11 +172,7 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
     setThinkingMessage(null)
     sessionIdRef.current = sessionId
     try {
-      const data = await apiClient.get<{
-        messages: ChatMessage[]
-        agentStatus: string
-        pendingApprovals: Array<{ id: string; toolName: string; capabilitySlug: string; input: Record<string, unknown> }>
-      }>(`/chat/sessions/${sessionId}/messages`)
+      const data = await fetchSessionSnapshot(sessionId)
       setMessages(data?.messages ?? [])
       // If agent is still processing, show pending state and poll for updates
       if (data?.agentStatus === 'running') {
@@ -136,230 +181,308 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
       }
       // Restore pending approvals if agent is paused awaiting approval
       if (data?.pendingApprovals?.length) {
-        setPendingApprovals(data.pendingApprovals.map((a) => ({
-          approvalId: a.id,
-          toolName: a.toolName,
-          capabilitySlug: a.capabilitySlug,
-          input: a.input,
-        })))
+        setPendingApprovals(
+          data.pendingApprovals.map((a) => ({
+            approvalId: a.id,
+            toolName: a.toolName,
+            capabilitySlug: a.capabilitySlug,
+            input: a.input,
+          })),
+        )
       } else {
         setPendingApprovals([])
       }
     } catch (error) {
       console.error('Failed to load session:', error)
     }
-  }, [])
+  }, [fetchSessionSnapshot])
 
-  const processSSEStream = useCallback(async (
-    res: Response,
-    assistantId: string,
-    onSessionId?: (id: string) => void,
-    signal?: AbortSignal,
-  ) => {
-    const reader = res.body!.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
+  const processSSEStream = useCallback(
+    async (
+      res: Response,
+      assistantId: string,
+      onSessionId?: (id: string) => void,
+      signal?: AbortSignal,
+    ) => {
+      const reader = res.body!.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let receivedDone = false
 
-    while (true) {
-      if (signal?.aborted) break
-      const { done, value } = await reader.read()
-      if (done) break
+      while (true) {
+        if (signal?.aborted) break
+        const { done, value } = await reader.read()
+        if (done) break
 
-      buffer += decoder.decode(value, { stream: true })
-      const { events, remaining } = parseSSEEvents(buffer)
-      buffer = remaining
+        buffer += decoder.decode(value, { stream: true })
+        const { events, remaining } = parseSSEEvents(buffer)
+        buffer = remaining
 
-      for (const { event, data } of events) {
-        let parsed: Record<string, unknown>
-        try {
-          parsed = JSON.parse(data)
-        } catch {
-          continue
-        }
-
-        const updateAssistant = (updater: (msg: ChatMessage) => ChatMessage) => {
-          setMessages((prev) => prev.map((msg) => (msg.id === assistantId ? updater(msg) : msg)))
-        }
-
-        switch (event) {
-          case 'session':
-            onSessionId?.(parsed.sessionId as string)
-            break
-
-          case 'thinking':
-            setThinkingMessage(parsed.message as string)
-            break
-
-          case 'sub_agent_start': {
-            setThinkingMessage(null)
-            const subAgentBlock: SubAgentData = {
-              role: parsed.role as SubAgentRole,
-              task: parsed.task as string,
-              tools: [],
-              status: 'running',
-            }
-            updateAssistant((msg) => ({
-              ...msg,
-              contentBlocks: [...(msg.contentBlocks ?? []), { type: 'sub_agent' as const, subAgent: subAgentBlock }],
-            }))
-            break
+        for (const { event, data } of events) {
+          let parsed: Record<string, unknown>
+          try {
+            parsed = JSON.parse(data)
+          } catch {
+            continue
           }
 
-          case 'sub_agent_done': {
-            updateAssistant((msg) => {
-              const blocks = [...(msg.contentBlocks ?? [])]
-              const idx = blocks.findLastIndex((b) => b.type === 'sub_agent' && b.subAgent.status === 'running')
-              if (idx >= 0) {
-                const block = blocks[idx] as ContentBlock & { type: 'sub_agent' }
-                blocks[idx] = { ...block, subAgent: { ...block.subAgent, status: 'completed', summary: parsed.summary as string } }
+          const updateAssistant = (updater: (msg: ChatMessage) => ChatMessage) => {
+            setMessages((prev) => prev.map((msg) => (msg.id === assistantId ? updater(msg) : msg)))
+          }
+
+          switch (event) {
+            case 'session':
+              onSessionId?.(parsed.sessionId as string)
+              break
+
+            case 'thinking':
+              setThinkingMessage(parsed.message as string)
+              break
+
+            case 'sub_agent_start': {
+              setThinkingMessage(null)
+              const subAgentBlock: SubAgentData = {
+                id: parsed.subAgentId as string | undefined,
+                role: parsed.role as SubAgentRole,
+                task: parsed.task as string,
+                tools: [],
+                status: 'running',
               }
-              return { ...msg, contentBlocks: blocks }
-            })
-            break
-          }
-
-          case 'tool_start': {
-            setThinkingMessage(null)
-            queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'container'] })
-            const toolData: ToolExecutionData = {
-              toolName: parsed.toolName as string,
-              capabilitySlug: parsed.capabilitySlug as string,
-              input: parsed.input as Record<string, unknown>,
-              status: 'running',
-            }
-            if (parsed.subAgent) {
-              updateAssistant((msg) => {
-                const blocks = [...(msg.contentBlocks ?? [])]
-                const idx = blocks.findLastIndex((b) => b.type === 'sub_agent' && b.subAgent.status === 'running')
-                if (idx >= 0) {
-                  const block = blocks[idx] as ContentBlock & { type: 'sub_agent' }
-                  blocks[idx] = { ...block, subAgent: { ...block.subAgent, tools: [...block.subAgent.tools, toolData] } }
-                }
-                return { ...msg, contentBlocks: blocks }
-              })
-            } else {
               updateAssistant((msg) => ({
                 ...msg,
-                toolExecutions: [...(msg.toolExecutions ?? []), toolData],
-                contentBlocks: [...(msg.contentBlocks ?? []), { type: 'tool' as const, tool: toolData }],
+                contentBlocks: [
+                  ...(msg.contentBlocks ?? []),
+                  { type: 'sub_agent' as const, subAgent: subAgentBlock },
+                ],
               }))
+              break
             }
-            break
-          }
 
-          case 'tool_result': {
-            const updatedTool = {
-              output: (parsed.output as string) ?? null,
-              error: (parsed.error as string) ?? null,
-              exitCode: (parsed.exitCode as number) ?? null,
-              durationMs: (parsed.durationMs as number) ?? null,
-              screenshot: (parsed.screenshot as string) ?? null,
-              status: parsed.error ? 'failed' : 'completed',
-            }
-            if (parsed.subAgent) {
+            case 'sub_agent_done': {
               updateAssistant((msg) => {
                 const blocks = [...(msg.contentBlocks ?? [])]
-                const idx = blocks.findLastIndex((b) => b.type === 'sub_agent' && b.subAgent.status === 'running')
+                const idx = findSubAgentBlockIndex(blocks, parsed.subAgentId as string | undefined)
                 if (idx >= 0) {
                   const block = blocks[idx] as ContentBlock & { type: 'sub_agent' }
                   blocks[idx] = {
                     ...block,
                     subAgent: {
                       ...block.subAgent,
-                      tools: block.subAgent.tools.map((t) => {
-                        if (t.toolName !== parsed.toolName || t.status !== 'running') return t
-                        return { ...t, ...updatedTool }
-                      }),
+                      status: 'completed',
+                      summary: parsed.summary as string,
                     },
                   }
                 }
                 return { ...msg, contentBlocks: blocks }
               })
-            } else {
-              updateAssistant((msg) => ({
-                ...msg,
-                toolExecutions: (msg.toolExecutions ?? []).map((te) => {
-                  if (te.toolName !== parsed.toolName || te.status !== 'running') return te
-                  return { ...te, ...updatedTool }
-                }),
-                contentBlocks: (msg.contentBlocks ?? []).map((block) => {
-                  if (block.type !== 'tool' || block.tool.toolName !== parsed.toolName || block.tool.status !== 'running') return block
-                  return { ...block, tool: { ...block.tool, ...updatedTool } }
-                }),
-              }))
+              break
             }
-            break
-          }
 
-          case 'approval_required':
-            setPendingApprovals((prev) => [
-              ...prev,
-              {
-                approvalId: parsed.approvalId as string,
+            case 'tool_start': {
+              setThinkingMessage(null)
+              queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'container'] })
+              const toolData: ToolExecutionData = {
+                toolCallId: parsed.toolCallId as string | undefined,
                 toolName: parsed.toolName as string,
                 capabilitySlug: parsed.capabilitySlug as string,
                 input: parsed.input as Record<string, unknown>,
-              },
-            ])
-            setThinkingMessage(null)
-            break
-
-          case 'content':
-            setThinkingMessage(null)
-            updateAssistant((msg) => {
-              const blocks = [...(msg.contentBlocks ?? [])]
-              const lastBlock = blocks[blocks.length - 1]
-              if (lastBlock && lastBlock.type === 'text') {
-                blocks[blocks.length - 1] = { type: 'text', text: lastBlock.text + (parsed.text as string) }
-              } else {
-                blocks.push({ type: 'text', text: parsed.text as string })
+                status: 'running',
               }
-              return { ...msg, content: msg.content + (parsed.text as string), contentBlocks: blocks }
-            })
-            break
+              if (parsed.subAgent) {
+                updateAssistant((msg) => {
+                  const blocks = [...(msg.contentBlocks ?? [])]
+                  const idx = findSubAgentBlockIndex(
+                    blocks,
+                    parsed.subAgentId as string | undefined,
+                  )
+                  if (idx >= 0) {
+                    const block = blocks[idx] as ContentBlock & { type: 'sub_agent' }
+                    blocks[idx] = {
+                      ...block,
+                      subAgent: { ...block.subAgent, tools: [...block.subAgent.tools, toolData] },
+                    }
+                  }
+                  return { ...msg, contentBlocks: blocks }
+                })
+              } else {
+                updateAssistant((msg) => ({
+                  ...msg,
+                  toolExecutions: [...(msg.toolExecutions ?? []), toolData],
+                  contentBlocks: [
+                    ...(msg.contentBlocks ?? []),
+                    { type: 'tool' as const, tool: toolData },
+                  ],
+                }))
+              }
+              break
+            }
 
-          case 'sources':
-            updateAssistant((msg) => ({ ...msg, sources: parsed.sources as ChatMessage['sources'] }))
-            break
+            case 'tool_result': {
+              const updatedTool = {
+                output: (parsed.output as string) ?? null,
+                error: (parsed.error as string) ?? null,
+                exitCode: (parsed.exitCode as number) ?? null,
+                durationMs: (parsed.durationMs as number) ?? null,
+                screenshot: (parsed.screenshot as string) ?? null,
+                status: parsed.error ? 'failed' : 'completed',
+              }
+              if (parsed.subAgent) {
+                updateAssistant((msg) => {
+                  const blocks = [...(msg.contentBlocks ?? [])]
+                  const idx = findSubAgentBlockIndex(
+                    blocks,
+                    parsed.subAgentId as string | undefined,
+                  )
+                  if (idx >= 0) {
+                    const block = blocks[idx] as ContentBlock & { type: 'sub_agent' }
+                    blocks[idx] = {
+                      ...block,
+                      subAgent: {
+                        ...block.subAgent,
+                        tools: block.subAgent.tools.map((t) => {
+                          if (
+                            !matchesToolExecution(
+                              t,
+                              parsed.toolName as string,
+                              parsed.toolCallId as string | undefined,
+                            )
+                          ) {
+                            return t
+                          }
+                          return { ...t, ...updatedTool }
+                        }),
+                      },
+                    }
+                  }
+                  return { ...msg, contentBlocks: blocks }
+                })
+              } else {
+                updateAssistant((msg) => ({
+                  ...msg,
+                  toolExecutions: (msg.toolExecutions ?? []).map((te) => {
+                    if (
+                      !matchesToolExecution(
+                        te,
+                        parsed.toolName as string,
+                        parsed.toolCallId as string | undefined,
+                      )
+                    ) {
+                      return te
+                    }
+                    return { ...te, ...updatedTool }
+                  }),
+                  contentBlocks: (msg.contentBlocks ?? []).map((block) => {
+                    if (
+                      block.type !== 'tool' ||
+                      !matchesToolExecution(
+                        block.tool,
+                        parsed.toolName as string,
+                        parsed.toolCallId as string | undefined,
+                      )
+                    ) {
+                      return block
+                    }
+                    return { ...block, tool: { ...block.tool, ...updatedTool } }
+                  }),
+                }))
+              }
+              break
+            }
 
-          case 'compressing':
-            if (parsed.status === 'start') {
-              setIsCompressing(true)
-              setThinkingMessage('Compressing conversation history...')
-            } else {
+            case 'approval_required':
+              setPendingApprovals((prev) => [
+                ...prev,
+                {
+                  approvalId: parsed.approvalId as string,
+                  toolName: parsed.toolName as string,
+                  capabilitySlug: parsed.capabilitySlug as string,
+                  input: parsed.input as Record<string, unknown>,
+                  subAgentRole: parsed.subAgentRole as string | undefined,
+                  subAgentDescription: parsed.subAgentDescription as string | undefined,
+                  subAgentToolNames: parsed.subAgentToolNames as string[] | undefined,
+                },
+              ])
+              setThinkingMessage(null)
+              break
+
+            case 'content':
+              setThinkingMessage(null)
+              updateAssistant((msg) => {
+                const blocks = [...(msg.contentBlocks ?? [])]
+                const lastBlock = blocks[blocks.length - 1]
+                if (lastBlock && lastBlock.type === 'text') {
+                  blocks[blocks.length - 1] = {
+                    type: 'text',
+                    text: lastBlock.text + (parsed.text as string),
+                  }
+                } else {
+                  blocks.push({ type: 'text', text: parsed.text as string })
+                }
+                return {
+                  ...msg,
+                  content: msg.content + (parsed.text as string),
+                  contentBlocks: blocks,
+                }
+              })
+              break
+
+            case 'sources':
+              updateAssistant((msg) => ({
+                ...msg,
+                sources: parsed.sources as ChatMessage['sources'],
+              }))
+              break
+
+            case 'compressing':
+              if (parsed.status === 'start') {
+                setIsCompressing(true)
+                setThinkingMessage('Compressing conversation history...')
+              } else {
+                setIsCompressing(false)
+                if (parsed.status === 'done') {
+                  setThinkingMessage(
+                    `Summarized ${parsed.summarizedCount} older messages to save tokens`,
+                  )
+                } else {
+                  setThinkingMessage(null)
+                }
+              }
+              break
+
+            case 'context_compressed':
+              setThinkingMessage(
+                `Summarized ${parsed.summarizedCount} older messages to save tokens`,
+              )
+              break
+
+            case 'done':
+              receivedDone = true
+              setThinkingMessage(null)
               setIsCompressing(false)
-              if (parsed.status === 'done') {
-                setThinkingMessage(`Summarized ${parsed.summarizedCount} older messages to save tokens`)
-              } else {
-                setThinkingMessage(null)
+              if (parsed.sessionId) {
+                onSessionId?.(parsed.sessionId as string)
               }
-            }
-            break
+              break
 
-          case 'context_compressed':
-            setThinkingMessage(`Summarized ${parsed.summarizedCount} older messages to save tokens`)
-            break
+            case 'awaiting_approval':
+              setThinkingMessage(null)
+              break
 
-          case 'done':
-            setThinkingMessage(null)
-            setIsCompressing(false)
-            if (parsed.sessionId) {
-              onSessionId?.(parsed.sessionId as string)
-            }
-            break
-
-          case 'awaiting_approval':
-            setThinkingMessage(null)
-            break
-
-          case 'error':
-            setThinkingMessage(null)
-            updateAssistant((msg) => ({ ...msg, content: msg.content || `Error: ${parsed.message}`, isError: true }))
-            break
+            case 'error':
+              setThinkingMessage(null)
+              updateAssistant((msg) => ({
+                ...msg,
+                content: msg.content || `Error: ${parsed.message}`,
+                isError: true,
+              }))
+              break
+          }
         }
       }
-    }
-  }, [])
+      return { receivedDone }
+    },
+    [],
+  )
 
   const sendMessage = useCallback(
     async (content: string, documentIds?: string[], attachments?: ChatAttachment[]) => {
@@ -413,23 +536,50 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
         if (!res.ok) throw new Error('Chat request failed')
 
         streamingRef.current = true
-        await processSSEStream(res, assistantId, (sid) => {
-          if (sid && !sessionIdRef.current) {
-            sessionIdRef.current = sid
-            onSessionCreatedRef.current?.(sid)
-            // Refresh sidebar immediately so new session appears (even if stream is aborted later)
-            queryClient.invalidateQueries({ queryKey: ['chat-sessions'] })
-          } else if (sid) {
-            sessionIdRef.current = sid
+        const streamResult = await processSSEStream(
+          res,
+          assistantId,
+          (sid) => {
+            if (sid && !sessionIdRef.current) {
+              sessionIdRef.current = sid
+              onSessionCreatedRef.current?.(sid)
+              // Refresh sidebar immediately so new session appears (even if stream is aborted later)
+              queryClient.invalidateQueries({ queryKey: ['chat-sessions'] })
+            } else if (sid) {
+              sessionIdRef.current = sid
+            }
+          },
+          controller.signal,
+        )
+
+        const finalSessionId = sessionIdRef.current
+        if (finalSessionId && streamResult.receivedDone) {
+          try {
+            const snapshot = await fetchSessionSnapshot(finalSessionId)
+            setMessages(snapshot?.messages ?? [])
+            setPendingApprovals(
+              snapshot?.pendingApprovals?.map((a) => ({
+                approvalId: a.id,
+                toolName: a.toolName,
+                capabilitySlug: a.capabilitySlug,
+                input: a.input,
+              })) ?? [],
+            )
+          } catch (error) {
+            console.error('Failed to refresh session after stream:', error)
           }
-        }, controller.signal)
+        }
       } catch (error) {
         if (error instanceof DOMException && error.name === 'AbortError') return
         console.error('Chat error:', error)
         setMessages((prev) =>
           prev.map((msg) => {
             if (msg.id !== assistantId) return msg
-            return { ...msg, content: 'Sorry, something went wrong. Please try again.', isError: true }
+            return {
+              ...msg,
+              content: 'Sorry, something went wrong. Please try again.',
+              isError: true,
+            }
           }),
         )
       } finally {
@@ -438,11 +588,16 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
         setThinkingMessage(null)
       }
     },
-    [workspaceId, queryClient, processSSEStream],
+    [workspaceId, queryClient, processSSEStream, fetchSessionSnapshot],
   )
 
   const approveToolCall = useCallback(
-    async (approvalId: string, decision: 'approved' | 'denied', allowRule?: string, scope?: 'session' | 'global') => {
+    async (
+      approvalId: string,
+      decision: 'approved' | 'denied',
+      allowRule?: string,
+      scope?: 'session' | 'global',
+    ) => {
       const sessionId = sessionIdRef.current
       if (!sessionId) return
 
@@ -484,7 +639,24 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
           ])
 
           streamingRef.current = true
-          await processSSEStream(res, assistantId, undefined, controller.signal)
+          const approvalStreamResult = await processSSEStream(res, assistantId, undefined, controller.signal)
+          const finalSessionId = sessionIdRef.current
+          if (finalSessionId && approvalStreamResult.receivedDone) {
+            try {
+              const snapshot = await fetchSessionSnapshot(finalSessionId)
+              setMessages(snapshot?.messages ?? [])
+              setPendingApprovals(
+                snapshot?.pendingApprovals?.map((a) => ({
+                  approvalId: a.id,
+                  toolName: a.toolName,
+                  capabilitySlug: a.capabilitySlug,
+                  input: a.input,
+                })) ?? [],
+              )
+            } catch (error) {
+              console.error('Failed to refresh session after approval stream:', error)
+            }
+          }
           streamingRef.current = false
           setIsPending(false)
           setThinkingMessage(null)
@@ -495,19 +667,24 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
         console.error('Approval error:', error)
       }
     },
-    [processSSEStream],
+    [processSSEStream, fetchSessionSnapshot],
   )
 
   // Poll for messages — aggressive (1.5s) when agent running but disconnected, normal (10s) otherwise
   useEffect(() => {
-    const pollInterval = (isPending && !streamingRef.current) ? POLL_ACTIVE_SESSION_MS : POLL_MESSAGES_MS
+    const pollInterval =
+      isPending && !streamingRef.current ? POLL_ACTIVE_SESSION_MS : POLL_MESSAGES_MS
     const interval = setInterval(async () => {
       const sid = sessionIdRef.current
       if (!sid) return
       // Skip polling if we're actively streaming SSE for this session
       if (streamingRef.current) return
       try {
-        const data = await apiClient.get<{ messages: ChatMessage[]; agentStatus: string; pendingApprovals: unknown[] }>(`/chat/sessions/${sid}/messages`)
+        const data = await apiClient.get<{
+          messages: ChatMessage[]
+          agentStatus: string
+          pendingApprovals: unknown[]
+        }>(`/chat/sessions/${sid}/messages`)
         const msgs = data?.messages
         if (msgs && msgs.length > 0) {
           setMessages((prev) => {
@@ -515,7 +692,7 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
               // Mark as read — optimistically clear badge without refetching (avoids sidebar reordering)
               apiClient.fireAndForget('POST', `/chat/sessions/${sid}/read`)
               queryClient.setQueryData<ChatSession[]>(['chat-sessions'], (old) =>
-                old?.map((s) => s.id === sid ? { ...s, unreadCount: 0 } : s),
+                old?.map((s) => (s.id === sid ? { ...s, unreadCount: 0 } : s)),
               )
               return msgs
             }
@@ -524,7 +701,8 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
             const lastOld = prev[prev.length - 1]
             if (lastNew && lastOld) {
               if ((lastNew.content?.length ?? 0) > (lastOld.content?.length ?? 0)) return msgs
-              if ((lastNew.toolExecutions?.length ?? 0) !== (lastOld.toolExecutions?.length ?? 0)) return msgs
+              if ((lastNew.toolExecutions?.length ?? 0) !== (lastOld.toolExecutions?.length ?? 0))
+                return msgs
             }
             return prev
           })

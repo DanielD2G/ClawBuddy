@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useLayoutEffect, type ReactNode } from 'react'
 import type { Workspace } from '@/hooks/use-workspaces'
 import { apiClient } from '@/lib/api-client'
 import { hexToOklch } from '@/lib/color'
@@ -21,7 +21,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [activeWorkspace, setActiveWorkspaceState] = useState<Workspace | null>(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY)
-      return stored ? JSON.parse(stored) : null
+      if (stored) {
+        const ws: Workspace = JSON.parse(stored)
+        // Apply brand color synchronously to avoid flash of default color
+        if (ws.color) {
+          document.documentElement.style.setProperty('--brand', hexToOklch(ws.color))
+        }
+        return ws
+      }
+      return null
     } catch {
       return null
     }
@@ -66,8 +74,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('storage', handler)
   }, [])
 
-  // Sync app accent color with active workspace color
-  useEffect(() => {
+  // Sync app accent color with active workspace color (before paint)
+  useLayoutEffect(() => {
     const root = document.documentElement
     if (activeWorkspace?.color) {
       root.style.setProperty('--brand', hexToOklch(activeWorkspace.color))

@@ -54,6 +54,13 @@ app.get('/settings', async (c) => {
         active: {
           llm: settings.aiProvider,
           llmModel: settings.aiModel,
+          mediumModel: settings.mediumModel,
+          lightModel: settings.lightModel,
+          exploreModel: settings.exploreModel,
+          executeModel: settings.executeModel,
+          titleModel: settings.titleModel,
+          compactModel: settings.compactModel,
+          advancedModelConfig: settings.advancedModelConfig,
           embedding: settings.embeddingProvider,
           embeddingModel: settings.embeddingModel,
         },
@@ -332,26 +339,39 @@ app.post('/preflight', async (c) => {
       const result = await fn()
       checks.push({ name, ...result, durationMs: Date.now() - start })
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.error(`[Preflight] ${name} failed (${Date.now() - start}ms):`, message)
       checks.push({
         name,
         status: 'fail',
-        message: err instanceof Error ? err.message : String(err),
+        message,
         durationMs: Date.now() - start,
       })
     }
   }
 
-  // 1. AI Provider API Key — make a lightweight LLM call
-  await runCheck('AI Provider API Key', async () => {
-    const provider = settings.aiProvider
-    const apiKey = await settingsService.getApiKey(provider)
-    if (!apiKey) return { status: 'fail', message: `No API key for ${provider}` }
+  // 1. AI Provider API Keys — test each configured LLM provider
+  const { createLLMForModel } = await import('../providers/index.js')
+  const { DEFAULT_LLM_MODELS } = await import('../config.js')
+  const available = await settingsService.getAvailableProviders()
 
-    const { createLLMProvider } = await import('../providers/index.js')
-    const llm = await createLLMProvider()
-    await llm.chat([{ role: 'user', content: 'Say ok' }], { maxTokens: 5, temperature: 0 })
-    return { status: 'pass', message: `${provider} key is valid` }
-  })
+  const PROVIDER_NAMES: Record<string, string> = {
+    openai: 'OpenAI',
+    gemini: 'Google Gemini',
+    claude: 'Anthropic Claude',
+  }
+
+  for (const provider of available.llm) {
+    const label = PROVIDER_NAMES[provider] ?? provider
+    await runCheck(`${label} API Key`, async () => {
+      const model = DEFAULT_LLM_MODELS[provider]
+      if (!model) return { status: 'fail', message: `No default model for ${provider}` }
+
+      const llm = await createLLMForModel(model)
+      await llm.chat([{ role: 'user', content: 'Say ok' }], { maxTokens: 5, temperature: 0 })
+      return { status: 'pass', message: `${label} key is valid (${model})` }
+    })
+  }
 
   // 2. Embedding Provider API Key — generate a test embedding
   await runCheck('Embedding Provider', async () => {

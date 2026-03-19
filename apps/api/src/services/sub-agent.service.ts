@@ -11,6 +11,7 @@ import type {
   TokenUsage,
 } from '../providers/llm.interface.js'
 import { capabilityService } from './capability.service.js'
+import { settingsService } from './settings.service.js'
 import { toolExecutorService } from './tool-executor.service.js'
 import { secretRedactionService } from './secret-redaction.service.js'
 import type { SecretInventory } from './secret-redaction.service.js'
@@ -40,7 +41,7 @@ async function createLLMForTier(tier: SubAgentModelTier): Promise<LLMProvider> {
   }
 }
 
-function filterTools(
+export function filterTools(
   allTools: LLMToolDefinition[],
   roleConfig: SubAgentRoleConfig,
 ): LLMToolDefinition[] {
@@ -94,8 +95,17 @@ export interface SubAgentContext {
   linuxUser: string
   secretInventory: SecretInventory
   emit?: SubAgentEmit
+  subAgentId?: string
   /** Pre-loaded capabilities from parent agent (avoids redundant DB query) */
-  capabilities?: Array<{ slug: string; toolDefinitions: unknown; skillType?: string | null; name: string; systemPrompt: string }>
+  capabilities?: Array<{
+    slug: string
+    toolDefinitions: unknown
+    skillType?: string | null
+    name: string
+    systemPrompt: string
+  }>
+  /** Isolated browser session key for this sub-agent (avoids page collisions in parallel execution) */
+  browserSessionId?: string
 }
 
 export const subAgentService = {
@@ -114,8 +124,19 @@ export const subAgentService = {
       }
     }
 
+    // Read configured iteration limits from settings (overrides defaults)
+    const maxIterations = await {
+      explore: () => settingsService.getSubAgentExploreMaxIterations(),
+      analyze: () => settingsService.getSubAgentAnalyzeMaxIterations(),
+      execute: () => settingsService.getSubAgentExecuteMaxIterations(),
+    }[request.role]()
+
     const { emit } = parentContext
-    emit?.('sub_agent_start', { role: request.role, task: request.task })
+    emit?.('sub_agent_start', {
+      subAgentId: parentContext.subAgentId ?? request.task,
+      role: request.role,
+      task: request.task,
+    })
 
     // Resolve LLM for this role's model tier
     const llm = await createLLMForTier(roleConfig.modelTier)
@@ -129,7 +150,11 @@ export const subAgentService = {
 
     if (!tools.length) {
       const result = 'No tools available for this sub-agent role in the current workspace.'
-      emit?.('sub_agent_done', { role: request.role, summary: result })
+      emit?.('sub_agent_done', {
+        subAgentId: parentContext.subAgentId ?? request.task,
+        role: request.role,
+        summary: result,
+      })
       return {
         role: request.role,
         success: false,
@@ -167,7 +192,7 @@ export const subAgentService = {
     let finalContent = ''
 
     // ── Simplified agent loop ──
-    for (let i = 0; i < roleConfig.maxIterations; i++) {
+    for (let i = 0; i < maxIterations; i++) {
       emit?.('thinking', {
         message: `Sub-agent (${request.role}) thinking...`,
         subAgent: request.role,
@@ -186,7 +211,11 @@ export const subAgentService = {
       // No tool calls — done
       if (response.finishReason === 'stop' || !response.toolCalls?.length) {
         finalContent = response.content || ''
-        emit?.('sub_agent_done', { role: request.role, summary: finalContent.slice(0, 500) })
+        emit?.('sub_agent_done', {
+          subAgentId: parentContext.subAgentId ?? request.task,
+          role: request.role,
+          summary: finalContent.slice(0, 500),
+        })
         return {
           role: request.role,
           success: true,
@@ -216,7 +245,13 @@ export const subAgentService = {
           parallel && batch.length > 1
             ? await Promise.all(
                 batch.map((tc) =>
-                  subAgentService.executeSubAgentTool(tc, capabilities, parentContext, roleConfig, emit),
+                  subAgentService.executeSubAgentTool(
+                    tc,
+                    capabilities,
+                    parentContext,
+                    roleConfig,
+                    emit,
+                  ),
                 ),
               )
             : []
@@ -226,7 +261,13 @@ export const subAgentService = {
           const { result, capabilitySlug, publicInput } =
             parallel && batch.length > 1
               ? results[idx]
-              : await subAgentService.executeSubAgentTool(tc, capabilities, parentContext, roleConfig, emit)
+              : await subAgentService.executeSubAgentTool(
+                  tc,
+                  capabilities,
+                  parentContext,
+                  roleConfig,
+                  emit,
+                )
 
           toolExecutionLog.push({
             toolName: tc.name,
@@ -250,15 +291,19 @@ export const subAgentService = {
     }
 
     // Exhausted iterations
-    finalContent = `Sub-agent (${request.role}) reached maximum iterations (${roleConfig.maxIterations}) without completing.`
-    emit?.('sub_agent_done', { role: request.role, summary: finalContent })
+    finalContent = `Sub-agent (${request.role}) reached maximum iterations (${maxIterations}) without completing.`
+    emit?.('sub_agent_done', {
+      subAgentId: parentContext.subAgentId ?? request.task,
+      role: request.role,
+      summary: finalContent,
+    })
 
     return {
       role: request.role,
       success: false,
       result: finalContent,
       toolExecutions: toolExecutionLog,
-      iterationsUsed: roleConfig.maxIterations,
+      iterationsUsed: maxIterations,
       tokenUsage: totalUsage,
     }
   },
@@ -286,10 +331,12 @@ export const subAgentService = {
     const sizeRejection = checkToolArgSize(toolCall)
     if (sizeRejection) {
       emit?.('tool_result', {
+        toolCallId: toolCall.id,
         toolName: toolCall.name,
         error: sizeRejection,
         durationMs: 0,
         subAgent: roleConfig.role,
+        subAgentId: parentContext.subAgentId,
       })
       return {
         result: { output: '', error: sizeRejection, durationMs: 0 },
@@ -299,10 +346,12 @@ export const subAgentService = {
     }
 
     emit?.('tool_start', {
+      toolCallId: toolCall.id,
       toolName: toolCall.name,
       capabilitySlug,
       input: publicInput,
       subAgent: roleConfig.role,
+      subAgentId: parentContext.subAgentId,
     })
 
     const result = await toolExecutorService.execute(toolCall, capabilitySlug, {
@@ -310,6 +359,7 @@ export const subAgentService = {
       chatSessionId: parentContext.sessionId,
       linuxUser: parentContext.linuxUser,
       secretInventory: parentContext.secretInventory,
+      browserSessionId: parentContext.browserSessionId,
       capability: matched
         ? {
             slug: matched.slug,
@@ -330,11 +380,13 @@ export const subAgentService = {
     }
 
     emit?.('tool_result', {
+      toolCallId: toolCall.id,
       toolName: toolCall.name,
       output: result.output?.slice(0, 2000),
       error: result.error,
       durationMs: result.durationMs,
       subAgent: roleConfig.role,
+      subAgentId: parentContext.subAgentId,
     })
 
     return { result, capabilitySlug, publicInput }

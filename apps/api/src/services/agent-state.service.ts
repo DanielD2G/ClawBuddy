@@ -6,6 +6,8 @@ import { secretRedactionService } from './secret-redaction.service.js'
 
 export interface AgentResult {
   content: string
+  /** true when the agent paused to await tool approval (callers should NOT set idle or emit done) */
+  paused?: boolean
   toolExecutions: Array<{
     toolName: string
     capabilitySlug: string

@@ -117,7 +117,9 @@ app.post('/chat/sessions/:sessionId/approve', async (c) => {
     // Agent loop now saves ChatMessages per-iteration directly
     const result = await agentService.resumeAgentLoop(sessionId, redactedEmit, inventory)
 
-    redactedEmit('done', { messageId: result.lastMessageId, sessionId })
+    if (!result.paused) {
+      redactedEmit('done', { messageId: result.lastMessageId, sessionId })
+    }
 
     const sessionData = await prisma.chatSession.findUnique({
       where: { id: sessionId },

@@ -31,6 +31,8 @@ interface ExecutionContext {
   chatSessionId: string
   linuxUser: string
   secretInventory?: SecretInventory
+  /** Override browser session key for sub-agent isolation (defaults to chatSessionId) */
+  browserSessionId?: string
   /** Pre-loaded capability data to avoid redundant DB lookups during tool execution */
   capability?: {
     slug: string
@@ -694,7 +696,8 @@ async function executeBrowserScript(
     return { output: '', error: 'Script is required', durationMs: Date.now() - startTime }
   }
 
-  const result = await browserService.executeScript(context.chatSessionId, script, timeout)
+  const sessionKey = context.browserSessionId ?? context.chatSessionId
+  const result = await browserService.executeScript(sessionKey, script, timeout)
 
   if (result.success) {
     return {
@@ -815,6 +818,9 @@ async function executeDelegateTask(
     context.secretInventory ??
     (await secretRedactionService.buildSecretInventory(context.workspaceId))
 
+  // Each sub-agent gets its own browser session to avoid page collisions during parallel execution
+  const browserSessionId = `sub-${toolCall.id}`
+
   const subResult = await subAgentService.runSubAgent(
     {
       role: args.role as SubAgentRole,
@@ -828,8 +834,13 @@ async function executeDelegateTask(
       secretInventory: inventory,
       emit: context.emit,
       capabilities: context.capabilities,
+      subAgentId: toolCall.id,
+      browserSessionId,
     },
   )
+
+  // Cleanup: close sub-agent's isolated browser session (if one was created)
+  await browserService.closeSession(browserSessionId).catch(() => {})
 
   // Persist sub-agent tool executions to DB (batched in a transaction)
   let subAgentExecutionIds: string[] = []

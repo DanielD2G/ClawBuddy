@@ -99,6 +99,7 @@ export function ChatPage() {
   const bottomRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [showScrollDown, setShowScrollDown] = useState(false)
+  const expandedToolsRef = useRef<Set<string>>(new Set())
 
   // Get current session token usage from sessions list
   const { data: sessions } = useChatSessions()
@@ -148,9 +149,11 @@ export function ChatPage() {
     }
   }, [location.state, sendMessage])
 
-  // Auto-scroll on new messages
+  // Auto-scroll on new messages — only when user is already at the bottom
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (!showScrollDown) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
   }, [messages, isPending, thinkingMessage, pendingApprovals])
 
   const handleScroll = () => {
@@ -275,14 +278,26 @@ export function ChatPage() {
                       {/* Render content blocks in order (interleaved tool executions + text) */}
                       {getContentBlocks(msg).map((block, i) =>
                         block.type === 'sub_agent' ? (
-                          <div key={`sub-agent-${i}`} className="mb-2">
-                            <SubAgentBlock subAgent={block.subAgent} />
+                          <div key={block.subAgent.id ?? `sub-agent-${i}`} className="mb-2">
+                            <SubAgentBlock
+                              subAgent={block.subAgent}
+                              expandedToolsRef={expandedToolsRef}
+                            />
                           </div>
                         ) : block.type === 'tool' &&
                           block.tool.toolName !== 'search_documents' &&
                           block.tool.toolName !== 'delegate_task' ? (
-                          <div key={block.tool.id ?? `tool-${i}`} className="mb-2">
-                            <ToolExecutionBlock execution={block.tool} />
+                          <div
+                            key={block.tool.id ?? block.tool.toolCallId ?? `tool-${i}`}
+                            className="mb-2"
+                          >
+                            <ToolExecutionBlock
+                              execution={block.tool}
+                              toolKey={
+                                block.tool.id ?? block.tool.toolCallId ?? `${msg.id}-tool-${i}`
+                              }
+                              expandedToolsRef={expandedToolsRef}
+                            />
                           </div>
                         ) : block.type === 'text' && block.text.trim() ? (
                           <div key={`text-${i}`}>

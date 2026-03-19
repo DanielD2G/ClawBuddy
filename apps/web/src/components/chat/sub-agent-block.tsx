@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useState, type RefObject } from 'react'
 import { ChevronDown, ChevronRight, CheckCircle2, XCircle, Loader2, Bot } from 'lucide-react'
 import type { SubAgentData, SubAgentRole } from '@/hooks/use-chat'
 import { ToolExecutionBlock } from './tool-execution-block'
 
 interface SubAgentBlockProps {
   subAgent: SubAgentData
+  expandedToolsRef?: RefObject<Set<string>>
 }
 
 const ROLE_COLORS: Record<SubAgentRole, { badge: string }> = {
@@ -15,8 +16,23 @@ const ROLE_COLORS: Record<SubAgentRole, { badge: string }> = {
 
 const DEFAULT_COLORS = { badge: 'bg-gray-500/10 text-gray-600 dark:text-gray-400' }
 
-export function SubAgentBlock({ subAgent }: SubAgentBlockProps) {
-  const [expanded, setExpanded] = useState(subAgent.status === 'running')
+export function SubAgentBlock({ subAgent, expandedToolsRef }: SubAgentBlockProps) {
+  const subAgentKey = subAgent.id ?? subAgent.task
+  const [expanded, setExpanded] = useState(() => {
+    if (expandedToolsRef?.current && subAgentKey) return expandedToolsRef.current.has(subAgentKey)
+    return subAgent.status === 'running'
+  })
+
+  const toggleExpanded = () => {
+    setExpanded((prev) => {
+      const next = !prev
+      if (expandedToolsRef?.current && subAgentKey) {
+        if (next) expandedToolsRef.current.add(subAgentKey)
+        else expandedToolsRef.current.delete(subAgentKey)
+      }
+      return next
+    })
+  }
 
   const colors = ROLE_COLORS[subAgent.role] ?? DEFAULT_COLORS
   const isRunning = subAgent.status === 'running'
@@ -30,7 +46,7 @@ export function SubAgentBlock({ subAgent }: SubAgentBlockProps) {
       {/* Header */}
       <button
         type="button"
-        onClick={() => setExpanded(!expanded)}
+        onClick={toggleExpanded}
         className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted/30 transition-colors rounded-t-lg min-w-0"
       >
         {expanded ? (
@@ -76,7 +92,12 @@ export function SubAgentBlock({ subAgent }: SubAgentBlockProps) {
       {expanded && (
         <div className="px-3 pb-2 space-y-1">
           {subAgent.tools.map((tool, i) => (
-            <ToolExecutionBlock key={tool.id ?? `sub-tool-${i}`} execution={tool} />
+            <ToolExecutionBlock
+              key={tool.id ?? tool.toolCallId ?? `sub-tool-${i}`}
+              execution={tool}
+              toolKey={tool.id ?? tool.toolCallId ?? `sub-tool-${i}`}
+              expandedToolsRef={expandedToolsRef}
+            />
           ))}
 
           {subAgent.summary && (

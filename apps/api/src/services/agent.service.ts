@@ -38,6 +38,10 @@ import {
   pruneOldToolResults,
 } from './agent-tool-results.service.js'
 import { createSessionLogger } from './agent-debug.service.js'
+import { buildCapabilityBlocks, buildPromptSection } from './system-prompt-builder.js'
+import { SUB_AGENT_ROLES } from './sub-agent-roles.js'
+import type { SubAgentRole } from './sub-agent.types.js'
+import { filterTools } from './sub-agent.service.js'
 import type { AgentResult, AgentState } from './agent-state.service.js'
 import {
   serializeEncryptedAgentState,
@@ -209,10 +213,13 @@ export const agentService = {
             }
           }
         }
-        const capPrompts = preflightResults
-          .map((c) => `## ${c.name}\n${c.instructions}`)
-          .join('\n\n')
-        systemPrompt += `\n\n${capPrompts}`
+        const capPrompts = buildCapabilityBlocks(
+          preflightResults.map((c) => ({
+            name: c.name,
+            systemPrompt: c.instructions,
+          })),
+        )
+        systemPrompt += `\n\n${buildPromptSection('dynamically_loaded_capabilities', capPrompts)}`
         discoveryCallCount++
         log.debugLog('Pre-flight discovery loaded', {
           slugs: preflightResults.map((c) => c.slug),
@@ -236,7 +243,11 @@ export const agentService = {
     })
     if (docs.length) {
       const manifest = docs.map((d) => `- ${d.title} (${d.type})`).join('\n')
-      systemPrompt += `\n\n# Workspace Documents\n\nThe following ${docs.length} documents are available for search via search_documents:\n${manifest}`
+      systemPrompt += `\n\n${buildPromptSection(
+        'workspace_documents',
+        `The following ${docs.length} documents are available for search via search_documents:
+${manifest}`,
+      )}`
     }
 
     // Inject mandatory instruction when user explicitly mentioned capabilities
@@ -245,7 +256,11 @@ export const agentService = {
         .map((slug) => capabilities.find((c) => c.slug === slug)?.name ?? slug)
         .filter(Boolean)
       if (mentionedNames.length) {
-        systemPrompt += `\n\n## Explicitly Requested Tools\nThe user explicitly requested the following capabilities: ${mentionedNames.join(', ')}.\nYou MUST use the tools from these capabilities to fulfill this request. Do NOT substitute with other tools unless the requested tool fails or is clearly not applicable.`
+        systemPrompt += `\n\n${buildPromptSection(
+          'explicitly_requested_capabilities',
+          `The user explicitly requested the following capabilities: ${mentionedNames.join(', ')}.
+You MUST use the tools from these capabilities to fulfill this request. Do NOT substitute with other tools unless the requested tool fails or is clearly not applicable.`,
+        )}`
       }
     }
 
@@ -368,16 +383,17 @@ export const agentService = {
       ].sort()
 
       // Inject sandbox context into system prompt so the LLM knows writable paths
-      const sandboxContext =
-        `\n\n## Your Sandbox Environment\n` +
-        `- Username: ${linuxUser}\n` +
-        `- Working directory (cwd): /workspace/users/${linuxUser}/ — all relative paths resolve here\n` +
-        `- Shared outputs: /workspace/.outputs/ (writable)\n` +
-        `- /workspace/ root: READ-ONLY — do not write files there directly\n` +
-        `- When using sourcePath in generate_file, use the full path: /workspace/users/${linuxUser}/filename or /workspace/.outputs/filename` +
-        (inventory.enabled && secretEnvRefs.length
-          ? `\n- Available secret env references (values hidden): ${secretEnvRefs.join(', ')}`
-          : '')
+      const sandboxContext = `\n\n${buildPromptSection(
+        'sandbox_environment',
+        `Username: ${linuxUser}
+Working directory (cwd): /workspace/users/${linuxUser}/. All relative paths resolve here.
+Shared outputs: /workspace/.outputs/ (writable)
+/workspace/ root: read-only. Do not write files there directly.
+When using sourcePath in generate_file, use the full path: /workspace/users/${linuxUser}/filename or /workspace/.outputs/filename` +
+          (inventory.enabled && secretEnvRefs.length
+            ? `\nAvailable secret env references (values hidden): ${secretEnvRefs.join(', ')}`
+            : ''),
+      )}`
       ;(messages[0] as { content: string }).content += sandboxContext
     }
 
@@ -530,8 +546,14 @@ export const agentService = {
         if (useDiscovery && !tools.some((t) => t.name === toolCall.name)) {
           const rejection = `Tool "${toolCall.name}" is not yet available. Call discover_tools first to find and load the appropriate tools for your task.`
           log.debugLog(`[REJECTED] "${toolCall.name}" — not in available tools (discovery mode)`)
-          emit?.('tool_start', { toolName: toolCall.name, capabilitySlug, input: publicToolArgs })
+          emit?.('tool_start', {
+            toolCallId: toolCall.id,
+            toolName: toolCall.name,
+            capabilitySlug,
+            input: publicToolArgs,
+          })
           emit?.('tool_result', {
+            toolCallId: toolCall.id,
             toolName: toolCall.name,
             error: rejection,
             exitCode: 1,
@@ -562,11 +584,29 @@ export const agentService = {
               toolCallId: toolCall.id,
             },
           })
+
+          // Resolve sub-agent tool list for delegate_task approvals
+          let subAgentMeta: Record<string, unknown> = {}
+          if (toolCall.name === 'delegate_task') {
+            const role = (toolCall.arguments as { role?: string }).role
+            const roleConfig = role ? SUB_AGENT_ROLES[role as SubAgentRole] : undefined
+            if (roleConfig) {
+              const allTools = capabilityService.buildToolDefinitions(capabilities)
+              const resolved = filterTools(allTools, roleConfig)
+              subAgentMeta = {
+                subAgentRole: role,
+                subAgentDescription: roleConfig.description,
+                subAgentToolNames: resolved.map((t) => t.name),
+              }
+            }
+          }
+
           emit?.('approval_required', {
             approvalId: approval.id,
             toolName: toolCall.name,
             capabilitySlug,
             input: publicToolArgs,
+            ...subAgentMeta,
           })
 
           const agentState: AgentState = {
@@ -606,11 +646,13 @@ export const agentService = {
             size: JSON.stringify(toolCall.arguments).length,
           })
           emit?.('tool_start', {
+            toolCallId: toolCall.id,
             toolName: toolCall.name,
             capabilitySlug,
             input: { _blocked: true },
           })
           emit?.('tool_result', {
+            toolCallId: toolCall.id,
             toolName: toolCall.name,
             error: sizeRejection,
             exitCode: 1,
@@ -642,7 +684,12 @@ export const agentService = {
         })
         const isDiscoveryTool = toolCall.name === 'discover_tools'
         if (isDiscoveryTool) emit?.('thinking', { message: 'Looking for the right tools...' })
-        emit?.('tool_start', { toolName: toolCall.name, capabilitySlug, input: publicToolArgs })
+        emit?.('tool_start', {
+          toolCallId: toolCall.id,
+          toolName: toolCall.name,
+          capabilitySlug,
+          input: publicToolArgs,
+        })
 
         const toolStart = Date.now()
         const result = await toolExecutorService.execute(toolCall, capabilitySlug, {
@@ -718,6 +765,7 @@ export const agentService = {
           }
         }
         return {
+          paused: true,
           content: accumulatedContent.trim(),
           toolExecutions: toolExecutionLog,
           sources: collectedSources.length ? collectedSources : undefined,
@@ -777,6 +825,7 @@ export const agentService = {
               /* keep raw output */
             }
             emit?.('tool_result', {
+              toolCallId: toolCall.id,
               toolName: toolCall.name,
               output: discoveryOutput,
               durationMs: result.durationMs,
@@ -784,6 +833,7 @@ export const agentService = {
           } else {
             const ssePayload = prepareToolResultForSSE(toolCall.name, result)
             emit?.('tool_result', {
+              toolCallId: toolCall.id,
               toolName: toolCall.name,
               ...ssePayload,
               error: result.error,
@@ -911,6 +961,7 @@ export const agentService = {
           | {
               type: 'sub_agent'
               toolIndex: number
+              subAgentId: string
               role: string
               task: string
               subToolIds?: string[]
@@ -929,6 +980,7 @@ export const agentService = {
             iterBlocks.push({
               type: 'sub_agent',
               toolIndex: t,
+              subAgentId: rt.toolCall.id,
               role: String(args.role ?? 'execute'),
               task: String(args.task ?? ''),
               subToolIds: logEntry?.subAgentExecutionIds,
@@ -1135,7 +1187,12 @@ export const agentService = {
       if (isDiscoveryToolResume) {
         emit?.('thinking', { message: 'Looking for the right tools...' })
       } else {
-        emit?.('tool_start', { toolName: toolCall.name, capabilitySlug, input: publicToolArgs })
+        emit?.('tool_start', {
+          toolCallId: toolCall.id,
+          toolName: toolCall.name,
+          capabilitySlug,
+          input: publicToolArgs,
+        })
       }
 
       const result = await toolExecutorService.execute(toolCall, capabilitySlug, {
@@ -1157,6 +1214,7 @@ export const agentService = {
       if (!isDiscoveryToolResume) {
         const resumeSsePayload = prepareToolResultForSSE(toolCall.name, result)
         emit?.('tool_result', {
+          toolCallId: toolCall.id,
           toolName: toolCall.name,
           ...resumeSsePayload,
           error: result.error,
@@ -1351,6 +1409,17 @@ export const agentService = {
       })
 
       const resumeLoopExecIds: string[] = []
+
+      // ── First pass: pre-check all tools (permissions, size) ──
+      type ResumeReadyTool = {
+        toolCall: ToolCall
+        capabilitySlug: string
+        matchedCap: (typeof capabilities)[0] | undefined
+        publicToolArgs: Record<string, unknown>
+      }
+      const resumeReadyTools: ResumeReadyTool[] = []
+      let resumePaused = false
+
       for (const toolCall of response.toolCalls) {
         const publicToolArgs = secretRedactionService.redactForPublicStorage(
           toolCall.arguments,
@@ -1373,11 +1442,28 @@ export const agentService = {
             },
           })
 
+          // Resolve sub-agent tool list for delegate_task approvals
+          let subAgentMeta: Record<string, unknown> = {}
+          if (toolCall.name === 'delegate_task') {
+            const role = (toolCall.arguments as { role?: string }).role
+            const roleConfig = role ? SUB_AGENT_ROLES[role as SubAgentRole] : undefined
+            if (roleConfig) {
+              const allTools = capabilityService.buildToolDefinitions(capabilities)
+              const resolved = filterTools(allTools, roleConfig)
+              subAgentMeta = {
+                subAgentRole: role,
+                subAgentDescription: roleConfig.description,
+                subAgentToolNames: resolved.map((t) => t.name),
+              }
+            }
+          }
+
           emit?.('approval_required', {
             approvalId: approval.id,
             toolName: toolCall.name,
             capabilitySlug,
             input: publicToolArgs,
+            ...subAgentMeta,
           })
 
           const agentState: AgentState = {
@@ -1406,12 +1492,8 @@ export const agentService = {
           })
 
           emit?.('awaiting_approval', { approvalIds: pending.map((a) => a.id) })
-          return {
-            content: '',
-            toolExecutions: toolExecutionLog,
-            sources: collectedSourcesResume.length ? collectedSourcesResume : undefined,
-            lastMessageId: lastSavedMessageId,
-          }
+          resumePaused = true
+          break
         }
 
         // Guard: reject oversized tool call arguments
@@ -1421,11 +1503,13 @@ export const agentService = {
             size: JSON.stringify(toolCall.arguments).length,
           })
           emit?.('tool_start', {
+            toolCallId: toolCall.id,
             toolName: toolCall.name,
             capabilitySlug,
             input: { _blocked: true },
           })
           emit?.('tool_result', {
+            toolCallId: toolCall.id,
             toolName: toolCall.name,
             error: sizeRejection,
             exitCode: 1,
@@ -1442,89 +1526,164 @@ export const agentService = {
           continue
         }
 
-        const isDiscoveryToolLoop = toolCall.name === 'discover_tools'
-        if (isDiscoveryToolLoop) {
-          emit?.('thinking', { message: 'Looking for the right tools...' })
-        } else {
-          emit?.('tool_start', { toolName: toolCall.name, capabilitySlug, input: publicToolArgs })
+        resumeReadyTools.push({ toolCall, capabilitySlug, matchedCap, publicToolArgs })
+      }
+
+      if (resumePaused) {
+        return {
+          paused: true,
+          content: '',
+          toolExecutions: toolExecutionLog,
+          sources: collectedSourcesResume.length ? collectedSourcesResume : undefined,
+          lastMessageId: lastSavedMessageId,
         }
+      }
 
-        const result = await toolExecutorService.execute(toolCall, capabilitySlug, {
-          workspaceId,
-          chatSessionId: sessionId,
-          linuxUser: linuxUser ?? '',
-          secretInventory: inventory,
-          capability: matchedCap
-            ? {
-                slug: matchedCap.slug,
-                skillType: (matchedCap as Record<string, unknown>).skillType as string | null,
-                toolDefinitions: matchedCap.toolDefinitions,
+      // ── Second pass: execute with parallel batching ──
+      const resumeParallelBatch = resumeReadyTools.filter((t) =>
+        PARALLEL_SAFE_TOOLS.has(t.toolCall.name),
+      )
+      const resumeSequentialBatch = resumeReadyTools.filter(
+        (t) => !PARALLEL_SAFE_TOOLS.has(t.toolCall.name),
+      )
+
+      const executeResumeAndProcess = async (batch: ResumeReadyTool[], parallel: boolean) => {
+        if (batch.length === 0) return
+
+        const results =
+          parallel && batch.length > 1
+            ? await Promise.all(
+                batch.map((t) => {
+                  emit?.('tool_start', {
+                    toolCallId: t.toolCall.id,
+                    toolName: t.toolCall.name,
+                    capabilitySlug: t.capabilitySlug,
+                    input: t.publicToolArgs,
+                  })
+                  return toolExecutorService.execute(t.toolCall, t.capabilitySlug, {
+                    workspaceId,
+                    chatSessionId: sessionId,
+                    linuxUser: linuxUser ?? '',
+                    secretInventory: inventory,
+                    capability: t.matchedCap
+                      ? {
+                          slug: t.matchedCap.slug,
+                          skillType: (t.matchedCap as Record<string, unknown>).skillType as
+                            | string
+                            | null,
+                          toolDefinitions: t.matchedCap.toolDefinitions,
+                        }
+                      : undefined,
+                    capabilities,
+                  })
+                }),
+              )
+            : []
+
+        for (let idx = 0; idx < batch.length; idx++) {
+          const { toolCall, capabilitySlug, matchedCap, publicToolArgs } = batch[idx]
+
+          const isDiscoveryToolLoop = toolCall.name === 'discover_tools'
+          if (!parallel || batch.length <= 1) {
+            if (isDiscoveryToolLoop) {
+              emit?.('thinking', { message: 'Looking for the right tools...' })
+            } else {
+              emit?.('tool_start', {
+                toolCallId: toolCall.id,
+                toolName: toolCall.name,
+                capabilitySlug,
+                input: publicToolArgs,
+              })
+            }
+          }
+
+          const result =
+            parallel && batch.length > 1
+              ? results[idx]
+              : await toolExecutorService.execute(toolCall, capabilitySlug, {
+                  workspaceId,
+                  chatSessionId: sessionId,
+                  linuxUser: linuxUser ?? '',
+                  secretInventory: inventory,
+                  capability: matchedCap
+                    ? {
+                        slug: matchedCap.slug,
+                        skillType: (matchedCap as Record<string, unknown>).skillType as
+                          | string
+                          | null,
+                        toolDefinitions: matchedCap.toolDefinitions,
+                      }
+                    : undefined,
+                  capabilities,
+                })
+
+          log.logToolResult(toolCall.name, result)
+          if (!isDiscoveryToolLoop) {
+            const resumeLoopSsePayload = prepareToolResultForSSE(toolCall.name, result)
+            emit?.('tool_result', {
+              toolCallId: toolCall.id,
+              toolName: toolCall.name,
+              ...resumeLoopSsePayload,
+              error: result.error,
+              exitCode: result.exitCode,
+              durationMs: result.durationMs,
+            })
+          }
+
+          // Collect document sources from search_documents
+          if (result.sources?.length) {
+            for (const s of result.sources) {
+              if (!collectedSourcesResume.some((cs) => cs.documentId === s.documentId)) {
+                collectedSourcesResume.push(s)
               }
-            : undefined,
-          capabilities,
-        })
+            }
+            emit?.('sources', { sources: collectedSourcesResume })
+          }
 
-        log.logToolResult(toolCall.name, result)
-        if (!isDiscoveryToolLoop) {
-          const resumeLoopSsePayload = prepareToolResultForSSE(toolCall.name, result)
-          emit?.('tool_result', {
+          toolExecutionLog.push({
             toolName: toolCall.name,
-            ...resumeLoopSsePayload,
+            capabilitySlug,
+            input: publicToolArgs,
+            output: result.output || undefined,
             error: result.error,
             exitCode: result.exitCode,
             durationMs: result.durationMs,
+            subAgentExecutionIds: result.subAgentExecutionIds,
+          })
+          if (result.executionId) resumeLoopExecIds.push(result.executionId)
+          if (result.subAgentExecutionIds?.length) {
+            resumeLoopExecIds.push(...result.subAgentExecutionIds)
+          }
+
+          // Truncate large outputs to save context
+          const rawContent =
+            toolCall.name === 'run_browser_script'
+              ? result.output
+              : result.error
+                ? `Error: ${result.error}\n\n${result.output}`
+                : result.output
+          const isSandboxTool = !NON_SANDBOX_TOOLS.has(toolCall.name)
+          const toolContent =
+            linuxUser && isSandboxTool
+              ? await maybeTruncateOutput(rawContent, toolCall.id, workspaceId, linuxUser)
+              : rawContent
+          const resumeMessageContent: MessageContent =
+            toolCall.name === 'run_browser_script'
+              ? buildToolResultContent(
+                  typeof toolContent === 'string' ? toolContent : toolContent,
+                  llm.modelId,
+                )
+              : toolContent
+          messages.push({
+            role: 'tool',
+            toolCallId: toolCall.id,
+            content: resumeMessageContent,
           })
         }
-
-        // Collect document sources from search_documents
-        if (result.sources?.length) {
-          for (const s of result.sources) {
-            if (!collectedSourcesResume.some((cs) => cs.documentId === s.documentId)) {
-              collectedSourcesResume.push(s)
-            }
-          }
-          emit?.('sources', { sources: collectedSourcesResume })
-        }
-
-        toolExecutionLog.push({
-          toolName: toolCall.name,
-          capabilitySlug,
-          input: publicToolArgs,
-          output: result.output || undefined,
-          error: result.error,
-          exitCode: result.exitCode,
-          durationMs: result.durationMs,
-        })
-        if (result.executionId) resumeLoopExecIds.push(result.executionId)
-
-        // Truncate large outputs to save context
-        // For browser scripts, pass output directly to preserve JSON structure for screenshot extraction
-        const rawContent =
-          toolCall.name === 'run_browser_script'
-            ? result.output
-            : result.error
-              ? `Error: ${result.error}\n\n${result.output}`
-              : result.output
-        // Only truncate sandbox tool outputs — non-sandbox tools (search, memory, web) return full results
-        const isSandboxTool = !NON_SANDBOX_TOOLS.has(toolCall.name)
-        const toolContent =
-          linuxUser && isSandboxTool
-            ? await maybeTruncateOutput(rawContent, toolCall.id, workspaceId, linuxUser)
-            : rawContent
-        // For browser scripts, check if result contains screenshot for multimodal handling
-        const resumeMessageContent: MessageContent =
-          toolCall.name === 'run_browser_script'
-            ? buildToolResultContent(
-                typeof toolContent === 'string' ? toolContent : toolContent,
-                llm.modelId,
-              )
-            : toolContent
-        messages.push({
-          role: 'tool',
-          toolCallId: toolCall.id,
-          content: resumeMessageContent,
-        })
       }
+
+      await executeResumeAndProcess(resumeParallelBatch, true)
+      await executeResumeAndProcess(resumeSequentialBatch, false)
 
       // ── Per-iteration DB persistence (resume loop) ──
       try {
@@ -1542,18 +1701,29 @@ export const agentService = {
         const iterBlocks: Array<
           | { type: 'text'; text: string }
           | { type: 'tool'; toolIndex: number }
-          | { type: 'sub_agent'; toolIndex: number; role: string; task: string }
+          | {
+              type: 'sub_agent'
+              toolIndex: number
+              subAgentId: string
+              role: string
+              task: string
+              subToolIds?: string[]
+            }
         > = []
         if (iterContent.trim()) iterBlocks.push({ type: 'text', text: iterContent })
+        const resumeIterLogEntries = toolExecutionLog.slice(-response.toolCalls.length)
         for (let t = 0; t < response.toolCalls.length; t++) {
           const tc = response.toolCalls[t]
           if (tc.name === 'delegate_task') {
             const args = tc.arguments as Record<string, unknown>
+            const logEntry = resumeIterLogEntries[t]
             iterBlocks.push({
               type: 'sub_agent',
               toolIndex: t,
+              subAgentId: tc.id,
               role: String(args.role ?? 'execute'),
               task: String(args.task ?? ''),
+              subToolIds: logEntry?.subAgentExecutionIds,
             })
           } else {
             iterBlocks.push({ type: 'tool', toolIndex: t })
