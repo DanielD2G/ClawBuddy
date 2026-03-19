@@ -11,6 +11,7 @@ export const EMBEDDING_DIMENSIONS: Record<string, number> = {
 export const ALWAYS_ON_CAPABILITY_SLUGS = [
   'document-search',
   'agent-memory',
+  'cron-management',
   'bash',
   'python',
   'web-fetch',
