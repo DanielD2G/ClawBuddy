@@ -1,28 +1,32 @@
-# AgentBuddy
+# ClawBuddy
 
 **Self-hosted, privacy-first AI agent platform with sandboxed tool execution.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 <p align="center">
-  <img src="docs/images/chat.png" alt="AgentBuddy – Main Chat" width="720" />
-</p>
-<p align="center">
-  <img src="docs/images/capabilities.png" alt="AgentBuddy – Capabilities Overview" width="720" />
+  <img src="docs/images/chat.png" alt="ClawBuddy – Main Chat" width="720" />
 </p>
 
+<details>
+<summary><strong>More screenshots</strong></summary>
+<br>
 <p align="center">
-  <img src="docs/images/products.png" alt="AgentBuddy – Product Search" width="720" />
+  <img src="docs/images/capabilities.png" alt="ClawBuddy – Capabilities Overview" width="720" />
 </p>
 <p align="center">
-  <img src="docs/images/video_rendering.png" alt="AgentBuddy – YouTube Video Rendering" width="720" />
+  <img src="docs/images/products.png" alt="ClawBuddy – Product Search" width="720" />
 </p>
 <p align="center">
-  <img src="docs/images/html_view.png" alt="AgentBuddy – Live HTML Preview" width="720" />
+  <img src="docs/images/video_rendering.png" alt="ClawBuddy – YouTube Video Rendering" width="720" />
 </p>
 <p align="center">
-  <img src="docs/images/maps_integration.png" alt="AgentBuddy – Maps Integration" width="720" />
+  <img src="docs/images/html_view.png" alt="ClawBuddy – Live HTML Preview" width="720" />
 </p>
+<p align="center">
+  <img src="docs/images/maps_integration.png" alt="ClawBuddy – Maps Integration" width="720" />
+</p>
+</details>
 
 ---
 
@@ -31,7 +35,7 @@
 One command. That's it.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/DanielD2G/AgentBuddy/main/scripts/bootstrap.sh | bash
+curl -fsSL https://raw.githubusercontent.com/DanielD2G/ClawBuddy/main/scripts/bootstrap.sh | bash
 ```
 
 This downloads the compose file, pulls pre-built images from GHCR, and starts all services. Once done, open **http://localhost:4321** and follow the setup wizard.
@@ -40,33 +44,9 @@ This downloads the compose file, pulls pre-built images from GHCR, and starts al
 
 ---
 
-## What is AgentBuddy?
+## What is ClawBuddy?
 
-AgentBuddy is an open-source AI agent platform that runs entirely on your infrastructure. Upload documents, chat with AI, and let it execute tasks — all within isolated Docker sandboxes, with your data never leaving your machine.
-
-It combines **document RAG** (upload anything, search semantically), **sandboxed code execution** (Bash, Python, Docker, Kubernetes, AWS, GitHub), **browser automation** with anti-detection, and a **multi-workspace** architecture where each workspace has its own tools, permissions, and knowledge base.
-
-### Inspired by OpenClaw
-
-AgentBuddy was born from using [OpenClaw](https://github.com/openclaw/openclaw) and wanting something more privacy-focused, with stronger isolation and multi-user support. We're grateful to the OpenClaw team for building such an inspiring project and pushing the open-source AI agent space forward.
-
----
-
-## Why AgentBuddy over OpenClaw?
-
-| | AgentBuddy | OpenClaw |
-|---|---|---|
-| **Execution isolation** | Every tool runs in a Docker sandbox with resource limits (512MB RAM, 1 vCPU, 100 PIDs) | Direct shell access on host machine |
-| **Multi-workspace** | Full workspace isolation — each with its own capabilities, permissions, documents, and chat history | Single profile model |
-| **Credential security** | API keys encrypted at rest with AES-256-GCM; secrets automatically redacted from agent context, logs, SSE streams, and DB storage | Plain text or environment variables |
-| **Tool approvals** | Built-in approval workflow with glob-pattern permission rules (session or global scope) | No granular permission system |
-| **Browser automation** | BrowserGrid with Camoufox anti-detection, fingerprint injection, and live view dashboard | Chrome DevTools Protocol |
-| **Dynamic tool discovery** | RAG-based — only loads relevant tools per query instead of dumping all tools into context | All tools always loaded |
-| **Context compression** | Automatic summarization of old messages to stay within token limits | Manual context management |
-| **Privacy** | Fully self-hosted, zero telemetry, no external calls except your chosen LLM provider. Agents never see your API keys or secrets | Requires careful configuration to avoid data leaks |
-| **Channels** | Integrate external messaging platforms (Telegram, more coming) as chat interfaces | Web-only |
-| **LLM providers** | Claude, GPT, Gemini (chat + embeddings) with per-workspace model configuration | Multi-model but tightly coupled |
-| **Document RAG** | Vector search with Qdrant, chunked embeddings, semantic retrieval | Limited document handling |
+ClawBuddy is an open-source AI agent platform that runs entirely on your infrastructure. Upload documents, chat with AI, and let it execute tasks — all within isolated Docker sandboxes, with your data never leaving your machine.
 
 ---
 
@@ -87,6 +67,18 @@ Six sandboxed tools your AI can use, each running in isolated Docker containers:
 
 Each capability is defined as a `.skill` file — easy to read, modify, or create new ones. See [Creating Skills](docs/creating-skills.md).
 
+### Sub-Agent Delegation
+
+The primary agent can delegate tasks to lightweight sub-agents that run on smaller, faster models (Haiku/Flash). Each sub-agent is assigned a role that determines which tools it can access:
+
+| Role | Access | Use case |
+|------|--------|----------|
+| **Explore** | Read-only tools (web search, web fetch, document search) | Research and information gathering |
+| **Analyze** | Read-only tools | Data analysis and summarization |
+| **Execute** | Full tool access (bash, python, docker, etc.) | Running commands and performing actions |
+
+Sub-agents run independently and return their results to the primary agent, keeping the main conversation context clean while parallelizing work.
+
 ### Search Skills
 
 Built-in skills that let the AI search external platforms directly from the chat:
@@ -101,7 +93,7 @@ Skills run inside sandboxed Python containers with network access, so your crede
 
 ### Rich Content Blocks
 
-Agent responses aren't just text — AgentBuddy renders rich, interactive blocks inline:
+Agent responses aren't just text — ClawBuddy renders rich, interactive blocks inline:
 
 - **Product cards** — Product image, price, and direct link rendered as visual cards when using search skills
 - **YouTube embeds** — Videos returned by YouTube Search are embedded as playable players directly in the chat
@@ -111,6 +103,15 @@ Agent responses aren't just text — AgentBuddy renders rich, interactive blocks
 ### Document RAG
 
 Upload documents (PDF, Markdown, Word, text, HTML, CSV, JSON) and search them semantically. Documents are chunked, embedded, and stored in Qdrant for fast vector retrieval. The AI automatically searches your knowledge base when answering questions.
+
+- Folder-based organization with hierarchical nesting
+- Drag-and-drop uploads with status tracking (pending, processing, ready, failed)
+- Re-ingestion capability for updated documents
+- @ mention documents or folders directly in chat to scope searches
+
+### Agent Memory
+
+A persistent knowledge base the agent can write to and read from across conversations. The agent saves documents, notes, and generated files that persist beyond a single chat session — building long-term context about your projects and preferences.
 
 ### Browser Automation
 
@@ -129,38 +130,81 @@ Real-time web search via Google Search API. The AI automatically uses web search
 
 ### Google Workspace
 
-Full integration with Gmail, Calendar, Drive, Tasks, Docs, Sheets, and Slides via OAuth — read, create, and manage your Google Workspace from chat.
+Full integration with Google Workspace via OAuth:
+
+| Service | Capabilities |
+|---------|-------------|
+| **Gmail** | Read, search, send, and manage emails |
+| **Calendar** | View agenda, create and manage events |
+| **Drive** | List, upload, and download files |
+| **Tasks** | Create and manage task lists |
+| **Docs** | Read and create documents |
+| **Sheets** | Read and create spreadsheets |
+| **Slides** | Read and create presentations |
 
 ### Cron Scheduling
 
-Create recurring tasks with standard cron expressions. The AI can set up automated workflows that run on schedule.
-
-### Tool Discovery
-
-When you have many capabilities enabled (6+), AgentBuddy uses RAG-based tool discovery to load only the relevant tools per query. This keeps the LLM context clean and improves response quality.
-
-### Secret Redaction
-
-API keys, tokens, and credentials are automatically redacted across the entire pipeline. The agent never sees your secrets — they're stripped from tool outputs, SSE streams, logs, and database storage. Even if a tool accidentally prints an environment variable, it gets replaced with `[REDACTED]` before reaching the LLM or being persisted.
+Create recurring tasks with standard cron expressions. The AI can set up automated workflows that run on schedule, powered by BullMQ and Redis.
 
 ### Channels
 
-Connect external messaging platforms as chat interfaces for your agent. Currently supported:
+Connect external messaging platforms as chat interfaces for your agent:
 
 - **Telegram** — Link a Telegram bot to any workspace. Messages flow through the same agent pipeline with full tool access, RAG, and permissions.
 
 More channel integrations are planned.
 
+### Tool Discovery
+
+When you have many capabilities enabled (6+), ClawBuddy uses RAG-based tool discovery to load only the relevant tools per query. This keeps the LLM context clean and improves response quality — instead of dumping all tool definitions into every request.
+
 ### Context Compression
 
 Long conversations are automatically compressed — old messages get summarized by a compact LLM model while keeping the last 10 messages intact. No more hitting token limits mid-conversation.
 
-### Permission System
+---
 
-- **Auto-execute mode**: Trusted workspaces can run tools without approval
-- **Tool approvals**: Review and approve/deny tool calls before execution
-- **Permission rules**: Create glob-pattern rules like `Bash(aws s3 *)` that auto-approve matching commands
-- **Scoped rules**: Session-specific or workspace-wide
+## Security & Privacy
+
+ClawBuddy is designed with security at every layer:
+
+- **Sandboxed execution** — Every tool runs in a Docker container with hard resource limits: 512MB RAM, 1 vCPU, 100 PIDs, 5-minute timeout
+- **Encrypted credentials** — API keys stored with AES-256-GCM encryption at rest
+- **Secret redaction** — Secrets are automatically stripped from tool outputs, SSE streams, logs, and database storage before reaching the LLM or being persisted
+- **Tool approvals** — Review and approve/deny tool calls before execution. Create glob-pattern rules like `Bash(aws s3 *)` for auto-approval (session-scoped or workspace-wide)
+- **Auto-execute mode** — Trusted workspaces can run tools without approval prompts
+- **Zero telemetry** — Fully self-hosted, no external calls except to your chosen LLM provider
+- **Network isolation** — Sandboxes have no network access by default (opt-in per capability)
+
+---
+
+## Admin Dashboard
+
+A built-in admin panel for managing your ClawBuddy instance:
+
+- **Stats overview** — Workspace, document, and conversation counts at a glance
+- **Token usage analytics** — Per-provider and per-model token consumption with 7-day rolling window
+- **Workspace management** — Search, paginate, and manage all workspaces
+- **Document management** — View document statuses, filter by state, trigger re-ingestion
+- **Conversation browser** — Search and review agent conversations
+- **Sandbox sessions** — Monitor active Docker sandbox containers
+- **Model configuration** — Configure models and parameters per provider
+- **Auto-approval rules** — Manage global permission rules
+- **Preflight checks** — Validate all infrastructure connections (database, Redis, Qdrant, MinIO, Docker, BrowserGrid)
+
+---
+
+## Workspace Management
+
+Each workspace is a fully isolated environment with its own:
+
+- **Capabilities** — Choose which tools are available (Bash, Python, Docker, Browser, etc.)
+- **Documents** — Separate knowledge base with folder organization
+- **Chat history** — Independent conversation threads
+- **Permissions** — Per-workspace auto-execute mode and approval rules
+- **Credentials** — Workspace-scoped Google OAuth tokens and capability configs
+
+Workspaces can be **exported** as a full backup (configuration, capabilities, documents) and **imported** into another instance — making it easy to share setups or migrate between environments.
 
 ---
 
@@ -168,7 +212,7 @@ Long conversations are automatically compressed — old messages get summarized 
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    AgentBuddy                           │
+│                    ClawBuddy                           │
 │                                                         │
 │  ┌──────────┐   ┌──────────┐   ┌────────────────────┐  │
 │  │  React   │──▶│  Hono    │──▶│  LLM Providers     │  │
@@ -225,10 +269,9 @@ Long conversations are automatically compressed — old messages get summarized 
 
 [BrowserGrid](https://github.com/DanielD2G/BrowserGrid) is an open-source multi-browser automation grid. It provides managed browser sessions with anti-detection capabilities, usable standalone or integrated into any project.
 
-**Key features:**
 - **Camoufox** — C++ level fingerprint spoofing (canvas, WebGL, fonts, navigator, screen, timezone)
 - **Chromium & Firefox** — Playwright context options with JS init scripts
-- **Persistent contexts** — cookies and storage reused across sessions
+- **Persistent contexts** — Cookies and storage reused across sessions
 - **Live view** — Real-time screen streaming at 10 FPS via WebSocket
 - **Download management** — Per-session file downloads via REST API
 - **Resource efficient** — Camoufox ~194MB, Chromium ~255MB per instance
@@ -237,7 +280,7 @@ Long conversations are automatically compressed — old messages get summarized 
 
 ## Development Setup
 
-For contributors who want to run AgentBuddy in development mode:
+For contributors who want to run ClawBuddy in development mode:
 
 ### Prerequisites
 
@@ -249,8 +292,8 @@ For contributors who want to run AgentBuddy in development mode:
 
 ```bash
 # Clone the repo
-git clone https://github.com/DanielD2G/AgentBuddy.git
-cd AgentBuddy
+git clone https://github.com/DanielD2G/ClawBuddy.git
+cd ClawBuddy
 
 # Install dependencies
 bun install
@@ -300,6 +343,6 @@ MIT License — see [LICENSE](LICENSE) for details.
 
 ## Acknowledgments
 
-- **[OpenClaw](https://github.com/openclaw/openclaw)** — For inspiring this project and showing the world what open-source AI agents can do. AgentBuddy exists because OpenClaw proved the concept; we just wanted to take it further with stronger privacy, isolation, and multi-workspace support.
+- **[OpenClaw](https://github.com/openclaw/openclaw)** — For inspiring this project and pushing the open-source AI agent space forward.
 - **[Playwright](https://playwright.dev/)** — Browser automation engine powering BrowserGrid.
 - **[Camoufox](https://github.com/nicehash/camoufox)** — Stealthy Firefox fork for anti-detection browsing.
