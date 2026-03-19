@@ -302,14 +302,11 @@ bun install
 cp .env.example .env
 # Edit .env with your API keys (see docs/api-keys-setup.md)
 
-# Start infrastructure (Postgres, Redis, Qdrant, MinIO, BrowserGrid)
-make docker-up
-
-# Push database schema
-make db-push
-
-# Start dev servers (API + Web)
+# Start the development stack in Docker Compose with live reload
 make dev
+
+# Rebuild the development images when Docker deps change
+make dev-build
 ```
 
 ---

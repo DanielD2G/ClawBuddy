@@ -13,6 +13,7 @@
     "lint:files": "bun x eslint --config ./eslint.config.mjs",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "test": "vitest run",
     "typecheck": "bun --filter '*' type-check",
     "type-check": "bun --filter '*' type-check",
     "clean": "rm -rf node_modules apps/*/dist apps/*/node_modules packages/*/node_modules",
@@ -32,6 +33,7 @@
     "eslint-plugin-react-hooks": "^5",
     "globals": "^16",
     "prettier": "^3",
+    "vitest": "^2.1.9",
     "ws": "^8.19.0"
   },
   "packageManager": "bun@1.3.5",

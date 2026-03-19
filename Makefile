@@ -1,4 +1,4 @@
-.PHONY: install dev build lint format type-check clean \
+.PHONY: install dev dev-build build test lint fmt format format-check type-check typecheck clean \
        docker-up docker-down docker-restart docker-logs \
        db-generate db-push db-migrate db-studio \
        setup start stop
@@ -8,41 +8,54 @@
 setup: install docker-up db-generate db-push ## First-time setup: install deps, start infra, init DB
 	@echo "✅ Setup complete. Run 'make dev' to start."
 
-start: docker-up dev ## Start everything (infra + dev servers)
+start: dev ## Start everything (infra + dev servers)
 
 stop: docker-down ## Stop all infrastructure services
 
 # ─── Development ───────────────────────────────────────────
 
 install: ## Install all dependencies
-	bun install
+	$(COMPOSE_WORKSPACE) true
 
 SHELL := /bin/bash
-dev: ## Start dev servers (web + api), agent debug logs → logs/agent-debug.log
-	@mkdir -p logs
-	DEBUG_AGENT=1 bun run dev 2>&1 | tee -a logs/dev.log
+dev: ## Start development stack in Docker Compose with live reload
+	$(DEV_COMPOSE) --profile app up
+
+dev-build: ## Build and start development stack in Docker Compose
+	$(DEV_COMPOSE) --profile app up --build
 
 build: ## Build all packages
-	bun run build
+	$(COMPOSE_WORKSPACE) bun run build
+
+test: ## Run the full test suite in Docker Compose
+	$(COMPOSE_TEST)
 
 lint: ## Run linters
-	bun run lint
+	$(COMPOSE_WORKSPACE) bun lint
 
-format: ## Format all files
-	bun run format
+fmt: ## Format all files
+	$(COMPOSE_WORKSPACE) bun fmt
+
+format: fmt ## Format all files
 
 format-check: ## Check formatting
-	bun run format:check
+	$(COMPOSE_WORKSPACE) bun run format:check
 
 type-check: ## Run TypeScript type checking
-	bun run type-check
+	$(COMPOSE_WORKSPACE) sh -lc "bun run db:generate && bun type-check"
+
+typecheck: type-check ## Run TypeScript type checking
 
 clean: ## Remove node_modules, dist, .turbo
-	bun run clean
+	$(COMPOSE_WORKSPACE) bun run clean
 
 # ─── Docker / Infrastructure ──────────────────────────────
 
 DEV_COMPOSE := docker compose -f docker-compose.dev.yml
+COMPOSE_WORKSPACE := $(DEV_COMPOSE) run --rm --no-deps workspace
+COMPOSE_API := $(DEV_COMPOSE) run --rm api
+COMPOSE_API_PORTS := $(DEV_COMPOSE) run --rm --service-ports api
+COMPOSE_TEST := $(DEV_COMPOSE) run --rm test
 
 docker-up: ## Start infrastructure (Postgres, Redis, Qdrant, MinIO, BrowserGrid)
 	$(DEV_COMPOSE) --profile infra up -d
@@ -61,16 +74,16 @@ docker-reset: ## Stop containers and remove volumes (⚠️ destroys data)
 # ─── Database ─────────────────────────────────────────────
 
 db-generate: ## Generate Prisma client
-	bun run db:generate
+	$(COMPOSE_WORKSPACE) bun run db:generate
 
 db-push: ## Push schema to database
-	bun run db:push
+	$(COMPOSE_API) sh -lc "cd apps/api && bun run db:push"
 
 db-migrate: ## Run Prisma migrations
-	cd apps/api && bun run db:migrate
+	$(COMPOSE_API_PORTS) sh -lc "cd apps/api && bun run db:migrate"
 
 db-studio: ## Open Prisma Studio
-	cd apps/api && bun run db:studio
+	$(DEV_COMPOSE) run --rm --service-ports -p 5555:5555 api sh -lc "cd apps/api && bun x prisma studio --hostname 0.0.0.0 --port 5555"
 
 # ─── Help ─────────────────────────────────────────────────
 
