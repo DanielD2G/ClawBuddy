@@ -28,6 +28,8 @@ import { ToolApprovalBlock } from '@/components/chat/tool-approval-block'
 import { ApprovalInputBar } from '@/components/chat/approval-input-bar'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { parseRichBlocks } from '@/lib/rich-block-parser'
+import { richBlockRenderers } from '@/components/chat/rich-blocks'
 import { DEFAULT_CONTEXT_LIMIT_TOKENS, MODEL_CONFIG_STALE_TIME_MS } from '@/constants'
 
 /** Build ordered content blocks — uses live contentBlocks if available, falls back to legacy layout for DB-loaded messages */
@@ -311,9 +313,17 @@ export function ChatPage() {
                                 {msg.isError ? (
                                   <p>{block.text}</p>
                                 ) : (
-                                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                    {block.text}
-                                  </ReactMarkdown>
+                                  parseRichBlocks(block.text).map((segment, j) => {
+                                    if (segment.type === 'text') {
+                                      return (
+                                        <ReactMarkdown key={`md-${j}`} remarkPlugins={[remarkGfm]}>
+                                          {segment.text}
+                                        </ReactMarkdown>
+                                      )
+                                    }
+                                    const Renderer = richBlockRenderers[segment.type]
+                                    return Renderer ? <Renderer key={`rich-${j}`} {...segment} /> : null
+                                  })
                                 )}
                               </div>
                             )}
