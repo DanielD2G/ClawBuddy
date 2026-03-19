@@ -385,12 +385,12 @@ export function ChatPage() {
                                         ? `/workspaces/${s.workspaceId}/documents/${s.documentId}`
                                         : '#'
                                     }
-                                    const Renderer = richBlockRenderers[segment.type]
-                                    return Renderer ? (
-                                      <Renderer key={`rich-${j}`} {...segment} />
-                                    ) : null
-                                  })
-                                )}
+                                    className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground no-underline hover:bg-muted/80 hover:text-foreground transition-colors"
+                                  >
+                                    <FileText className="size-3" />
+                                    {s.documentTitle}
+                                  </Link>
+                                ))}
                               </div>
                             )
                           })()}
