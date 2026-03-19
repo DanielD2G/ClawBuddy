@@ -49,6 +49,10 @@ interface ExecutionContext {
     name: string
     systemPrompt: string
   }>
+  /** Capability slugs the user explicitly mentioned (e.g. /browser-automation) — forwarded to sub-agents */
+  mentionedSlugs?: string[]
+  /** Abort signal to cancel the agent loop */
+  signal?: AbortSignal
 }
 
 export interface DocumentSource {
@@ -821,6 +825,19 @@ async function executeDelegateTask(
   // Each sub-agent gets its own browser session to avoid page collisions during parallel execution
   const browserSessionId = `sub-${toolCall.id}`
 
+  // Resolve user-mentioned capability slugs to tool names for sub-agent preference
+  let preferredTools: string[] | undefined
+  if (context.mentionedSlugs?.length && context.capabilities) {
+    const mentionedSet = new Set(context.mentionedSlugs)
+    preferredTools = context.capabilities
+      .filter((cap) => mentionedSet.has(cap.slug))
+      .flatMap((cap) => {
+        const defs = cap.toolDefinitions as Array<{ name: string }>
+        return defs?.map((t) => t.name) ?? []
+      })
+    if (!preferredTools.length) preferredTools = undefined
+  }
+
   const subResult = await subAgentService.runSubAgent(
     {
       role: args.role as SubAgentRole,
@@ -836,6 +853,8 @@ async function executeDelegateTask(
       capabilities: context.capabilities,
       subAgentId: toolCall.id,
       browserSessionId,
+      preferredTools,
+      signal: context.signal,
     },
   )
 

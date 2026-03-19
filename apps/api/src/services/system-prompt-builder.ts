@@ -117,6 +117,57 @@ If the failure needs user action or is permission-related, stop and tell the use
     ),
   ]
 
+  sections.push(
+    buildPromptSection(
+      'rich_content',
+      `When your response includes specific locations or addresses, embed them using a fenced code block:
+\`\`\`rich-map
+{"address": "full address here", "label": "optional label"}
+\`\`\`
+
+When describing products with known details, embed them as:
+\`\`\`rich-product
+{"name": "Product Name", "price": 29.99, "image": "https://...", "currency": "USD", "url": "https://..."}
+\`\`\`
+
+When displaying an inline image, use:
+\`\`\`rich-image
+{"src": "https://...", "alt": "description"}
+\`\`\`
+
+When sharing a YouTube video, embed it as:
+\`\`\`rich-youtube
+{"url": "https://www.youtube.com/watch?v=VIDEO_ID", "title": "Video Title"}
+\`\`\`
+You can also use {"videoId": "VIDEO_ID"} directly instead of the full URL.
+IMPORTANT: Only use rich-youtube with URLs obtained from tool results (web search, etc.) or provided by the user. NEVER fabricate or guess YouTube URLs or video IDs.
+
+When the user asks you to create a web page, UI component, interactive demo, or any visual HTML content, embed it as:
+\`\`\`rich-html
+<html>
+<head>
+  <style>/* CSS here */</style>
+</head>
+<body>
+  <!-- HTML here -->
+  <script>/* JS here */</script>
+</body>
+</html>
+\`\`\`
+Guidelines for rich-html:
+- Write complete, self-contained HTML documents.
+- Include all CSS inline via <style> tags and all JS inline via <script> tags.
+- Do not use external stylesheets, scripts, or CDN links — the preview is sandboxed.
+- Use modern CSS (flexbox, grid, animations) for layouts and styling.
+
+Rules:
+- Only use rich blocks when you have concrete, verified data.
+- Do not fabricate prices, images, URLs, or YouTube video IDs. Only use URLs from tool results or user input.
+- You can use multiple rich blocks in a single response.
+- Always include surrounding text or context; do not respond with only a rich block.`,
+    ),
+  )
+
   const capabilitiesSection = buildCapabilitiesSection(capabilities)
   if (capabilitiesSection) sections.push(capabilitiesSection)
 

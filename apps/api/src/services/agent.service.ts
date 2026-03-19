@@ -10,7 +10,7 @@ import type {
 } from '../providers/llm.interface.js'
 import type { SSEEmit } from '../lib/sse.js'
 import { capabilityService } from './capability.service.js'
-import { toolExecutorService, NON_SANDBOX_TOOLS } from './tool-executor.service.js'
+import { toolExecutorService, NON_SANDBOX_TOOLS, type ExecutionResult } from './tool-executor.service.js'
 import { sandboxService } from './sandbox.service.js'
 import { permissionService } from './permission.service.js'
 import { compressContext } from './context-compression.service.js'
@@ -155,6 +155,7 @@ export const agentService = {
       mentionedSlugs?: string[]
       secretInventory?: SecretInventory
       historyIncludesCurrentUserMessage?: boolean
+      signal?: AbortSignal
     },
   ): Promise<AgentResult> {
     const inventory =
@@ -423,6 +424,10 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
 
     const maxIterations = await settingsService.getMaxAgentIterations()
     for (let i = 0; i < maxIterations; i++) {
+      if (options?.signal?.aborted) {
+        throw new DOMException('Agent loop aborted by user', 'AbortError')
+      }
+
       log.debugLog(`── Iteration ${i + 1}/${maxIterations} ──`)
       emit?.('thinking', { message: 'Thinking...' })
 
@@ -621,6 +626,7 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
             workspaceId,
             sessionId,
             discoveredCapabilitySlugs: discoveredCapabilities.map((c) => c.slug),
+            mentionedSlugs: options?.mentionedSlugs,
           }
           await prisma.chatSession.update({
             where: { id: sessionId },
@@ -710,6 +716,8 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
             : undefined,
           emit,
           capabilities,
+          mentionedSlugs: options?.mentionedSlugs,
+          signal: options?.signal,
         })
 
         log.debugLog(`Tool "${toolCall.name}" result`, {
@@ -1083,6 +1091,7 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
     sessionId: string,
     emit?: SSEEmit,
     inventoryArg?: SecretInventory,
+    signal?: AbortSignal,
   ): Promise<AgentResult> {
     const session = await prisma.chatSession.findUniqueOrThrow({
       where: { id: sessionId },
@@ -1171,9 +1180,11 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
     const resumeCapabilities =
       await capabilityService.getEnabledCapabilitiesForWorkspace(workspaceId)
 
-    // Process approved tool calls
+    // Process approved tool calls — parallel-safe tools concurrently, others sequentially
     const resumeExecutionIds: string[] = []
-    for (const toolCall of state.pendingToolCalls) {
+
+    // Pre-resolve capabilities and args for all pending tool calls
+    const resolvedPending = state.pendingToolCalls.map((toolCall) => {
       const publicToolArgs = secretRedactionService.redactForPublicStorage(
         toolCall.arguments,
         inventory,
@@ -1184,7 +1195,12 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
         return defs?.some((t) => t.name === toolCall.name)
       })
       const capabilitySlug = resumeMatchedCap?.slug ?? approval?.capabilitySlug ?? 'unknown'
+      return { toolCall, publicToolArgs, resumeMatchedCap, capabilitySlug }
+    })
 
+    // Helper: execute a single approved tool and return its result
+    const executeApprovedTool = (r: (typeof resolvedPending)[number]) => {
+      const { toolCall, publicToolArgs, resumeMatchedCap, capabilitySlug } = r
       const isDiscoveryToolResume = toolCall.name === 'discover_tools'
       if (isDiscoveryToolResume) {
         emit?.('thinking', { message: 'Looking for the right tools...' })
@@ -1196,8 +1212,7 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
           input: publicToolArgs,
         })
       }
-
-      const result = await toolExecutorService.execute(toolCall, capabilitySlug, {
+      return toolExecutorService.execute(toolCall, capabilitySlug, {
         workspaceId,
         chatSessionId: sessionId,
         linuxUser: linuxUser ?? '',
@@ -1209,8 +1224,20 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
               toolDefinitions: resumeMatchedCap.toolDefinitions,
             }
           : undefined,
+        emit,
         capabilities: resumeCapabilities,
+        mentionedSlugs: state.mentionedSlugs,
+        signal,
       })
+    }
+
+    // Helper: post-process a tool result (SSE, logging, messages)
+    const postProcessApprovedTool = async (
+      r: (typeof resolvedPending)[number],
+      result: ExecutionResult,
+    ) => {
+      const { toolCall, publicToolArgs, capabilitySlug } = r
+      const isDiscoveryToolResume = toolCall.name === 'discover_tools'
 
       log.logToolResult(toolCall.name, result)
       if (!isDiscoveryToolResume) {
@@ -1225,19 +1252,12 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
         })
       }
 
-      toolExecutionLog.push({
-        toolName: toolCall.name,
-        capabilitySlug,
-        input: publicToolArgs,
-        output: result.output || undefined,
-        error: result.error,
-        exitCode: result.exitCode,
-        durationMs: result.durationMs,
-      })
       if (result.executionId) resumeExecutionIds.push(result.executionId)
+      if (result.subAgentExecutionIds?.length) {
+        resumeExecutionIds.push(...result.subAgentExecutionIds)
+      }
 
       // Truncate large sandbox outputs to save context
-      // For browser scripts, pass output directly to preserve JSON structure for screenshot extraction
       const rawContent =
         toolCall.name === 'run_browser_script'
           ? result.output
@@ -1256,6 +1276,40 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
       })
     }
 
+    // Launch parallel-safe tools concurrently, collect results keyed by toolCall.id
+    const parallelPending = resolvedPending.filter((r) =>
+      PARALLEL_SAFE_TOOLS.has(r.toolCall.name),
+    )
+    const resultMap = new Map<string, ExecutionResult>()
+    if (parallelPending.length > 1) {
+      log.debugLog('Executing parallel batch (resume)', {
+        tools: parallelPending.map((r) => r.toolCall.name),
+      })
+      const parallelResults = await Promise.all(parallelPending.map(executeApprovedTool))
+      for (let idx = 0; idx < parallelPending.length; idx++) {
+        resultMap.set(parallelPending[idx].toolCall.id, parallelResults[idx])
+      }
+    }
+
+    // Iterate in original order — parallel results are already available, sequential ones execute inline
+    for (const r of resolvedPending) {
+      const result =
+        resultMap.get(r.toolCall.id) ?? (await executeApprovedTool(r))
+      await postProcessApprovedTool(r, result)
+
+      // Push to toolExecutionLog in original order (needed for contentBlocks toolIndex mapping)
+      toolExecutionLog.push({
+        toolName: r.toolCall.name,
+        capabilitySlug: r.capabilitySlug,
+        input: r.publicToolArgs,
+        output: result.output || undefined,
+        error: result.error,
+        exitCode: result.exitCode,
+        durationMs: result.durationMs,
+        subAgentExecutionIds: result.subAgentExecutionIds,
+      })
+    }
+
     // Save the approved tool calls as a ChatMessage (these are the tools that were awaiting approval)
     if (state.pendingToolCalls.length > 0) {
       try {
@@ -1264,11 +1318,34 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
           capability: approvals.find((a) => a.toolCallId === tc.id)?.capabilitySlug ?? 'unknown',
           input: secretRedactionService.redactForPublicStorage(tc.arguments, inventory),
         }))
-        const approvedBlocks: Array<{ type: 'tool'; toolIndex: number }> =
-          state.pendingToolCalls.map((_, idx) => ({
+        const approvedBlocks: Array<
+          | { type: 'tool'; toolIndex: number }
+          | {
+              type: 'sub_agent'
+              toolIndex: number
+              subAgentId: string
+              role: string
+              task: string
+              subToolIds?: string[]
+            }
+        > = state.pendingToolCalls.map((tc, idx) => {
+          if (tc.name === 'delegate_task') {
+            const args = tc.arguments as Record<string, unknown>
+            const logEntry = toolExecutionLog[idx]
+            return {
+              type: 'sub_agent' as const,
+              toolIndex: idx,
+              subAgentId: tc.id,
+              role: String(args.role ?? 'execute'),
+              task: String(args.task ?? ''),
+              subToolIds: logEntry?.subAgentExecutionIds,
+            }
+          }
+          return {
             type: 'tool' as const,
             toolIndex: idx,
-          }))
+          }
+        })
         const approvedMsg = await prisma.chatMessage.create({
           data: {
             sessionId,
@@ -1319,6 +1396,10 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
 
     const maxIterations = await settingsService.getMaxAgentIterations()
     for (let i = state.iteration; i < maxIterations; i++) {
+      if (signal?.aborted) {
+        throw new DOMException('Agent loop aborted by user', 'AbortError')
+      }
+
       emit?.('thinking', { message: 'Thinking...' })
 
       // Prune old tool results to reduce context size
@@ -1461,6 +1542,7 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
             toolExecutionLog,
             workspaceId,
             sessionId,
+            mentionedSlugs: state.mentionedSlugs,
           }
 
           await prisma.chatSession.update({
@@ -1560,7 +1642,10 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
                           toolDefinitions: t.matchedCap.toolDefinitions,
                         }
                       : undefined,
+                    emit,
                     capabilities,
+                    mentionedSlugs: state.mentionedSlugs,
+                    signal,
                   })
                 }),
               )
@@ -1600,7 +1685,10 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
                         toolDefinitions: matchedCap.toolDefinitions,
                       }
                     : undefined,
+                  emit,
                   capabilities,
+                  mentionedSlugs: state.mentionedSlugs,
+                  signal,
                 })
 
           log.logToolResult(toolCall.name, result)

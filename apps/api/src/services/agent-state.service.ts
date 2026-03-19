@@ -40,6 +40,8 @@ export interface AgentState {
   sessionId: string
   /** Slugs of capabilities discovered via tool discovery (for resume) */
   discoveredCapabilitySlugs?: string[]
+  /** Capability slugs the user explicitly mentioned — forwarded to sub-agents on resume */
+  mentionedSlugs?: string[]
 }
 
 export function serializeEncryptedAgentState(state: AgentState): string {
