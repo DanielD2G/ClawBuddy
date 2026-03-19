@@ -1,14 +1,9 @@
 import Docker from 'dockerode'
 import { createHash } from 'crypto'
-import { readFileSync } from 'fs'
-import { resolve, dirname } from 'path'
-import { fileURLToPath } from 'url'
 import { prisma } from '../lib/prisma.js'
-import { IMAGE_TAG_HASH_LENGTH, SANDBOX_BASE_IMAGE } from '../constants.js'
+import { IMAGE_TAG_HASH_LENGTH, SANDBOX_BASE_DOCKERFILE, SANDBOX_BASE_IMAGE } from '../constants.js'
 
 const docker = new Docker()
-
-const __dirname = dirname(fileURLToPath(import.meta.url))
 
 interface BuildResult {
   success: boolean
@@ -30,9 +25,7 @@ export const imageBuilderService = {
 
     onLog?.('Building base sandbox image...')
 
-    const dockerfilePath = resolve(__dirname, '../../sandbox-images/base/Dockerfile')
-    const dockerfile = readFileSync(dockerfilePath, 'utf-8')
-    const result = await this.buildFromDockerfile(dockerfile, SANDBOX_BASE_IMAGE, onLog)
+    const result = await this.buildFromDockerfile(SANDBOX_BASE_DOCKERFILE, SANDBOX_BASE_IMAGE, onLog)
 
     if (!result.success) {
       throw new Error(`Failed to build base sandbox image: ${result.logs}`)

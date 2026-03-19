@@ -72,16 +72,6 @@ db-migrate: ## Run Prisma migrations
 db-studio: ## Open Prisma Studio
 	cd apps/api && bun run db:studio
 
-# ─── Sandbox Images ──────────────────────────────────────
-
-build-sandbox-images: ## Build all sandbox Docker images
-	docker build -t clawbuddy-sandbox-base apps/api/sandbox-images/base/
-	docker build -t clawbuddy-sandbox-python apps/api/sandbox-images/python/
-	docker build -t clawbuddy-sandbox-aws apps/api/sandbox-images/aws-cli/
-	docker build -t clawbuddy-sandbox-kubectl apps/api/sandbox-images/kubectl/
-	docker build -t clawbuddy-sandbox-node apps/api/sandbox-images/node/
-	docker build -t clawbuddy-sandbox-full apps/api/sandbox-images/full/
-
 # ─── Help ─────────────────────────────────────────────────
 
 help: ## Show this help

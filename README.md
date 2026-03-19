@@ -312,14 +312,6 @@ make db-push
 make dev
 ```
 
-### Build Sandbox Images
-
-```bash
-make build-sandbox-images
-```
-
-This builds the Docker images used for sandboxed tool execution (base, python, aws-cli, kubectl, node, full).
-
 ---
 
 ## Service URLs
