@@ -31,9 +31,7 @@ export function useChatSessions() {
 export function useDeleteChatSession() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (sessionId: string) =>
-      apiClient.delete(`/chat/sessions/${sessionId}`),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ['chat-sessions'] }),
+    mutationFn: (sessionId: string) => apiClient.delete(`/chat/sessions/${sessionId}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['chat-sessions'] }),
   })
 }

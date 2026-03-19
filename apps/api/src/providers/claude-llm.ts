@@ -48,7 +48,11 @@ export class ClaudeLLMProvider implements LLMProvider {
                     type: 'image' as const,
                     source: {
                       type: 'base64' as const,
-                      media_type: b.source.mediaType as 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp',
+                      media_type: b.source.mediaType as
+                        | 'image/png'
+                        | 'image/jpeg'
+                        | 'image/gif'
+                        | 'image/webp',
                       data: b.source.data,
                     },
                   }
@@ -96,7 +100,11 @@ export class ClaudeLLMProvider implements LLMProvider {
                 type: 'image' as const,
                 source: {
                   type: 'base64' as const,
-                  media_type: b.source.mediaType as 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp',
+                  media_type: b.source.mediaType as
+                    | 'image/png'
+                    | 'image/jpeg'
+                    | 'image/gif'
+                    | 'image/webp',
                   data: b.source.data,
                 },
               }

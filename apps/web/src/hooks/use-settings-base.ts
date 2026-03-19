@@ -43,8 +43,12 @@ export function createSettingsHook(options: SettingsHookOptions) {
     })
 
     const updateProviders = useMutation({
-      mutationFn: (data: { llm?: string; llmModel?: string; embedding?: string; embeddingModel?: string }) =>
-        apiClient.patch(`${options.basePath}/settings`, data),
+      mutationFn: (data: {
+        llm?: string
+        llmModel?: string
+        embedding?: string
+        embeddingModel?: string
+      }) => apiClient.patch(`${options.basePath}/settings`, data),
       onSuccess: () => queryClient.invalidateQueries({ queryKey }),
     })
 

@@ -85,9 +85,7 @@ export function TokenUsageCard() {
         </div>
       </CardHeader>
       <CardContent>
-        {isLoading && (
-          <div className="text-sm text-muted-foreground">Loading...</div>
-        )}
+        {isLoading && <div className="text-sm text-muted-foreground">Loading...</div>}
 
         {data && (
           <div className="space-y-5">
@@ -128,9 +126,7 @@ export function TokenUsageCard() {
                 <div className="space-y-1.5">
                   {data.byModel.map((m) => (
                     <div key={m.model} className="flex items-center justify-between text-sm">
-                      <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
-                        {m.model}
-                      </code>
+                      <code className="text-xs bg-muted px-1.5 py-0.5 rounded">{m.model}</code>
                       <span className="text-muted-foreground font-mono text-xs">
                         {formatNumber(m.totalTokens)} tokens
                       </span>
@@ -150,7 +146,9 @@ export function TokenUsageCard() {
                     const pct = (d.totalTokens / maxTokens) * 100
                     return (
                       <div key={d.date} className="flex items-center gap-3 text-xs">
-                        <span className="w-20 text-muted-foreground font-mono">{d.date.slice(5)}</span>
+                        <span className="w-20 text-muted-foreground font-mono">
+                          {d.date.slice(5)}
+                        </span>
                         <div className="flex-1 h-4 bg-muted rounded overflow-hidden">
                           <div
                             className="h-full bg-brand rounded transition-all"

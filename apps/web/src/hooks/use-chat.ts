@@ -518,7 +518,7 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
       }
       return { receivedDone }
     },
-    [],
+    [queryClient, workspaceId],
   )
 
   const sendMessage = useCallback(
@@ -535,8 +535,6 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
       setIsPending(true)
       setThinkingMessage('Processing...')
       setPendingApprovals([])
-
-      const isNewSession = !sessionIdRef.current
 
       const assistantId = uid()
       setMessages((prev) => [
@@ -792,7 +790,7 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
       }
     }, pollInterval)
     return () => clearInterval(interval)
-  }, [isPending])
+  }, [isPending, queryClient])
 
   const clearMessages = useCallback(() => {
     abortRef.current?.abort()

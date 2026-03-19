@@ -102,9 +102,12 @@ app.patch('/settings/models', async (c) => {
     updateData.advancedModelConfig = body.advancedModelConfig
   if (body.contextLimitTokens !== undefined) updateData.contextLimitTokens = body.contextLimitTokens
   if (body.maxAgentIterations !== undefined) updateData.maxAgentIterations = body.maxAgentIterations
-  if (body.subAgentExploreMaxIterations !== undefined) updateData.subAgentExploreMaxIterations = body.subAgentExploreMaxIterations
-  if (body.subAgentAnalyzeMaxIterations !== undefined) updateData.subAgentAnalyzeMaxIterations = body.subAgentAnalyzeMaxIterations
-  if (body.subAgentExecuteMaxIterations !== undefined) updateData.subAgentExecuteMaxIterations = body.subAgentExecuteMaxIterations
+  if (body.subAgentExploreMaxIterations !== undefined)
+    updateData.subAgentExploreMaxIterations = body.subAgentExploreMaxIterations
+  if (body.subAgentAnalyzeMaxIterations !== undefined)
+    updateData.subAgentAnalyzeMaxIterations = body.subAgentAnalyzeMaxIterations
+  if (body.subAgentExecuteMaxIterations !== undefined)
+    updateData.subAgentExecuteMaxIterations = body.subAgentExecuteMaxIterations
   if (body.timezone !== undefined) updateData.timezone = body.timezone
 
   await settingsService.update(updateData as Parameters<typeof settingsService.update>[0])

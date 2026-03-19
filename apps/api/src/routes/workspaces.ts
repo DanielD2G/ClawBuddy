@@ -1,5 +1,9 @@
 import { Hono } from 'hono'
-import { createWorkspaceSchema, updateWorkspaceSchema, workspaceExportSchema } from '@clawbuddy/shared'
+import {
+  createWorkspaceSchema,
+  updateWorkspaceSchema,
+  workspaceExportSchema,
+} from '@clawbuddy/shared'
 import type { WorkspaceExport } from '@clawbuddy/shared'
 import { workspaceService } from '../services/workspace.service.js'
 import { capabilityService } from '../services/capability.service.js'
@@ -136,7 +140,9 @@ app.get('/:id/export', async (c) => {
   // Enabled capabilities with decrypted configs
   const enabledCaps = await capabilityService.getEnabledCapabilitiesForWorkspace(id)
   const capabilities = enabledCaps.map((cap) => {
-    const schema = cap.configSchema as import('../capabilities/types.js').ConfigFieldDefinition[] | null
+    const schema = cap.configSchema as
+      | import('../capabilities/types.js').ConfigFieldDefinition[]
+      | null
     const rawConfig = cap.config as Record<string, unknown> | null
     const config = schema?.length && rawConfig ? decryptConfigFields(schema, rawConfig) : rawConfig
     return { slug: cap.slug, enabled: true, config }
@@ -150,7 +156,9 @@ app.get('/:id/export', async (c) => {
     if (config.botToken) {
       try {
         decryptedConfig.botToken = decrypt(config.botToken)
-      } catch { /* may not be encrypted */ }
+      } catch {
+        /* may not be encrypted */
+      }
     }
     return { type: ch.type, name: ch.name, enabled: ch.enabled, config: decryptedConfig }
   })

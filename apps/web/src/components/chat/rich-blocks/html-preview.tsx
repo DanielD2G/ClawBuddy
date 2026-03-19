@@ -24,7 +24,8 @@ function injectResizeScript(html: string): string {
   return html + RESIZE_SCRIPT
 }
 
-const toolbarBtnClass = 'rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors'
+const toolbarBtnClass =
+  'rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors'
 
 export function HtmlPreview({ html }: HtmlPreviewProps) {
   const [expanded, setExpanded] = useState(false)
@@ -34,13 +35,16 @@ export function HtmlPreview({ html }: HtmlPreviewProps) {
 
   const srcdoc = useMemo(() => injectResizeScript(html), [html])
 
-  const handleMessage = useCallback((e: MessageEvent) => {
-    if (e.data?.type === 'rich-html-resize' && typeof e.data.height === 'number') {
-      if (e.source === iframeRef.current?.contentWindow) {
-        setHeight(Math.min(Math.max(e.data.height + 16, 100), expanded ? 2000 : 600))
+  const handleMessage = useCallback(
+    (e: MessageEvent) => {
+      if (e.data?.type === 'rich-html-resize' && typeof e.data.height === 'number') {
+        if (e.source === iframeRef.current?.contentWindow) {
+          setHeight(Math.min(Math.max(e.data.height + 16, 100), expanded ? 2000 : 600))
+        }
       }
-    }
-  }, [expanded])
+    },
+    [expanded],
+  )
 
   useEffect(() => {
     window.addEventListener('message', handleMessage)

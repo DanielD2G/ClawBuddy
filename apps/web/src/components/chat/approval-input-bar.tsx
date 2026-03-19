@@ -1,17 +1,29 @@
 import { useState, useEffect, useCallback } from 'react'
-import { ShieldAlert, ChevronUp, ChevronDown as ChevronDownIcon, CornerDownLeft } from 'lucide-react'
+import {
+  ShieldAlert,
+  ChevronUp,
+  ChevronDown as ChevronDownIcon,
+  CornerDownLeft,
+} from 'lucide-react'
 import type { PendingApproval } from '@/hooks/use-chat'
 import { CODE_APPROVAL_PREVIEW_LEN, formatToolDisplayName } from '@/constants'
 
 function getApprovalPreview(approval: PendingApproval): string {
   if (approval.toolName === 'delegate_task' && approval.subAgentRole) {
     const task = String(approval.input.task ?? '')
-    const truncated = task.length > CODE_APPROVAL_PREVIEW_LEN ? task.slice(0, CODE_APPROVAL_PREVIEW_LEN) + '...' : task
+    const truncated =
+      task.length > CODE_APPROVAL_PREVIEW_LEN
+        ? task.slice(0, CODE_APPROVAL_PREVIEW_LEN) + '...'
+        : task
     return truncated
   }
   const args = approval.input
   if (args.command) return String(args.command)
-  if (args.code) return String(args.code).slice(0, CODE_APPROVAL_PREVIEW_LEN) + (String(args.code).length > CODE_APPROVAL_PREVIEW_LEN ? '...' : '')
+  if (args.code)
+    return (
+      String(args.code).slice(0, CODE_APPROVAL_PREVIEW_LEN) +
+      (String(args.code).length > CODE_APPROVAL_PREVIEW_LEN ? '...' : '')
+    )
   if (args.query) return String(args.query)
   if (args.path) return String(args.path)
   return ''
@@ -56,11 +68,21 @@ function computeAllowRule(approval: PendingApproval): string {
   }
 }
 
-const APPROVAL_OPTIONS = ['Yes', 'Yes, always in this session', 'Yes, always', 'No, skip this action']
+const APPROVAL_OPTIONS = [
+  'Yes',
+  'Yes, always in this session',
+  'Yes, always',
+  'No, skip this action',
+]
 
 export interface ApprovalInputBarProps {
   approvals: PendingApproval[]
-  onDecision: (approvalId: string, decision: 'approved' | 'denied', allowRule?: string, scope?: 'session' | 'global') => void
+  onDecision: (
+    approvalId: string,
+    decision: 'approved' | 'denied',
+    allowRule?: string,
+    scope?: 'session' | 'global',
+  ) => void
 }
 
 export function ApprovalInputBar({ approvals, onDecision }: ApprovalInputBarProps) {
@@ -69,13 +91,17 @@ export function ApprovalInputBar({ approvals, onDecision }: ApprovalInputBarProp
   const handleSubmit = useCallback(() => {
     const allowRule = approvals.length === 1 ? computeAllowRule(approvals[0]) : undefined
     if (selectedIndex === 0) {
-      approvals.forEach(a => onDecision(a.approvalId, 'approved'))
+      approvals.forEach((a) => onDecision(a.approvalId, 'approved'))
     } else if (selectedIndex === 1) {
-      approvals.forEach(a => onDecision(a.approvalId, 'approved', allowRule ?? computeAllowRule(a), 'session'))
+      approvals.forEach((a) =>
+        onDecision(a.approvalId, 'approved', allowRule ?? computeAllowRule(a), 'session'),
+      )
     } else if (selectedIndex === 2) {
-      approvals.forEach(a => onDecision(a.approvalId, 'approved', allowRule ?? computeAllowRule(a), 'global'))
+      approvals.forEach((a) =>
+        onDecision(a.approvalId, 'approved', allowRule ?? computeAllowRule(a), 'global'),
+      )
     } else {
-      approvals.forEach(a => onDecision(a.approvalId, 'denied'))
+      approvals.forEach((a) => onDecision(a.approvalId, 'denied'))
     }
   }, [selectedIndex, approvals, onDecision])
 
@@ -83,16 +109,16 @@ export function ApprovalInputBar({ approvals, onDecision }: ApprovalInputBarProp
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'ArrowUp') {
         e.preventDefault()
-        setSelectedIndex(prev => (prev - 1 + APPROVAL_OPTIONS.length) % APPROVAL_OPTIONS.length)
+        setSelectedIndex((prev) => (prev - 1 + APPROVAL_OPTIONS.length) % APPROVAL_OPTIONS.length)
       } else if (e.key === 'ArrowDown') {
         e.preventDefault()
-        setSelectedIndex(prev => (prev + 1) % APPROVAL_OPTIONS.length)
+        setSelectedIndex((prev) => (prev + 1) % APPROVAL_OPTIONS.length)
       } else if (e.key === 'Enter') {
         e.preventDefault()
         handleSubmit()
       } else if (e.key === 'Escape') {
         e.preventDefault()
-        approvals.forEach(a => onDecision(a.approvalId, 'denied'))
+        approvals.forEach((a) => onDecision(a.approvalId, 'denied'))
       }
     }
     window.addEventListener('keydown', handler)
@@ -100,7 +126,10 @@ export function ApprovalInputBar({ approvals, onDecision }: ApprovalInputBarProp
   }, [handleSubmit, approvals, onDecision])
 
   const firstApproval = approvals[0]
-  const isSubAgent = approvals.length === 1 && firstApproval.toolName === 'delegate_task' && firstApproval.subAgentToolNames
+  const isSubAgent =
+    approvals.length === 1 &&
+    firstApproval.toolName === 'delegate_task' &&
+    firstApproval.subAgentToolNames
   const preview = approvals.length === 1 ? getApprovalPreview(firstApproval) : ''
   const rulePreview = approvals.length === 1 ? computeAllowRule(firstApproval) : null
 
@@ -114,8 +143,7 @@ export function ApprovalInputBar({ approvals, onDecision }: ApprovalInputBarProp
             ? `Allow sub-agent (${firstApproval.subAgentRole}) to run with ${firstApproval.subAgentToolNames!.length} tools?`
             : approvals.length === 1
               ? `Allow ${formatToolDisplayName(firstApproval.capabilitySlug ?? 'Tool')} to run?`
-              : `Allow ${approvals.length} actions to run?`
-          }
+              : `Allow ${approvals.length} actions to run?`}
         </span>
       </div>
 
@@ -159,13 +187,16 @@ export function ApprovalInputBar({ approvals, onDecision }: ApprovalInputBarProp
           <button
             key={option}
             type="button"
-            onClick={() => { setSelectedIndex(i); }}
+            onClick={() => {
+              setSelectedIndex(i)
+            }}
             onDoubleClick={handleSubmit}
             className={`
               flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors
-              ${i === selectedIndex
-                ? 'bg-muted/80 text-foreground'
-                : 'text-muted-foreground hover:bg-muted/40'
+              ${
+                i === selectedIndex
+                  ? 'bg-muted/80 text-foreground'
+                  : 'text-muted-foreground hover:bg-muted/40'
               }
             `}
           >
@@ -185,7 +216,7 @@ export function ApprovalInputBar({ approvals, onDecision }: ApprovalInputBarProp
       <div className="flex items-center justify-end gap-3 pt-1">
         <button
           type="button"
-          onClick={() => approvals.forEach(a => onDecision(a.approvalId, 'denied'))}
+          onClick={() => approvals.forEach((a) => onDecision(a.approvalId, 'denied'))}
           className="text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
           Skip

@@ -11,7 +11,9 @@ export function ChatIndexPage() {
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-bold">Chat</h1>
-        <p className="text-muted-foreground">Select a workspace to start chatting with your documents.</p>
+        <p className="text-muted-foreground">
+          Select a workspace to start chatting with your documents.
+        </p>
       </div>
 
       {isLoading && <p className="text-sm text-muted-foreground">Loading workspaces...</p>}
@@ -20,7 +22,9 @@ export function ChatIndexPage() {
         <div className="flex flex-col items-center py-16">
           <MessageSquare className="size-12 text-muted-foreground mb-4" />
           <p className="text-lg font-medium">No workspaces yet</p>
-          <p className="text-sm text-muted-foreground">Create a workspace first to start chatting.</p>
+          <p className="text-sm text-muted-foreground">
+            Create a workspace first to start chatting.
+          </p>
         </div>
       )}
 

@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma.js'
 import type { Prisma } from '@prisma/client'
+import type { GroundingMetadata, Tool as GeminiTool } from '@google/generative-ai'
 import { embeddingService } from './embedding.service.js'
 import { searchService } from './search.service.js'
 import { sandboxService } from './sandbox.service.js'
@@ -163,7 +164,11 @@ async function executeDocumentSearch(
  */
 async function executeWebFetch(toolCall: ToolCall): Promise<ExecutionResult> {
   const startTime = Date.now()
-  const fail = (error: string): ExecutionResult => ({ output: '', error, durationMs: Date.now() - startTime })
+  const fail = (error: string): ExecutionResult => ({
+    output: '',
+    error,
+    durationMs: Date.now() - startTime,
+  })
 
   const args = toolCall.arguments as Record<string, unknown>
   const url = String(args.url ?? '')
@@ -199,7 +204,11 @@ async function executeWebFetch(toolCall: ToolCall): Promise<ExecutionResult> {
 
     const res = await fetch(url, {
       method,
-      headers: { 'User-Agent': 'ClawBuddy/1.0', Accept: 'text/html,application/xhtml+xml,*/*', ...customHeaders },
+      headers: {
+        'User-Agent': 'ClawBuddy/1.0',
+        Accept: 'text/html,application/xhtml+xml,*/*',
+        ...customHeaders,
+      },
       body: ['POST', 'PUT', 'PATCH'].includes(method) ? body : undefined,
       signal: controller.signal,
       redirect: 'follow',
@@ -648,7 +657,7 @@ async function executeWebSearch(toolCall: ToolCall): Promise<ExecutionResult> {
 
     const model = client.getGenerativeModel({
       model: 'gemini-2.5-flash',
-      tools: [{ googleSearch: {} } as any],
+      tools: [{ googleSearch: {} } as unknown as GeminiTool],
     })
 
     const result = await model.generateContent(query)
@@ -657,7 +666,7 @@ async function executeWebSearch(toolCall: ToolCall): Promise<ExecutionResult> {
 
     // Extract grounding metadata if available
     const candidate = response.candidates?.[0]
-    const groundingMeta = (candidate as any)?.groundingMetadata
+    const groundingMeta: GroundingMetadata | undefined = candidate?.groundingMetadata
     let sources = ''
     if (groundingMeta?.groundingChunks?.length) {
       const chunks = groundingMeta.groundingChunks as Array<{

@@ -96,12 +96,16 @@ export const sandboxService = {
       try {
         const old = docker.getContainer(workspace.containerId)
         await old.remove({ force: true })
-      } catch { /* already gone */ }
+      } catch {
+        /* already gone */
+      }
     }
 
     const image = await resolveImage(workspaceId)
     const envList = envVars
-      ? Object.entries(envVars).filter(([k]) => !k.startsWith('_')).map(([k, v]) => `${k}=${v}`)
+      ? Object.entries(envVars)
+          .filter(([k]) => !k.startsWith('_'))
+          .map(([k, v]) => `${k}=${v}`)
       : []
 
     const container = await docker.createContainer({
@@ -133,19 +137,34 @@ export const sandboxService = {
     }
 
     // Setup shared workspace structure
-    await execSimple(container, 'mkdir -p /workspace/__agent__ /workspace/users /workspace/.outputs && chmod 755 /workspace /workspace/users && chmod 777 /workspace/.outputs')
+    await execSimple(
+      container,
+      'mkdir -p /workspace/__agent__ /workspace/users /workspace/.outputs && chmod 755 /workspace /workspace/users && chmod 777 /workspace/.outputs',
+    )
 
     // Write credential files (AWS, GWS, etc.)
     if (envVars) {
       const filesToMount: Array<{ path: string; content: string; heredocTag: string }> = []
       if (envVars['_AWS_CREDENTIALS_FILE']) {
-        filesToMount.push({ path: '/root/.aws/credentials', content: envVars['_AWS_CREDENTIALS_FILE'], heredocTag: 'AWSEOF' })
+        filesToMount.push({
+          path: '/root/.aws/credentials',
+          content: envVars['_AWS_CREDENTIALS_FILE'],
+          heredocTag: 'AWSEOF',
+        })
       }
       if (envVars['_AWS_CONFIG_FILE']) {
-        filesToMount.push({ path: '/root/.aws/config', content: envVars['_AWS_CONFIG_FILE'], heredocTag: 'AWSCFGEOF' })
+        filesToMount.push({
+          path: '/root/.aws/config',
+          content: envVars['_AWS_CONFIG_FILE'],
+          heredocTag: 'AWSCFGEOF',
+        })
       }
       if (envVars['_GWS_CREDENTIALS_FILE']) {
-        filesToMount.push({ path: '/root/.config/gws/credentials.json', content: envVars['_GWS_CREDENTIALS_FILE'], heredocTag: 'GWSEOF' })
+        filesToMount.push({
+          path: '/root/.config/gws/credentials.json',
+          content: envVars['_GWS_CREDENTIALS_FILE'],
+          heredocTag: 'GWSEOF',
+        })
       }
       if (filesToMount.length) {
         const dirs = new Set<string>()
@@ -166,16 +185,25 @@ export const sandboxService = {
 
       // Set GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE so gws finds it regardless of $HOME
       if (envVars['_GWS_CREDENTIALS_FILE']) {
-        await execSimple(container, 'echo "export GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE=/root/.config/gws/credentials.json" >> /etc/profile.d/gws.sh')
+        await execSimple(
+          container,
+          'echo "export GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE=/root/.config/gws/credentials.json" >> /etc/profile.d/gws.sh',
+        )
       }
     }
 
     await prisma.workspace.update({
       where: { id: workspaceId },
-      data: { containerId: container.id, containerStatus: 'running', containerLastActivityAt: new Date() },
+      data: {
+        containerId: container.id,
+        containerStatus: 'running',
+        containerLastActivityAt: new Date(),
+      },
     })
 
-    console.log(`[Sandbox] Created workspace container for ${workspaceId}: ${container.id.slice(0, 12)}`)
+    console.log(
+      `[Sandbox] Created workspace container for ${workspaceId}: ${container.id.slice(0, 12)}`,
+    )
     return container.id
   },
 
@@ -183,10 +211,7 @@ export const sandboxService = {
    * Create a Linux user inside the workspace container for a conversation.
    * Returns the username. Idempotent — if user already exists, returns existing.
    */
-  async ensureConversationUser(
-    workspaceId: string,
-    chatSessionId: string,
-  ): Promise<string> {
+  async ensureConversationUser(workspaceId: string, chatSessionId: string): Promise<string> {
     const session = await prisma.chatSession.findUniqueOrThrow({
       where: { id: chatSessionId },
     })
@@ -227,7 +252,9 @@ export const sandboxService = {
       data: { linuxUser: username },
     })
 
-    console.log(`[Sandbox] Created user ${username} for session ${chatSessionId} in workspace ${workspaceId}`)
+    console.log(
+      `[Sandbox] Created user ${username} for session ${chatSessionId} in workspace ${workspaceId}`,
+    )
     return username
   },
 
@@ -248,7 +275,12 @@ export const sandboxService = {
     }
 
     try {
-      const result = await this._execInContainerDirect(workspace.containerId, command, username, options)
+      const result = await this._execInContainerDirect(
+        workspace.containerId,
+        command,
+        username,
+        options,
+      )
       await prisma.workspace.update({
         where: { id: workspaceId },
         data: { containerLastActivityAt: new Date() },
@@ -329,8 +361,12 @@ export const sandboxService = {
             // Fallback
           }
 
-          const rawStdout = stripNullBytes(Buffer.concat(stdoutChunks).toString('utf-8')).trim().slice(0, EXEC_OUTPUT_MAX_BYTES)
-          const rawStderr = stripNullBytes(Buffer.concat(stderrChunks).toString('utf-8')).trim().slice(0, EXEC_OUTPUT_MAX_BYTES)
+          const rawStdout = stripNullBytes(Buffer.concat(stdoutChunks).toString('utf-8'))
+            .trim()
+            .slice(0, EXEC_OUTPUT_MAX_BYTES)
+          const rawStderr = stripNullBytes(Buffer.concat(stderrChunks).toString('utf-8'))
+            .trim()
+            .slice(0, EXEC_OUTPUT_MAX_BYTES)
 
           resolve({
             stdout: rawStdout,
@@ -357,7 +393,9 @@ export const sandboxService = {
         const container = docker.getContainer(workspace.containerId)
         await container.stop({ t: SANDBOX_STOP_TIMEOUT_S }).catch(() => {})
         await container.remove({ force: true }).catch(() => {})
-      } catch { /* already gone */ }
+      } catch {
+        /* already gone */
+      }
     }
     await prisma.workspace.update({
       where: { id: workspaceId },
@@ -373,7 +411,9 @@ export const sandboxService = {
   /**
    * Get workspace container status.
    */
-  async getWorkspaceContainerStatus(workspaceId: string): Promise<{ status: string; containerId: string | null }> {
+  async getWorkspaceContainerStatus(
+    workspaceId: string,
+  ): Promise<{ status: string; containerId: string | null }> {
     const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId } })
     if (workspace.containerId && workspace.containerStatus === 'running') {
       try {
@@ -426,7 +466,8 @@ export const sandboxService = {
    */
   async startWorkspaceContainerWithCapabilities(workspaceId: string): Promise<string> {
     const { capabilityService } = await import('./capability.service.js')
-    const configEnvVars = await capabilityService.getDecryptedCapabilityConfigsForWorkspace(workspaceId)
+    const configEnvVars =
+      await capabilityService.getDecryptedCapabilityConfigsForWorkspace(workspaceId)
     if (!configEnvVars.size) {
       return this.getOrCreateWorkspaceContainer(workspaceId, { networkAccess: true })
     }
@@ -450,10 +491,7 @@ export const sandboxService = {
     const idleWorkspaces = await prisma.workspace.findMany({
       where: {
         containerStatus: 'running',
-        OR: [
-          { containerLastActivityAt: null },
-          { containerLastActivityAt: { lt: idleThreshold } },
-        ],
+        OR: [{ containerLastActivityAt: null }, { containerLastActivityAt: { lt: idleThreshold } }],
       },
     })
 
@@ -471,17 +509,25 @@ export const sandboxService = {
       })
 
       const activeContainerIds = new Set(
-        (await prisma.sandboxSession.findMany({
-          where: { status: 'running' },
-          select: { containerId: true },
-        })).map((s) => s.containerId).filter(Boolean),
+        (
+          await prisma.sandboxSession.findMany({
+            where: { status: 'running' },
+            select: { containerId: true },
+          })
+        )
+          .map((s) => s.containerId)
+          .filter(Boolean),
       )
 
       const workspaceContainerIds = new Set(
-        (await prisma.workspace.findMany({
-          where: { containerStatus: 'running' },
-          select: { containerId: true },
-        })).map((w) => w.containerId).filter(Boolean),
+        (
+          await prisma.workspace.findMany({
+            where: { containerStatus: 'running' },
+            select: { containerId: true },
+          })
+        )
+          .map((w) => w.containerId)
+          .filter(Boolean),
       )
 
       for (const container of containers) {

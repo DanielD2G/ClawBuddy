@@ -52,7 +52,7 @@ export function SettingsLayout() {
               'flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-sm font-medium transition-colors',
               isActive(item.href)
                 ? 'bg-primary text-primary-foreground'
-                : 'text-muted-foreground hover:bg-muted'
+                : 'text-muted-foreground hover:bg-muted',
             )}
           >
             <item.icon className="size-3.5" />
@@ -74,7 +74,7 @@ export function SettingsLayout() {
                   'hover:bg-accent hover:text-accent-foreground',
                   isActive(item.href)
                     ? 'bg-accent text-accent-foreground'
-                    : 'text-muted-foreground'
+                    : 'text-muted-foreground',
                 )}
               >
                 <item.icon className="h-4 w-4" />

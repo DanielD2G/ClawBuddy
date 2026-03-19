@@ -10,7 +10,7 @@
   },
   "scripts": {
     "type-check": "tsc --noEmit",
-    "lint": "eslint src/"
+    "lint": "bun --cwd ../.. run lint:files packages/shared/src"
   },
   "dependencies": {
     "zod": "^3"

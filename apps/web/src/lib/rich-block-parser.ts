@@ -30,7 +30,12 @@ export interface RichHtmlBlock {
   html: string
 }
 
-export type RichBlock = RichMapBlock | RichProductBlock | RichImageBlock | RichYoutubeBlock | RichHtmlBlock
+export type RichBlock =
+  | RichMapBlock
+  | RichProductBlock
+  | RichImageBlock
+  | RichYoutubeBlock
+  | RichHtmlBlock
 
 export type ParsedSegment = { type: 'text'; text: string } | RichBlock
 

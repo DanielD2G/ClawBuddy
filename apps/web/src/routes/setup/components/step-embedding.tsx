@@ -31,7 +31,8 @@ export function StepEmbedding({
       <CardHeader>
         <CardTitle>Embedding Model</CardTitle>
         <CardDescription>
-          Choose the provider and model for document embeddings. This setting is <strong>permanent</strong> and cannot be changed later.
+          Choose the provider and model for document embeddings. This setting is{' '}
+          <strong>permanent</strong> and cannot be changed later.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">

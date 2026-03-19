@@ -5,7 +5,12 @@ interface SeparatorProps extends React.HTMLAttributes<HTMLDivElement> {
   decorative?: boolean
 }
 
-export function Separator({ className, orientation = 'horizontal', decorative = true, ...props }: SeparatorProps) {
+export function Separator({
+  className,
+  orientation = 'horizontal',
+  decorative = true,
+  ...props
+}: SeparatorProps) {
   return (
     <div
       role={decorative ? 'none' : 'separator'}

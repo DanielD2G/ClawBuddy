@@ -1,10 +1,6 @@
 import { useState } from 'react'
 import { Plus, FileText, Wrench, Check } from 'lucide-react'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 
 interface Document {
   id: string
@@ -18,10 +14,21 @@ interface ChatAttachMenuProps {
   onSelectFile?: (title: string) => void
   onSelectTool?: (slug: string) => void
   capabilities: Array<{ slug: string; name: string; description: string; icon: string | null }>
-  documents: Array<{ id: string; title: string; workspaceId: string; status: string; workspace?: { name: string } }>
+  documents: Array<{
+    id: string
+    title: string
+    workspaceId: string
+    status: string
+    workspace?: { name: string }
+  }>
 }
 
-export function ChatAttachMenu({ onSelectFile, onSelectTool, capabilities, documents }: ChatAttachMenuProps) {
+export function ChatAttachMenu({
+  onSelectFile,
+  onSelectTool,
+  capabilities,
+  documents,
+}: ChatAttachMenuProps) {
   const [open, setOpen] = useState(false)
   const [tab, setTab] = useState<'files' | 'tools'>('files')
 
@@ -48,21 +55,13 @@ export function ChatAttachMenu({ onSelectFile, onSelectTool, capabilities, docum
           className={`
             flex size-8 shrink-0 items-center justify-center rounded-full
             transition-colors
-            ${open
-              ? 'bg-brand/15 text-brand'
-              : 'text-muted-foreground hover:text-foreground'
-            }
+            ${open ? 'bg-brand/15 text-brand' : 'text-muted-foreground hover:text-foreground'}
           `}
         >
           <Plus className="size-5" strokeWidth={1.5} />
         </button>
       </PopoverTrigger>
-      <PopoverContent
-        align="start"
-        side="top"
-        sideOffset={12}
-        className="w-80 p-0"
-      >
+      <PopoverContent align="start" side="top" sideOffset={12} className="w-80 p-0">
         {/* Tabs */}
         <div className="flex border-b">
           <button
@@ -143,9 +142,7 @@ export function ChatAttachMenu({ onSelectFile, onSelectTool, capabilities, docum
                   <Wrench className="size-4 shrink-0 text-muted-foreground" />
                   <div className="flex-1 min-w-0 text-left">
                     <div className="font-medium">/{cap.slug}</div>
-                    <div className="text-xs text-muted-foreground truncate">
-                      {cap.name}
-                    </div>
+                    <div className="text-xs text-muted-foreground truncate">{cap.name}</div>
                   </div>
                   <Check className="size-4 shrink-0 text-brand" />
                 </button>

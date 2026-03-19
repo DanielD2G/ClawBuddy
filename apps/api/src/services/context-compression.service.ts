@@ -27,17 +27,17 @@ interface CompressionResult {
 }
 
 function estimateTokens(messages: Array<{ content: string }>): number {
-  return messages.reduce((sum, m) => sum + Math.ceil(m.content.length / TOKEN_ESTIMATION_DIVISOR), 0)
+  return messages.reduce(
+    (sum, m) => sum + Math.ceil(m.content.length / TOKEN_ESTIMATION_DIVISOR),
+    0,
+  )
 }
 
 /**
  * Find split index that keeps at least `keepCount` messages at the end,
  * without splitting a tool-call group (assistant w/ toolCalls + subsequent tool messages).
  */
-function findSafeSplitIndex(
-  messages: HistoryMessage[],
-  keepCount: number,
-): number {
+function findSafeSplitIndex(messages: HistoryMessage[], keepCount: number): number {
   let splitIdx = messages.length - keepCount
   if (splitIdx <= 0) return 0
 
@@ -66,14 +66,25 @@ export async function compressContext(
 
   // Not enough messages to bother
   if (history.length < MIN_MESSAGES_FOR_COMPRESSION) {
-    return { summary: existingSummary, recentMessages: history, compressed: false, lastSummarizedMessageId: null }
+    return {
+      summary: existingSummary,
+      recentMessages: history,
+      compressed: false,
+      lastSummarizedMessageId: null,
+    }
   }
 
   const estimatedTokens = estimateTokens(history)
-  const overThreshold = estimatedTokens > limit || (lastInputTokens != null && lastInputTokens > limit)
+  const overThreshold =
+    estimatedTokens > limit || (lastInputTokens != null && lastInputTokens > limit)
 
   if (!overThreshold) {
-    return { summary: existingSummary, recentMessages: history, compressed: false, lastSummarizedMessageId: null }
+    return {
+      summary: existingSummary,
+      recentMessages: history,
+      compressed: false,
+      lastSummarizedMessageId: null,
+    }
   }
 
   // Try to find a split point, reducing kept messages if needed for large conversations
@@ -85,7 +96,12 @@ export async function compressContext(
     }
   }
   if (splitIdx <= 0) {
-    return { summary: existingSummary, recentMessages: history, compressed: false, lastSummarizedMessageId: null }
+    return {
+      summary: existingSummary,
+      recentMessages: history,
+      compressed: false,
+      lastSummarizedMessageId: null,
+    }
   }
 
   const olderMessages = history.slice(0, splitIdx)
@@ -118,7 +134,7 @@ export async function compressContext(
   const summaryPrompt = [
     'Create a structured summary of the following conversation messages. Organize into these sections:',
     '',
-    '1. **Request & Intent**: The user\'s explicit goals and what they want to accomplish',
+    "1. **Request & Intent**: The user's explicit goals and what they want to accomplish",
     '2. **Technical Context**: Technologies, frameworks, APIs, and concepts discussed',
     '3. **Files & Code**: Files examined/modified with brief descriptions of changes or findings',
     '4. **Errors & Fixes**: Errors encountered and how they were resolved',
@@ -134,9 +150,7 @@ export async function compressContext(
     '- Omit tool outputs that were just informational noise.',
     '- Skip empty sections.',
     '',
-    ...(existingSummary
-      ? [`Previous summary to extend:\n${existingSummary}\n`]
-      : []),
+    ...(existingSummary ? [`Previous summary to extend:\n${existingSummary}\n`] : []),
     `Messages to summarize:\n${formattedMessages}`,
   ].join('\n')
 
@@ -144,7 +158,11 @@ export async function compressContext(
     const llm = await createCompactLLM()
     const response = await llm.chatWithTools(
       [
-        { role: 'system', content: 'You are a conversation compactor. Analyze the messages chronologically and produce a structured summary. Output ONLY the summary sections, no preamble.' },
+        {
+          role: 'system',
+          content:
+            'You are a conversation compactor. Analyze the messages chronologically and produce a structured summary. Output ONLY the summary sections, no preamble.',
+        },
         { role: 'user', content: summaryPrompt },
       ] as ChatMessage[],
       { temperature: COMPRESSION_TEMPERATURE, maxTokens: COMPRESSION_MAX_TOKENS },
@@ -156,11 +174,18 @@ export async function compressContext(
 
     const summary = response.content?.trim() || existingSummary
 
-    console.log(`[Context] Compressed ${messagesToSummarize.length} messages, keeping ${recentMessages.length} recent`)
+    console.log(
+      `[Context] Compressed ${messagesToSummarize.length} messages, keeping ${recentMessages.length} recent`,
+    )
 
     return { summary, recentMessages, compressed: true, lastSummarizedMessageId }
   } catch (err) {
     console.error('[Context] Compression failed, using full history:', err)
-    return { summary: existingSummary, recentMessages: history, compressed: false, lastSummarizedMessageId: null }
+    return {
+      summary: existingSummary,
+      recentMessages: history,
+      compressed: false,
+      lastSummarizedMessageId: null,
+    }
   }
 }

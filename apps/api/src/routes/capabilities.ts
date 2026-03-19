@@ -11,7 +11,6 @@ app.get('/capabilities', async (c) => {
   return c.json({ success: true, data: capabilities })
 })
 
-
 app.get('/workspaces/:id/capabilities', async (c) => {
   const { id } = c.req.param()
   const capabilities = await capabilityService.getWorkspaceCapabilitySettings(id)
@@ -45,15 +44,32 @@ app.patch('/workspaces/:id/capabilities/:capId', async (c) => {
 
 app.post('/admin/capabilities', async (c) => {
   const body = await c.req.json()
-  const { slug, name, description, icon, category, toolDefinitions, systemPrompt, dockerImage, packages, networkAccess, configSchema } = body
+  const {
+    slug,
+    name,
+    description,
+    icon,
+    category,
+    toolDefinitions,
+    systemPrompt,
+    dockerImage,
+    packages,
+    networkAccess,
+    configSchema,
+  } = body
   if (!slug || !name || !description || !toolDefinitions || !systemPrompt) {
     return c.json({ success: false, error: 'Missing required fields' }, 400)
   }
   const capability = await prisma.capability.create({
     data: {
-      slug, name, description, icon,
+      slug,
+      name,
+      description,
+      icon,
       category: category ?? 'general',
-      toolDefinitions, systemPrompt, dockerImage,
+      toolDefinitions,
+      systemPrompt,
+      dockerImage,
       packages: packages ?? [],
       networkAccess: networkAccess ?? false,
       configSchema: configSchema ?? undefined,

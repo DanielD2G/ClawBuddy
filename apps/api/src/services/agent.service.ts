@@ -10,7 +10,11 @@ import type {
 } from '../providers/llm.interface.js'
 import type { SSEEmit } from '../lib/sse.js'
 import { capabilityService } from './capability.service.js'
-import { toolExecutorService, NON_SANDBOX_TOOLS, type ExecutionResult } from './tool-executor.service.js'
+import {
+  toolExecutorService,
+  NON_SANDBOX_TOOLS,
+  type ExecutionResult,
+} from './tool-executor.service.js'
 import { sandboxService } from './sandbox.service.js'
 import { permissionService } from './permission.service.js'
 import { compressContext } from './context-compression.service.js'
@@ -185,7 +189,6 @@ export const agentService = {
       networkAccess?: boolean
       skillType?: string | null
     }> = []
-    let discoveryCallCount = 0
 
     const timezone = await settingsService.getTimezone()
 
@@ -239,7 +242,6 @@ export const agentService = {
           })),
         )
         systemPrompt += `\n\n${buildPromptSection('dynamically_loaded_capabilities', capPrompts)}`
-        discoveryCallCount++
         log.debugLog('Pre-flight discovery loaded', {
           slugs: preflightResults.map((c) => c.slug),
           toolsAdded: preflightResults.flatMap((c) => c.tools.map((t) => t.name)),
@@ -863,7 +865,6 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
 
           // Dynamic tool injection from discover_tools
           if (toolCall.name === 'discover_tools' && useDiscovery && result.output) {
-            discoveryCallCount++
             try {
               const parsed = JSON.parse(result.output)
               if (parsed.type === 'discovery_result' && parsed.discovered?.length) {
@@ -935,10 +936,7 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
               : rawContent
           const messageContent: MessageContent =
             toolCall.name === 'run_browser_script'
-              ? buildToolResultContent(
-                  toolContent,
-                  llm.modelId,
-                )
+              ? buildToolResultContent(toolContent, llm.modelId)
               : toolContent
           messages.push({ role: 'tool', toolCallId: toolCall.id, content: messageContent })
         }
@@ -1236,7 +1234,7 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
       r: (typeof resolvedPending)[number],
       result: ExecutionResult,
     ) => {
-      const { toolCall, publicToolArgs, capabilitySlug } = r
+      const { toolCall } = r
       const isDiscoveryToolResume = toolCall.name === 'discover_tools'
 
       log.logToolResult(toolCall.name, result)
@@ -1277,9 +1275,7 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
     }
 
     // Launch parallel-safe tools concurrently, collect results keyed by toolCall.id
-    const parallelPending = resolvedPending.filter((r) =>
-      PARALLEL_SAFE_TOOLS.has(r.toolCall.name),
-    )
+    const parallelPending = resolvedPending.filter((r) => PARALLEL_SAFE_TOOLS.has(r.toolCall.name))
     const resultMap = new Map<string, ExecutionResult>()
     if (parallelPending.length > 1) {
       log.debugLog('Executing parallel batch (resume)', {
@@ -1293,8 +1289,7 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
 
     // Iterate in original order — parallel results are already available, sequential ones execute inline
     for (const r of resolvedPending) {
-      const result =
-        resultMap.get(r.toolCall.id) ?? (await executeApprovedTool(r))
+      const result = resultMap.get(r.toolCall.id) ?? (await executeApprovedTool(r))
       await postProcessApprovedTool(r, result)
 
       // Push to toolExecutionLog in original order (needed for contentBlocks toolIndex mapping)
@@ -1743,10 +1738,7 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
               : rawContent
           const resumeMessageContent: MessageContent =
             toolCall.name === 'run_browser_script'
-              ? buildToolResultContent(
-                  toolContent,
-                  llm.modelId,
-                )
+              ? buildToolResultContent(toolContent, llm.modelId)
               : toolContent
           messages.push({
             role: 'tool',

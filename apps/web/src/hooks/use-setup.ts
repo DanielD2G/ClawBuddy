@@ -32,7 +32,10 @@ export function useCompleteSetup() {
       timezone?: string
       telegramBotToken?: string
     }) =>
-      apiClient.post<{ onboardingComplete: boolean; workspace?: Workspace }>('/setup/complete', data),
+      apiClient.post<{ onboardingComplete: boolean; workspace?: Workspace }>(
+        '/setup/complete',
+        data,
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['setup-status'] })
     },

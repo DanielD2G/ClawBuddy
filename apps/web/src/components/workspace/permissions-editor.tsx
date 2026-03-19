@@ -92,7 +92,7 @@ export function PermissionsEditor({ workspaceId, permissions }: PermissionsEdito
           value={newRule}
           onChange={(e) => setNewRule(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && addRule()}
-          placeholder='e.g. Bash(aws s3 ls *)'
+          placeholder="e.g. Bash(aws s3 ls *)"
           className="flex-1 rounded-md border bg-background px-3 py-1.5 text-sm font-mono placeholder:text-muted-foreground/50"
         />
         <Button variant="outline" size="sm" onClick={addRule} disabled={!newRule.trim()}>
@@ -103,29 +103,27 @@ export function PermissionsEditor({ workspaceId, permissions }: PermissionsEdito
 
       {/* Quick add examples */}
       <div className="flex flex-wrap gap-1.5">
-        {EXAMPLE_PERMISSION_RULES.filter((r) => !rules.includes(r)).slice(0, 3).map((rule) => (
-          <button
-            key={rule}
-            type="button"
-            onClick={() => {
-              setRules((prev) => [...prev, rule])
-              setIsDirty(true)
-            }}
-            className="rounded-full border px-2.5 py-0.5 text-[11px] font-mono text-muted-foreground hover:bg-muted transition-colors"
-          >
-            + {rule}
-          </button>
-        ))}
+        {EXAMPLE_PERMISSION_RULES.filter((r) => !rules.includes(r))
+          .slice(0, 3)
+          .map((rule) => (
+            <button
+              key={rule}
+              type="button"
+              onClick={() => {
+                setRules((prev) => [...prev, rule])
+                setIsDirty(true)
+              }}
+              className="rounded-full border px-2.5 py-0.5 text-[11px] font-mono text-muted-foreground hover:bg-muted transition-colors"
+            >
+              + {rule}
+            </button>
+          ))}
       </div>
 
       {/* Save */}
       {isDirty && (
         <div className="flex justify-end">
-          <Button
-            size="sm"
-            onClick={save}
-            disabled={updateMutation.isPending}
-          >
+          <Button size="sm" onClick={save} disabled={updateMutation.isPending}>
             <Save className="size-4" />
             {updateMutation.isPending ? 'Saving...' : 'Save Permissions'}
           </Button>

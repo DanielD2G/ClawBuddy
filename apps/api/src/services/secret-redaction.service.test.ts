@@ -9,23 +9,19 @@ process.env.MINIO_SECRET_KEY ??= 'minioadmin'
 process.env.MINIO_BUCKET ??= 'clawbuddy'
 process.env.ENCRYPTION_SECRET ??= 'super-secret-key-123'
 
-const {
-  SECRET_REDACTION_MASK,
-  extractStructuredSecretValues,
-  secretRedactionService,
-} = await import('./secret-redaction.service.js')
+const { SECRET_REDACTION_MASK, extractStructuredSecretValues, secretRedactionService } =
+  await import('./secret-redaction.service.js')
 
-const secretValues = [
-  'ghp_test_secret_for_redaction',
-  'refresh_token_123',
-  'aws_secret_value',
-]
+const secretValues = ['ghp_test_secret_for_redaction', 'refresh_token_123', 'aws_secret_value']
 
 const inventory = {
   workspaceId: 'ws_test',
   enabled: true,
   secretValues,
-  secretPattern: new RegExp(secretValues.map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'g'),
+  secretPattern: new RegExp(
+    secretValues.map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'),
+    'g',
+  ),
   aliases: ['GH_TOKEN'],
   references: [{ alias: 'GH_TOKEN', transport: 'env' as const }],
 }
@@ -46,24 +42,29 @@ describe('secretRedactionService', () => {
     ).toBe(`token=${SECRET_REDACTION_MASK}`)
 
     expect(
-      secretRedactionService.redactSerializedText('{"token":"ghp_test_secret_for_redaction"}', inventory),
+      secretRedactionService.redactSerializedText(
+        '{"token":"ghp_test_secret_for_redaction"}',
+        inventory,
+      ),
     ).toBe(`{"token":"${SECRET_REDACTION_MASK}"}`)
   })
 
   test('extracts nested values from structured secret blobs', () => {
-    const values = extractStructuredSecretValues(JSON.stringify({
-      refresh_token: 'refresh_token_123',
-      nested: { secret: 'aws_secret_value' },
-    }))
+    const values = extractStructuredSecretValues(
+      JSON.stringify({
+        refresh_token: 'refresh_token_123',
+        nested: { secret: 'aws_secret_value' },
+      }),
+    )
 
     expect(values).toContain('refresh_token_123')
     expect(values).toContain('aws_secret_value')
   })
 
   test('keeps allowed aliases visible while masking assigned values', () => {
-    expect(
-      secretRedactionService.redactText('Use GH_TOKEN from env', inventory),
-    ).toBe('Use GH_TOKEN from env')
+    expect(secretRedactionService.redactText('Use GH_TOKEN from env', inventory)).toBe(
+      'Use GH_TOKEN from env',
+    )
 
     expect(
       secretRedactionService.redactText('export GH_TOKEN=ghp_test_secret_for_redaction', inventory),
@@ -71,10 +72,13 @@ describe('secretRedactionService', () => {
   })
 
   test('does not corrupt screenshot payloads when redacting public objects', () => {
-    const result = secretRedactionService.redactForPublicStorage({
-      screenshot: 'base64-image-data',
-      output: 'ghp_test_secret_for_redaction',
-    }, inventory)
+    const result = secretRedactionService.redactForPublicStorage(
+      {
+        screenshot: 'base64-image-data',
+        output: 'ghp_test_secret_for_redaction',
+      },
+      inventory,
+    )
 
     expect(result.screenshot).toBe('base64-image-data')
     expect(result.output).toBe(SECRET_REDACTION_MASK)
@@ -86,7 +90,10 @@ describe('secretRedactionService', () => {
     ).toBe('token=ghp_test_secret_for_redaction')
 
     expect(
-      secretRedactionService.redactForPublicStorage({ output: 'ghp_test_secret_for_redaction' }, disabledInventory),
+      secretRedactionService.redactForPublicStorage(
+        { output: 'ghp_test_secret_for_redaction' },
+        disabledInventory,
+      ),
     ).toEqual({ output: 'ghp_test_secret_for_redaction' })
   })
 
@@ -98,8 +105,6 @@ describe('secretRedactionService', () => {
 
     emit('content', { text: 'ghp_test_secret_for_redaction' })
 
-    expect(events).toEqual([
-      { event: 'content', data: { text: 'ghp_test_secret_for_redaction' } },
-    ])
+    expect(events).toEqual([{ event: 'content', data: { text: 'ghp_test_secret_for_redaction' } }])
   })
 })

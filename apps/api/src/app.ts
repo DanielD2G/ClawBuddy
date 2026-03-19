@@ -24,10 +24,13 @@ import channelRoutes from './routes/channels.js'
 const app = new OpenAPIHono()
 
 // Global middleware
-app.use('*', cors({
-  origin: env.APP_URL,
-  credentials: true,
-}))
+app.use(
+  '*',
+  cors({
+    origin: env.APP_URL,
+    credentials: true,
+  }),
+)
 app.use('*', logger())
 
 // Error handler

@@ -22,7 +22,16 @@ export function DashboardPage() {
   const { data: allFolders = [] } = useFolders(activeWorkspaceId ?? '')
   const { data: allDocsForMenu = [] } = useQuery({
     queryKey: ['all-documents'],
-    queryFn: () => apiClient.get<Array<{ id: string; title: string; workspaceId: string; status: string; workspace?: { name: string } }>>('/documents'),
+    queryFn: () =>
+      apiClient.get<
+        Array<{
+          id: string
+          title: string
+          workspaceId: string
+          status: string
+          workspace?: { name: string }
+        }>
+      >('/documents'),
   })
   const [input, setInput] = useState('')
   const [focused, setFocused] = useState(false)
@@ -84,9 +93,10 @@ export function DashboardPage() {
             className={`
               flex size-10 shrink-0 items-center justify-center rounded-full
               transition-all duration-200
-              ${input.trim()
-                ? 'bg-brand text-brand-foreground shadow-md hover:opacity-90'
-                : 'bg-muted-foreground/20 text-muted-foreground/50 cursor-not-allowed'
+              ${
+                input.trim()
+                  ? 'bg-brand text-brand-foreground shadow-md hover:opacity-90'
+                  : 'bg-muted-foreground/20 text-muted-foreground/50 cursor-not-allowed'
               }
             `}
           >

@@ -8,8 +8,7 @@ export function Header() {
   const { theme, setTheme } = useTheme()
   const isDark =
     theme === 'dark' ||
-    (theme === 'system' &&
-      window.matchMedia('(prefers-color-scheme: dark)').matches)
+    (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
 
   return (
     <>
@@ -23,11 +22,7 @@ export function Header() {
         <SidebarTrigger />
         <Separator orientation="vertical" className="h-5" />
         <div className="flex-1" />
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setTheme(isDark ? 'light' : 'dark')}
-        >
+        <Button variant="ghost" size="icon" onClick={() => setTheme(isDark ? 'light' : 'dark')}>
           {isDark ? <Sun data-icon /> : <Moon data-icon />}
         </Button>
       </header>
