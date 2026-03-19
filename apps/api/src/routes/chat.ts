@@ -8,6 +8,7 @@ import { storageService } from '../services/storage.service.js'
 import { MAX_FILE_UPLOAD_BYTES } from '../constants.js'
 import { sanitizeFileName } from '../lib/sanitize.js'
 import { secretRedactionService } from '../services/secret-redaction.service.js'
+import { abortAgentLoop, registerAgentLoop, unregisterAgentLoop } from '../lib/agent-abort.js'
 import { sendChatMessageSchema, createChatSessionSchema } from '@agentbuddy/shared'
 import { validateBody } from '../lib/validate.js'
 import { ValidationError } from '../lib/errors.js'
@@ -118,29 +119,74 @@ app.post('/chat/sessions/:sessionId/approve', async (c) => {
   }
 
   const inventory = await secretRedactionService.buildSecretInventory(session.workspaceId)
+  const ac = registerAgentLoop(sessionId)
   return createSSEStream(async (emit) => {
-    const redactedEmit = secretRedactionService.createRedactedEmit(emit, inventory)
-    // Agent loop now saves ChatMessages per-iteration directly
-    const result = await agentService.resumeAgentLoop(sessionId, redactedEmit, inventory)
+    try {
+      const redactedEmit = secretRedactionService.createRedactedEmit(emit, inventory)
+      // Agent loop now saves ChatMessages per-iteration directly
+      const result = await agentService.resumeAgentLoop(sessionId, redactedEmit, inventory, ac.signal)
 
-    if (!result.paused) {
-      redactedEmit('done', { messageId: result.lastMessageId, sessionId })
-    }
-
-    const sessionData = await prisma.chatSession.findUnique({
-      where: { id: sessionId },
-      select: { title: true },
-    })
-    if (!sessionData?.title) {
-      const firstMessage = await prisma.chatMessage.findFirst({
-        where: { sessionId, role: 'user' },
-        orderBy: { createdAt: 'asc' },
-      })
-      if (firstMessage) {
-        chatService._autoTitle({ title: null }, sessionId, firstMessage.content)
+      if (!result.paused) {
+        redactedEmit('done', { messageId: result.lastMessageId, sessionId })
       }
+
+      const sessionData = await prisma.chatSession.findUnique({
+        where: { id: sessionId },
+        select: { title: true },
+      })
+      if (!sessionData?.title) {
+        const firstMessage = await prisma.chatMessage.findFirst({
+          where: { sessionId, role: 'user' },
+          orderBy: { createdAt: 'asc' },
+        })
+        if (firstMessage) {
+          chatService._autoTitle({ title: null }, sessionId, firstMessage.content)
+        }
+      }
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        await prisma.chatSession
+          .update({ where: { id: sessionId }, data: { agentStatus: 'idle' } })
+          .catch(() => {})
+        emit('aborted', { sessionId })
+        emit('done', { sessionId })
+        return
+      }
+      throw err
+    } finally {
+      unregisterAgentLoop(sessionId)
     }
   })
+})
+
+// ── Abort a running agent loop ───────────────────────────
+
+app.post('/chat/sessions/:sessionId/abort', async (c) => {
+  const sessionId = c.req.param('sessionId')
+
+  // Signal the running agent loop to stop
+  abortAgentLoop(sessionId)
+
+  // Reset session status to idle
+  await prisma.chatSession
+    .update({
+      where: { id: sessionId },
+      data: {
+        agentStatus: 'idle',
+        agentStateEncrypted: null,
+      },
+    })
+    .catch(() => {})
+
+  // Deny any pending tool approvals
+  await prisma.toolApproval
+    .updateMany({
+      where: { chatSessionId: sessionId, status: 'pending' },
+      data: { status: 'denied', decidedAt: new Date() },
+    })
+    .catch(() => {})
+
+  return c.json({ success: true })
 })
 
 // ── File upload for chat attachments ─────────────────────

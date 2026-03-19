@@ -51,6 +51,7 @@ export type SSEEvent =
       event: 'sub_agent_done'
       data: { subAgentId: string; role: string; summary: string }
     }
+  | { event: 'aborted'; data: { sessionId: string } }
 
 export type SSEEmit = (event: SSEEvent['event'], data: Record<string, unknown>) => void
 

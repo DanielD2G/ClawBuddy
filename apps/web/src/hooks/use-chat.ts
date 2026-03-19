@@ -464,6 +464,12 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
               }
               break
 
+            case 'aborted':
+              setIsPending(false)
+              setThinkingMessage(null)
+              setPendingApprovals([])
+              break
+
             case 'awaiting_approval':
               setThinkingMessage(null)
               break
@@ -583,6 +589,36 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
     },
     [workspaceId, queryClient, processSSEStream, fetchSessionSnapshot],
   )
+
+  const abortAgent = useCallback(async () => {
+    const sid = sessionIdRef.current
+    if (!sid) return
+
+    // Abort the SSE stream
+    abortRef.current?.abort()
+    abortRef.current = null
+
+    // Call the backend abort endpoint
+    try {
+      await apiClient.post(`/chat/sessions/${sid}/abort`)
+    } catch {
+      // best effort
+    }
+
+    // Reset UI state
+    streamingRef.current = false
+    setIsPending(false)
+    setThinkingMessage(null)
+    setPendingApprovals([])
+
+    // Refresh messages from server
+    try {
+      const snapshot = await fetchSessionSnapshot(sid)
+      if (snapshot?.messages) setMessages(snapshot.messages)
+    } catch {
+      // ignore
+    }
+  }, [fetchSessionSnapshot])
 
   const approveToolCall = useCallback(
     async (
@@ -746,6 +782,7 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
     thinkingMessage,
     pendingApprovals,
     sendMessage,
+    abortAgent,
     approveToolCall,
     retryLastMessage,
     clearMessages,

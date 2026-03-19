@@ -5,6 +5,7 @@ import { useQueryClient, useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
 import {
   Send,
+  Square,
   ArrowDown,
   FileText,
   Loader2,
@@ -76,6 +77,7 @@ export function ChatPage() {
     thinkingMessage,
     pendingApprovals,
     sendMessage,
+    abortAgent,
     approveToolCall,
     retryLastMessage,
     loadSession,
@@ -595,23 +597,34 @@ export function ChatPage() {
                       </div>
                     )}
 
-                    <button
-                      type="submit"
-                      disabled={
-                        (!input.trim() && !pendingFiles.length) || isPending || isCompressing
-                      }
-                      className={`
-                        flex size-8 shrink-0 items-center justify-center rounded-full
-                        transition-all duration-200
-                        ${
-                          (input.trim() || pendingFiles.length) && !isPending && !isCompressing
-                            ? 'bg-brand text-brand-foreground shadow-md hover:opacity-90'
-                            : 'bg-muted-foreground/20 text-muted-foreground/50 cursor-not-allowed'
+                    {isPending ? (
+                      <button
+                        type="button"
+                        onClick={abortAgent}
+                        className="flex size-8 shrink-0 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow-md hover:opacity-90 transition-all duration-200"
+                        title="Stop generation"
+                      >
+                        <Square className="size-3.5" strokeWidth={2.5} />
+                      </button>
+                    ) : (
+                      <button
+                        type="submit"
+                        disabled={
+                          (!input.trim() && !pendingFiles.length) || isCompressing
                         }
-                      `}
-                    >
-                      <Send className="size-4" strokeWidth={2} />
-                    </button>
+                        className={`
+                          flex size-8 shrink-0 items-center justify-center rounded-full
+                          transition-all duration-200
+                          ${
+                            (input.trim() || pendingFiles.length) && !isCompressing
+                              ? 'bg-brand text-brand-foreground shadow-md hover:opacity-90'
+                              : 'bg-muted-foreground/20 text-muted-foreground/50 cursor-not-allowed'
+                          }
+                        `}
+                      >
+                        <Send className="size-4" strokeWidth={2} />
+                      </button>
+                    )}
                   </div>
                 </div>
               </form>

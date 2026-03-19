@@ -58,6 +58,7 @@ function buildSubAgentSystemPrompt(
   task: string,
   context: string | undefined,
   capabilityPrompts: string,
+  preferredTools?: string[],
 ): string {
   const parts = [
     `You are a focused sub-agent with the role "${role}". Complete the task below and return a clear, concise summary of your findings or actions.`,
@@ -81,6 +82,15 @@ function buildSubAgentSystemPrompt(
     '- When done, provide a structured summary of what you found or accomplished.',
     '- If a tool fails, report the error and move on. Do not retry indefinitely.',
   )
+
+  if (preferredTools?.length) {
+    parts.push(
+      '',
+      '## Required tools',
+      `The user explicitly requested the following tools: ${preferredTools.join(', ')}.`,
+      'You MUST use these tools to complete the task. Do NOT substitute with alternative tools (e.g. do not use web_search when run_browser_script was requested) unless the required tool fails.',
+    )
+  }
 
   return parts.join('\n')
 }
@@ -106,6 +116,10 @@ export interface SubAgentContext {
   }>
   /** Isolated browser session key for this sub-agent (avoids page collisions in parallel execution) */
   browserSessionId?: string
+  /** Tool names the user explicitly requested — sub-agent should prefer these over alternatives */
+  preferredTools?: string[]
+  /** Abort signal to cancel the sub-agent loop */
+  signal?: AbortSignal
 }
 
 export const subAgentService = {
@@ -179,6 +193,7 @@ export const subAgentService = {
       request.task,
       request.context,
       capabilityPrompts,
+      parentContext.preferredTools,
     )
 
     // Fresh context — no history, just system + task
@@ -193,6 +208,10 @@ export const subAgentService = {
 
     // ── Simplified agent loop ──
     for (let i = 0; i < maxIterations; i++) {
+      if (parentContext.signal?.aborted) {
+        break
+      }
+
       emit?.('thinking', {
         message: `Sub-agent (${request.role}) thinking...`,
         subAgent: request.role,

@@ -8,6 +8,7 @@ import { searchService } from './search.service.js'
 import { agentService } from './agent.service.js'
 import { capabilityService } from './capability.service.js'
 import type { SSEEmit } from '../lib/sse.js'
+import { registerAgentLoop, unregisterAgentLoop } from '../lib/agent-abort.js'
 import {
   CHAT_TITLE_MAX_LEN,
   TITLE_TEMPERATURE,
@@ -301,6 +302,8 @@ export const chatService = {
     inventory: SecretInventory,
     mentionedSlugs?: string[],
   ) {
+    const ac = registerAgentLoop(sessionId)
+
     try {
       await prisma.chatSession.update({
         where: { id: sessionId },
@@ -326,6 +329,7 @@ export const chatService = {
           mentionedSlugs,
           secretInventory: inventory,
           historyIncludesCurrentUserMessage: true,
+          signal: ac.signal,
         },
       )
 
@@ -337,6 +341,16 @@ export const chatService = {
         emit('done', { messageId: result.lastMessageId, sessionId })
       }
     } catch (err) {
+      // Graceful abort — user cancelled the operation
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        await prisma.chatSession
+          .update({ where: { id: sessionId }, data: { agentStatus: 'idle' } })
+          .catch(() => {})
+        emit('aborted', { sessionId })
+        emit('done', { sessionId })
+        return
+      }
+
       console.error('[ChatService] Agent loop error:', err)
 
       await prisma.chatSession
@@ -349,6 +363,8 @@ export const chatService = {
       const errorMsg = err instanceof Error ? err.message : 'An unexpected error occurred'
       emit('error', { message: errorMsg })
       emit('done', { sessionId })
+    } finally {
+      unregisterAgentLoop(sessionId)
     }
   },
 
