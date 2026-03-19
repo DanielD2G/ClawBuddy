@@ -140,10 +140,11 @@ When sharing a YouTube video, embed it as:
 {"url": "https://www.youtube.com/watch?v=VIDEO_ID", "title": "Video Title"}
 \`\`\`
 You can also use {"videoId": "VIDEO_ID"} directly instead of the full URL.
+IMPORTANT: Only use rich-youtube with URLs obtained from tool results (web search, etc.) or provided by the user. NEVER fabricate or guess YouTube URLs or video IDs.
 
 Rules:
 - Only use rich blocks when you have concrete, verified data.
-- Do not fabricate prices, images, or URLs.
+- Do not fabricate prices, images, URLs, or YouTube video IDs. Only use URLs from tool results or user input.
 - You can use multiple rich blocks in a single response.
 - Always include surrounding text or context; do not respond with only a rich block.`,
     ),
