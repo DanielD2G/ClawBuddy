@@ -425,6 +425,44 @@ step_pull_images() {
   ok "All images pulled"
 }
 
+# ── API Key Collection Helpers ─────────────────────
+
+collect_openai_key() {
+  show_guide "How to get an OpenAI API key:" \
+    "1. Go to: ${CYAN}https://platform.openai.com/api-keys${NC}" \
+    "2. Sign up or log in" \
+    "3. Click ${BOLD}Create new secret key${NC}" \
+    "4. Name it (e.g., clawbuddy)" \
+    "5. Copy the key (starts with ${BOLD}sk-...${NC})"
+
+  prompt_api_key "OpenAI" "^sk-" "Key should start with sk-" OPENAI_KEY
+  echo ""
+}
+
+collect_anthropic_key() {
+  show_guide "How to get an Anthropic API key:" \
+    "1. Go to: ${CYAN}https://console.anthropic.com${NC}" \
+    "2. Sign up or log in" \
+    "3. Navigate to ${BOLD}API Keys${NC} in the sidebar" \
+    "4. Click ${BOLD}Create Key${NC}" \
+    "5. Copy the key (starts with ${BOLD}sk-ant-...${NC})"
+
+  prompt_api_key "Anthropic" "^sk-ant-" "Key should start with sk-ant-" ANTHROPIC_KEY
+  echo ""
+}
+
+collect_gemini_key() {
+  show_guide "How to get a Google Gemini API key:" \
+    "1. Go to: ${CYAN}https://aistudio.google.com${NC}" \
+    "2. Sign in with your Google account" \
+    "3. Click ${BOLD}Get API key${NC} in the sidebar" \
+    "4. Click ${BOLD}Create API key${NC}" \
+    "5. Copy the key (starts with ${BOLD}AIza...${NC})"
+
+  prompt_api_key "Gemini" "^AIza" "Key should start with AIza" GEMINI_KEY
+  echo ""
+}
+
 # ── Step 3: API Keys ────────────────────────────────
 
 step_api_keys() {
@@ -482,39 +520,38 @@ step_api_keys() {
 
   # ── Collect required API keys ──
   if [[ "$need_openai" == true ]]; then
-    show_guide "How to get an OpenAI API key:" \
-      "1. Go to: ${CYAN}https://platform.openai.com/api-keys${NC}" \
-      "2. Sign up or log in" \
-      "3. Click ${BOLD}Create new secret key${NC}" \
-      "4. Name it (e.g., clawbuddy)" \
-      "5. Copy the key (starts with ${BOLD}sk-...${NC})"
-
-    prompt_api_key "OpenAI" "^sk-" "Key should start with sk-" OPENAI_KEY
-    echo ""
+    collect_openai_key
   fi
 
   if [[ "$need_anthropic" == true ]]; then
-    show_guide "How to get an Anthropic API key:" \
-      "1. Go to: ${CYAN}https://console.anthropic.com${NC}" \
-      "2. Sign up or log in" \
-      "3. Navigate to ${BOLD}API Keys${NC} in the sidebar" \
-      "4. Click ${BOLD}Create Key${NC}" \
-      "5. Copy the key (starts with ${BOLD}sk-ant-...${NC})"
-
-    prompt_api_key "Anthropic" "^sk-ant-" "Key should start with sk-ant-" ANTHROPIC_KEY
-    echo ""
+    collect_anthropic_key
   fi
 
   if [[ "$need_gemini" == true ]]; then
-    show_guide "How to get a Google Gemini API key:" \
-      "1. Go to: ${CYAN}https://aistudio.google.com${NC}" \
-      "2. Sign in with your Google account" \
-      "3. Click ${BOLD}Get API key${NC} in the sidebar" \
-      "4. Click ${BOLD}Create API key${NC}" \
-      "5. Copy the key (starts with ${BOLD}AIza...${NC})"
+    collect_gemini_key
+  fi
 
-    prompt_api_key "Gemini" "^AIza" "Key should start with AIza" GEMINI_KEY
+  # ── Optional: Additional provider keys ──
+  local extra_providers=()
+  [[ "$need_openai" == false ]]    && extra_providers+=("openai")
+  [[ "$need_anthropic" == false ]] && extra_providers+=("anthropic")
+  [[ "$need_gemini" == false ]]    && extra_providers+=("gemini")
+
+  if [[ ${#extra_providers[@]} -gt 0 ]]; then
     echo ""
+    echo -e "  ${BOLD}Optional: Additional AI Provider Keys${NC}"
+    echo -e "  ${DIM}You can add keys for other providers now, or add them later in .env${NC}"
+    echo ""
+
+    if prompt_yes_no "Configure additional provider keys?" "n"; then
+      for provider in "${extra_providers[@]}"; do
+        case "$provider" in
+          openai)    collect_openai_key ;;
+          anthropic) collect_anthropic_key ;;
+          gemini)    collect_gemini_key ;;
+        esac
+      done
+    fi
   fi
 
   # ── Validate we have at least the embedding key ──
