@@ -4,6 +4,7 @@
 
 - All of `bun fmt`, `bun lint`, and `bun typecheck` must pass before considering tasks completed.
 - NEVER run `bun test`. Always use `bun run test` (runs Vitest).
+- The Docker Compose-based Makefile targets are optional for future CI/CD or containerized workflows; local task completion should still use the direct Bun commands above unless a task explicitly asks otherwise.
 
 ## Project Snapshot
 
