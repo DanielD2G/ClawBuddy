@@ -19,11 +19,24 @@ export interface RichImageBlock {
   alt?: string
 }
 
-export type RichBlock = RichMapBlock | RichProductBlock | RichImageBlock
+export interface RichYoutubeBlock {
+  type: 'rich-youtube'
+  videoId: string
+  title?: string
+}
+
+export type RichBlock = RichMapBlock | RichProductBlock | RichImageBlock | RichYoutubeBlock
 
 export type ParsedSegment = { type: 'text'; text: string } | RichBlock
 
 const RICH_BLOCK_RE = /```rich-([\w-]+)\n([\s\S]*?)```/g
+
+function extractYoutubeId(url: string): string | undefined {
+  const match = url.match(
+    /(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([a-zA-Z0-9_-]{11})/,
+  )
+  return match?.[1]
+}
 
 function parseBlockData(blockType: string, raw: string): RichBlock | null {
   try {
@@ -52,6 +65,16 @@ function parseBlockData(blockType: string, raw: string): RichBlock | null {
           return { type: 'rich-image', src: data.src, alt: data.alt }
         }
         return null
+      case 'youtube': {
+        let videoId: string | undefined = data.videoId
+        if (!videoId && typeof data.url === 'string') {
+          videoId = extractYoutubeId(data.url)
+        }
+        if (videoId) {
+          return { type: 'rich-youtube', videoId, title: data.title }
+        }
+        return null
+      }
       default:
         return null
     }

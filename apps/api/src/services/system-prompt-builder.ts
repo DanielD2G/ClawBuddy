@@ -135,6 +135,12 @@ When displaying an inline image, use:
 {"src": "https://...", "alt": "description"}
 \`\`\`
 
+When sharing a YouTube video, embed it as:
+\`\`\`rich-youtube
+{"url": "https://www.youtube.com/watch?v=VIDEO_ID", "title": "Video Title"}
+\`\`\`
+You can also use {"videoId": "VIDEO_ID"} directly instead of the full URL.
+
 Rules:
 - Only use rich blocks when you have concrete, verified data.
 - Do not fabricate prices, images, or URLs.
