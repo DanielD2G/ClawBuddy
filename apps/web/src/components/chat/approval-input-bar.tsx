@@ -3,11 +3,6 @@ import { ShieldAlert, ChevronUp, ChevronDown as ChevronDownIcon, CornerDownLeft 
 import type { PendingApproval } from '@/hooks/use-chat'
 import { CODE_APPROVAL_PREVIEW_LEN, formatToolDisplayName } from '@/constants'
 
-function formatCapabilityName(slug?: string): string {
-  if (!slug) return 'Tool'
-  return slug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
-}
-
 function getApprovalPreview(approval: PendingApproval): string {
   if (approval.toolName === 'delegate_task' && approval.subAgentRole) {
     const task = String(approval.input.task ?? '')
@@ -118,7 +113,7 @@ export function ApprovalInputBar({ approvals, onDecision }: ApprovalInputBarProp
           {isSubAgent
             ? `Allow sub-agent (${firstApproval.subAgentRole}) to run with ${firstApproval.subAgentToolNames!.length} tools?`
             : approvals.length === 1
-              ? `Allow ${formatCapabilityName(firstApproval.capabilitySlug)} to run?`
+              ? `Allow ${formatToolDisplayName(firstApproval.capabilitySlug ?? 'Tool')} to run?`
               : `Allow ${approvals.length} actions to run?`
           }
         </span>

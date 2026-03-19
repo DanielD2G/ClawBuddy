@@ -31,7 +31,14 @@ export const DEFAULT_SUB_AGENT_ANALYZE_MAX_ITERATIONS = 25
 export const DEFAULT_SUB_AGENT_EXECUTE_MAX_ITERATIONS = 50
 
 // ── Feature flags ────────────────────────────────
-export const ALWAYS_ON_CAPABILITY_SLUGS = ['document-search', 'bash', 'file-ops', 'tool-discovery']
+export const ALWAYS_ON_CAPABILITY_SLUGS = [
+  'document-search',
+  'agent-memory',
+  'bash',
+  'python',
+  'web-fetch',
+  'sub-agent-delegation',
+]
 
 // ── Workspace colors ─────────────────────────────
 export const WORKSPACE_COLORS = [
@@ -100,7 +107,7 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
 }
 
 export function formatToolDisplayName(toolName: string): string {
-  return TOOL_DISPLAY_NAMES[toolName] ?? toolName.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+  return TOOL_DISPLAY_NAMES[toolName] ?? toolName.split(/[_-]/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
 }
 
 // ── Mobile breakpoint ───────────────────────────

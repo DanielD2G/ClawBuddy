@@ -73,6 +73,17 @@ export interface PendingApproval {
   subAgentToolNames?: string[]
 }
 
+function mapPendingApprovals(
+  approvals: Array<{ id: string; toolName: string; capabilitySlug: string; input: Record<string, unknown> }> | undefined,
+): PendingApproval[] {
+  return (approvals ?? []).map((a) => ({
+    approvalId: a.id,
+    toolName: a.toolName,
+    capabilitySlug: a.capabilitySlug,
+    input: a.input,
+  }))
+}
+
 function findSubAgentBlockIndex(blocks: ContentBlock[], subAgentId?: string): number {
   if (subAgentId) {
     const matchedIndex = blocks.findIndex(
@@ -180,18 +191,7 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
         setThinkingMessage('Processing...')
       }
       // Restore pending approvals if agent is paused awaiting approval
-      if (data?.pendingApprovals?.length) {
-        setPendingApprovals(
-          data.pendingApprovals.map((a) => ({
-            approvalId: a.id,
-            toolName: a.toolName,
-            capabilitySlug: a.capabilitySlug,
-            input: a.input,
-          })),
-        )
-      } else {
-        setPendingApprovals([])
-      }
+      setPendingApprovals(mapPendingApprovals(data?.pendingApprovals))
     } catch (error) {
       console.error('Failed to load session:', error)
     }
@@ -557,14 +557,7 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
           try {
             const snapshot = await fetchSessionSnapshot(finalSessionId)
             setMessages(snapshot?.messages ?? [])
-            setPendingApprovals(
-              snapshot?.pendingApprovals?.map((a) => ({
-                approvalId: a.id,
-                toolName: a.toolName,
-                capabilitySlug: a.capabilitySlug,
-                input: a.input,
-              })) ?? [],
-            )
+            setPendingApprovals(mapPendingApprovals(snapshot?.pendingApprovals))
           } catch (error) {
             console.error('Failed to refresh session after stream:', error)
           }
@@ -645,14 +638,7 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
             try {
               const snapshot = await fetchSessionSnapshot(finalSessionId)
               setMessages(snapshot?.messages ?? [])
-              setPendingApprovals(
-                snapshot?.pendingApprovals?.map((a) => ({
-                  approvalId: a.id,
-                  toolName: a.toolName,
-                  capabilitySlug: a.capabilitySlug,
-                  input: a.input,
-                })) ?? [],
-              )
+              setPendingApprovals(mapPendingApprovals(snapshot?.pendingApprovals))
             } catch (error) {
               console.error('Failed to refresh session after approval stream:', error)
             }

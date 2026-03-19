@@ -118,10 +118,6 @@ export const settingsService = {
     return tierValue ?? defaults[s.aiProvider] ?? defaults.openai
   },
 
-  async getUseLightModel(): Promise<boolean> {
-    return (await this.get()).useLightModel
-  },
-
   async getEmbeddingModel(): Promise<string> {
     const s = await this.get()
     return (
@@ -132,10 +128,7 @@ export const settingsService = {
   },
 
   async getContextLimitTokens(): Promise<number> {
-    const s = await this.get()
-    return (
-      ((s as Record<string, unknown>).contextLimitTokens as number) ?? DEFAULT_CONTEXT_LIMIT_TOKENS
-    )
+    return this._getNumericSetting('contextLimitTokens', DEFAULT_CONTEXT_LIMIT_TOKENS)
   },
 
   async getTimezone(): Promise<string> {
@@ -144,31 +137,24 @@ export const settingsService = {
   },
 
   async getMaxAgentIterations(): Promise<number> {
+    return this._getNumericSetting('maxAgentIterations', DEFAULT_MAX_AGENT_ITERATIONS)
+  },
+
+  async _getNumericSetting(key: string, fallback: number): Promise<number> {
     const s = await this.get()
-    return (
-      ((s as Record<string, unknown>).maxAgentIterations as number) ?? DEFAULT_MAX_AGENT_ITERATIONS
-    )
+    return ((s as Record<string, unknown>)[key] as number) ?? fallback
   },
 
   async getSubAgentExploreMaxIterations(): Promise<number> {
-    const s = await this.get()
-    return (
-      ((s as Record<string, unknown>).subAgentExploreMaxIterations as number) ?? SUB_AGENT_EXPLORE_MAX_ITERATIONS
-    )
+    return this._getNumericSetting('subAgentExploreMaxIterations', SUB_AGENT_EXPLORE_MAX_ITERATIONS)
   },
 
   async getSubAgentAnalyzeMaxIterations(): Promise<number> {
-    const s = await this.get()
-    return (
-      ((s as Record<string, unknown>).subAgentAnalyzeMaxIterations as number) ?? SUB_AGENT_ANALYZE_MAX_ITERATIONS
-    )
+    return this._getNumericSetting('subAgentAnalyzeMaxIterations', SUB_AGENT_ANALYZE_MAX_ITERATIONS)
   },
 
   async getSubAgentExecuteMaxIterations(): Promise<number> {
-    const s = await this.get()
-    return (
-      ((s as Record<string, unknown>).subAgentExecuteMaxIterations as number) ?? SUB_AGENT_EXECUTE_MAX_ITERATIONS
-    )
+    return this._getNumericSetting('subAgentExecuteMaxIterations', SUB_AGENT_EXECUTE_MAX_ITERATIONS)
   },
 
   async getBrowserGridUrl(): Promise<string> {
@@ -232,7 +218,7 @@ export const settingsService = {
 
   async removeApiKey(provider: string) {
     const field = DB_KEY_FIELDS[provider]
-    if (!field) throw new Error(`Unknown provider: ${provider}`)
+    if (!field) throw new ConfigurationError(`Unknown provider: ${provider}`)
     const result = await prisma.appSettings.update({
       where: { id: 'singleton' },
       data: { [field]: null },
