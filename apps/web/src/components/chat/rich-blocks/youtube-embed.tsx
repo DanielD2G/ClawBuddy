@@ -6,7 +6,8 @@ interface YoutubeEmbedProps {
 }
 
 export function YoutubeEmbed({ videoId, title }: YoutubeEmbedProps) {
-  const embedUrl = `https://www.youtube.com/embed/${videoId}`
+  const origin = typeof window !== 'undefined' ? window.location.origin : ''
+  const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}?origin=${encodeURIComponent(origin)}&rel=0`
   const watchUrl = `https://www.youtube.com/watch?v=${videoId}`
 
   return (
