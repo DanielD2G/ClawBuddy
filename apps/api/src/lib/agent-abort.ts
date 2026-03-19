@@ -34,3 +34,8 @@ export function unregisterAgentLoop(sessionId: string): void {
 export function isAgentLoopRunning(sessionId: string): boolean {
   return activeLoops.has(sessionId)
 }
+
+/** Type guard for AbortError thrown by AbortController.abort(). */
+export function isAbortError(err: unknown): err is DOMException {
+  return err instanceof DOMException && err.name === 'AbortError'
+}

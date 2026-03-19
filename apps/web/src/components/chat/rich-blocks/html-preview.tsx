@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Code, Maximize2, Minimize2, ExternalLink } from 'lucide-react'
 
 interface HtmlPreviewProps {
@@ -24,13 +24,15 @@ function injectResizeScript(html: string): string {
   return html + RESIZE_SCRIPT
 }
 
+const toolbarBtnClass = 'rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors'
+
 export function HtmlPreview({ html }: HtmlPreviewProps) {
   const [expanded, setExpanded] = useState(false)
   const [showCode, setShowCode] = useState(false)
   const [height, setHeight] = useState(300)
   const iframeRef = useRef<HTMLIFrameElement>(null)
 
-  const srcdoc = injectResizeScript(html)
+  const srcdoc = useMemo(() => injectResizeScript(html), [html])
 
   const handleMessage = useCallback((e: MessageEvent) => {
     if (e.data?.type === 'rich-html-resize' && typeof e.data.height === 'number') {
@@ -49,7 +51,7 @@ export function HtmlPreview({ html }: HtmlPreviewProps) {
     const blob = new Blob([html], { type: 'text/html' })
     const url = URL.createObjectURL(blob)
     window.open(url, '_blank')
-    setTimeout(() => URL.revokeObjectURL(url), 1000)
+    setTimeout(() => URL.revokeObjectURL(url), 5000)
   }
 
   return (
@@ -63,7 +65,7 @@ export function HtmlPreview({ html }: HtmlPreviewProps) {
           <button
             type="button"
             onClick={() => setShowCode(!showCode)}
-            className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            className={toolbarBtnClass}
             title={showCode ? 'Hide code' : 'Show code'}
           >
             <Code className="size-3.5" />
@@ -71,7 +73,7 @@ export function HtmlPreview({ html }: HtmlPreviewProps) {
           <button
             type="button"
             onClick={() => setExpanded(!expanded)}
-            className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            className={toolbarBtnClass}
             title={expanded ? 'Collapse' : 'Expand'}
           >
             {expanded ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
@@ -79,7 +81,7 @@ export function HtmlPreview({ html }: HtmlPreviewProps) {
           <button
             type="button"
             onClick={openInNewTab}
-            className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            className={toolbarBtnClass}
             title="Open in new tab"
           >
             <ExternalLink className="size-3.5" />

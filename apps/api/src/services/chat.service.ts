@@ -8,7 +8,7 @@ import { searchService } from './search.service.js'
 import { agentService } from './agent.service.js'
 import { capabilityService } from './capability.service.js'
 import type { SSEEmit } from '../lib/sse.js'
-import { registerAgentLoop, unregisterAgentLoop } from '../lib/agent-abort.js'
+import { isAbortError, registerAgentLoop, unregisterAgentLoop } from '../lib/agent-abort.js'
 import {
   CHAT_TITLE_MAX_LEN,
   TITLE_TEMPERATURE,
@@ -342,9 +342,9 @@ export const chatService = {
       }
     } catch (err) {
       // Graceful abort — user cancelled the operation
-      if (err instanceof DOMException && err.name === 'AbortError') {
+      if (isAbortError(err)) {
         await prisma.chatSession
-          .update({ where: { id: sessionId }, data: { agentStatus: 'idle' } })
+          .update({ where: { id: sessionId }, data: { agentStatus: 'idle', agentStateEncrypted: null } })
           .catch(() => {})
         emit('aborted', { sessionId })
         emit('done', { sessionId })

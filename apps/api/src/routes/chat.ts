@@ -8,7 +8,7 @@ import { storageService } from '../services/storage.service.js'
 import { MAX_FILE_UPLOAD_BYTES } from '../constants.js'
 import { sanitizeFileName } from '../lib/sanitize.js'
 import { secretRedactionService } from '../services/secret-redaction.service.js'
-import { abortAgentLoop, registerAgentLoop, unregisterAgentLoop } from '../lib/agent-abort.js'
+import { abortAgentLoop, isAbortError, registerAgentLoop, unregisterAgentLoop } from '../lib/agent-abort.js'
 import { sendChatMessageSchema, createChatSessionSchema } from '@agentbuddy/shared'
 import { validateBody } from '../lib/validate.js'
 import { ValidationError } from '../lib/errors.js'
@@ -144,9 +144,9 @@ app.post('/chat/sessions/:sessionId/approve', async (c) => {
         }
       }
     } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
+      if (isAbortError(err)) {
         await prisma.chatSession
-          .update({ where: { id: sessionId }, data: { agentStatus: 'idle' } })
+          .update({ where: { id: sessionId }, data: { agentStatus: 'idle', agentStateEncrypted: null } })
           .catch(() => {})
         emit('aborted', { sessionId })
         emit('done', { sessionId })
@@ -167,24 +167,21 @@ app.post('/chat/sessions/:sessionId/abort', async (c) => {
   // Signal the running agent loop to stop
   abortAgentLoop(sessionId)
 
-  // Reset session status to idle
-  await prisma.chatSession
-    .update({
-      where: { id: sessionId },
-      data: {
-        agentStatus: 'idle',
-        agentStateEncrypted: null,
-      },
-    })
-    .catch(() => {})
-
-  // Deny any pending tool approvals
-  await prisma.toolApproval
-    .updateMany({
-      where: { chatSessionId: sessionId, status: 'pending' },
-      data: { status: 'denied', decidedAt: new Date() },
-    })
-    .catch(() => {})
+  // Reset session status and deny pending approvals in parallel
+  await Promise.all([
+    prisma.chatSession
+      .update({
+        where: { id: sessionId },
+        data: { agentStatus: 'idle', agentStateEncrypted: null },
+      })
+      .catch(() => {}),
+    prisma.toolApproval
+      .updateMany({
+        where: { chatSessionId: sessionId, status: 'pending' },
+        data: { status: 'denied', decidedAt: new Date() },
+      })
+      .catch(() => {}),
+  ])
 
   return c.json({ success: true })
 })
