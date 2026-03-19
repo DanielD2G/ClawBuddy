@@ -11,6 +11,19 @@
   <img src="docs/images/capabilities.png" alt="AgentBuddy – Capabilities Overview" width="720" />
 </p>
 
+<p align="center">
+  <img src="docs/images/products.png" alt="AgentBuddy – Product Search" width="720" />
+</p>
+<p align="center">
+  <img src="docs/images/video_rendering.png" alt="AgentBuddy – YouTube Video Rendering" width="720" />
+</p>
+<p align="center">
+  <img src="docs/images/html_view.png" alt="AgentBuddy – Live HTML Preview" width="720" />
+</p>
+<p align="center">
+  <img src="docs/images/maps_integration.png" alt="AgentBuddy – Maps Integration" width="720" />
+</p>
+
 ---
 
 ## Quick Start
@@ -73,6 +86,27 @@ Six sandboxed tools your AI can use, each running in isolated Docker containers:
 | **GitHub CLI** | Repos, issues, PRs, actions, releases, secrets |
 
 Each capability is defined as a `.skill` file — easy to read, modify, or create new ones. See [Creating Skills](docs/creating-skills.md).
+
+### Search Skills
+
+Built-in skills that let the AI search external platforms directly from the chat:
+
+| Skill | What it does |
+|-------|-------------|
+| **Amazon Search** | Search products on Amazon.com — returns names, prices, links, and images with rich product cards |
+| **MercadoLibre Search** | Search products on MercadoLibre Argentina — prices in ARS, direct links, and product images |
+| **YouTube Search** | Search YouTube videos — returns titles, channels, durations, view counts, and embedded video players |
+
+Skills run inside sandboxed Python containers with network access, so your credentials stay safe.
+
+### Rich Content Blocks
+
+Agent responses aren't just text — AgentBuddy renders rich, interactive blocks inline:
+
+- **Product cards** — Product image, price, and direct link rendered as visual cards when using search skills
+- **YouTube embeds** — Videos returned by YouTube Search are embedded as playable players directly in the chat
+- **HTML Preview** — The agent can generate HTML/CSS/JS and render it as a live, interactive preview with a built-in code viewer
+- **Maps** — Location queries render an interactive Google Maps embed with pins and an "Open in Maps" link
 
 ### Document RAG
 
