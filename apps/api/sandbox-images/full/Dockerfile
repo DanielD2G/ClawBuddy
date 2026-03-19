@@ -1,4 +1,4 @@
-FROM agentbuddy-sandbox-base
+FROM clawbuddy-sandbox-base
 
 USER root
 

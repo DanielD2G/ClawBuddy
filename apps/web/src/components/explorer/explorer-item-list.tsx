@@ -160,7 +160,7 @@ export function ExplorerItemList({
                 key={doc.id}
                 draggable
                 onDragStart={(e) => {
-                  e.dataTransfer.setData('application/x-agentbuddy-doc', doc.id)
+                  e.dataTransfer.setData('application/x-clawbuddy-doc', doc.id)
                   e.dataTransfer.effectAllowed = 'move'
                 }}
                 onClick={() => doc.status === 'READY' && onDocumentClick(doc.id)}

@@ -1,5 +1,5 @@
 {
-  "name": "@agentbuddy/api",
+  "name": "@clawbuddy/api",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -15,7 +15,7 @@
     "db:studio": "prisma studio"
   },
   "dependencies": {
-    "@agentbuddy/shared": "workspace:*",
+    "@clawbuddy/shared": "workspace:*",
     "@anthropic-ai/sdk": "^0.39",
     "@aws-sdk/client-s3": "^3",
     "@google/generative-ai": "^0.24",
@@ -37,7 +37,7 @@
     "zod": "^3"
   },
   "devDependencies": {
-    "@agentbuddy/tsconfig": "workspace:*",
+    "@clawbuddy/tsconfig": "workspace:*",
     "@types/bun": "^1.2.0",
     "@types/dockerode": "^4.0.1",
     "@types/turndown": "^5.0.6",

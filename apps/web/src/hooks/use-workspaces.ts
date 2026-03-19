@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import type { WorkspaceSettings } from '@agentbuddy/shared'
+import type { WorkspaceSettings } from '@clawbuddy/shared'
 import { apiClient } from '@/lib/api-client'
 import { useActiveWorkspace } from '@/providers/workspace-provider'
 import { POLL_CONTAINER_STATUS_MS } from '@/constants'

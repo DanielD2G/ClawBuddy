@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { folderService } from '../services/folder.service.js'
-import { createFolderSchema } from '@agentbuddy/shared'
+import { createFolderSchema } from '@clawbuddy/shared'
 import { validateBody } from '../lib/validate.js'
 
 const app = new Hono()

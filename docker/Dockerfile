@@ -26,7 +26,7 @@ COPY apps/api/ apps/api/
 
 # Generate Prisma client then build
 RUN cd apps/api && bunx prisma generate
-RUN bun run --filter @agentbuddy/api build
+RUN bun run --filter @clawbuddy/api build
 
 # ── Stage 3: Web build ───────────────────────────────
 FROM base AS web-build
@@ -35,7 +35,7 @@ WORKDIR /app
 COPY packages/ packages/
 COPY apps/web/ apps/web/
 
-RUN bun run --filter @agentbuddy/web build
+RUN bun run --filter @clawbuddy/web build
 
 # ── Stage 4: API runtime ─────────────────────────────
 FROM oven/bun:1.3.5-debian AS api

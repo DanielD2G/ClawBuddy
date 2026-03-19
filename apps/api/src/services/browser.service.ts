@@ -234,7 +234,7 @@ export const browserService = {
     const grid = new BrowserGrid(url, apiKey || undefined)
     const conn = await grid.configure({
       browserType: browserType as 'chromium' | 'firefox' | 'camoufox',
-      contextKey: `agentbuddy-${chatSessionId}`,
+      contextKey: `clawbuddy-${chatSessionId}`,
     }).connect()
 
     const page = await conn.context.newPage()

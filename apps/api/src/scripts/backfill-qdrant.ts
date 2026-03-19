@@ -4,7 +4,7 @@
  */
 import { prisma } from '../lib/prisma.js'
 import { qdrant } from '../lib/qdrant.js'
-import { QDRANT_COLLECTION_NAME } from '@agentbuddy/shared'
+import { QDRANT_COLLECTION_NAME } from '@clawbuddy/shared'
 
 async function backfill() {
   const chunks = await prisma.documentChunk.findMany({

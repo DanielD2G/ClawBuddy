@@ -1,5 +1,5 @@
 {
-  "extends": "@agentbuddy/tsconfig/node.json",
+  "extends": "@clawbuddy/tsconfig/node.json",
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",

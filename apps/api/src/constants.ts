@@ -25,7 +25,7 @@ export const SANDBOX_MEMORY_BYTES = 512 * 1024 * 1024 // 512MB
 export const SANDBOX_NANOCPUS = 1_000_000_000 // 1 CPU
 export const SANDBOX_PID_LIMIT = 100
 export const SANDBOX_TIMEOUT_EXIT_CODE = 124
-export const SANDBOX_BASE_IMAGE = 'agentbuddy-sandbox-base'
+export const SANDBOX_BASE_IMAGE = 'clawbuddy-sandbox-base'
 export const SANDBOX_FALLBACK_IMAGE = 'ubuntu:22.04'
 
 // ── Truncation ────────────────────────────────────
@@ -88,7 +88,7 @@ export const IMAGE_TAG_HASH_LENGTH = 12
 // ── Tool discovery ────────────────────────────────
 export const TOOL_DISCOVERY_THRESHOLD = 6
 export const TOOL_DISCOVERY_TOP_K = 3
-export const TOOL_DISCOVERY_COLLECTION = 'agentbuddy_tools'
+export const TOOL_DISCOVERY_COLLECTION = 'clawbuddy_tools'
 export const TOOL_DISCOVERY_EMBEDDING_INSTRUCTIONS_LIMIT = 500
 export const TOOL_DISCOVERY_MAX_CALLS = 3
 export const PREFLIGHT_DISCOVERY_SCORE_THRESHOLD = 0.55

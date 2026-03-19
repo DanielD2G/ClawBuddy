@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
 import { POLL_DOCUMENT_STATUS_MS } from '@/constants'
-import type { Document as SharedDocument, DocumentStatus, DocumentType } from '@agentbuddy/shared'
+import type { Document as SharedDocument, DocumentStatus, DocumentType } from '@clawbuddy/shared'
 import { createMutation } from './create-mutation'
 
 /** Serialized Document as returned by the API (dates as ISO strings, enums as their string values) */

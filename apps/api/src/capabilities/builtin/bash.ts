@@ -35,7 +35,7 @@ export const bash: CapabilityDefinition = {
   systemPrompt:
     'You can execute bash commands in a sandboxed Linux environment. The working directory is /workspace. Use this to run shell commands, manipulate files, and perform system operations.',
   sandbox: {
-    dockerImage: 'agentbuddy-sandbox-full',
+    dockerImage: 'clawbuddy-sandbox-full',
     packages: ['curl', 'wget', 'jq', 'git'],
   },
 }

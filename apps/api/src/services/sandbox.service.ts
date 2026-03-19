@@ -115,14 +115,14 @@ export const sandboxService = {
         PidsLimit: SANDBOX_PID_LIMIT,
         NetworkMode: options.networkAccess ? 'bridge' : 'none',
         Binds: [
-          `agentbuddy-workspace-${workspaceId}:/workspace`,
+          `clawbuddy-workspace-${workspaceId}:/workspace`,
           ...(options.dockerSocket ? ['/var/run/docker.sock:/var/run/docker.sock'] : []),
         ],
       },
       Labels: {
-        'agentbuddy.workspace': workspaceId,
-        'agentbuddy.type': 'workspace',
-        'agentbuddy.managed': 'true',
+        'clawbuddy.workspace': workspaceId,
+        'clawbuddy.type': 'workspace',
+        'clawbuddy.managed': 'true',
       },
     })
 
@@ -467,7 +467,7 @@ export const sandboxService = {
     // 2. Clean orphaned Docker containers
     try {
       const containers = await docker.listContainers({
-        filters: { label: ['agentbuddy.managed=true'] },
+        filters: { label: ['clawbuddy.managed=true'] },
       })
 
       const activeContainerIds = new Set(

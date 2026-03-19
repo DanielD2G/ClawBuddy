@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma.js'
-import { isSecretRedactionEnabled } from '@agentbuddy/shared'
+import { isSecretRedactionEnabled } from '@clawbuddy/shared'
 import { env } from '../env.js'
 import { decrypt } from './crypto.service.js'
 import type { ConfigFieldDefinition } from '../capabilities/types.js'

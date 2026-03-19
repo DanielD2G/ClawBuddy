@@ -6,7 +6,7 @@ import { searchService } from '../services/search.service.js'
 import { capabilityService } from '../services/capability.service.js'
 import { toolDiscoveryService } from '../services/tool-discovery.service.js'
 import { prisma } from '../lib/prisma.js'
-import { EMBEDDING_DIMENSIONS, workspaceExportSchema } from '@agentbuddy/shared'
+import { EMBEDDING_DIMENSIONS, workspaceExportSchema } from '@clawbuddy/shared'
 import { imageBuilderService } from '../services/image-builder.service.js'
 import { qdrant } from '../lib/qdrant.js'
 import { s3 } from '../lib/s3.js'
@@ -470,7 +470,7 @@ app.post('/preflight', async (c) => {
   await runCheck('Sandbox Base Image', async () => {
     const docker = new Docker()
     try {
-      const img = await docker.getImage('agentbuddy-sandbox-base').inspect()
+      const img = await docker.getImage('clawbuddy-sandbox-base').inspect()
       const sizeMB = Math.round((img.Size ?? 0) / 1024 / 1024)
       return { status: 'pass', message: `Image ready (${sizeMB}MB)` }
     } catch {
@@ -481,7 +481,7 @@ app.post('/preflight', async (c) => {
   // 9. Sandbox spin-up test — create and immediately destroy a test container
   await runCheck('Sandbox Spin-up', async () => {
     const docker = new Docker()
-    let image = 'agentbuddy-sandbox-base'
+    let image = 'clawbuddy-sandbox-base'
     try {
       await docker.getImage(image).inspect()
     } catch {
@@ -502,7 +502,7 @@ app.post('/preflight', async (c) => {
         NetworkMode: 'none',
         AutoRemove: true,
       },
-      Labels: { 'agentbuddy.type': 'preflight-test' },
+      Labels: { 'clawbuddy.type': 'preflight-test' },
     })
     await container.start()
     const { StatusCode } = await container.wait()

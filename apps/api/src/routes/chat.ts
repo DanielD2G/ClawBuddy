@@ -9,7 +9,7 @@ import { MAX_FILE_UPLOAD_BYTES } from '../constants.js'
 import { sanitizeFileName } from '../lib/sanitize.js'
 import { secretRedactionService } from '../services/secret-redaction.service.js'
 import { abortAgentLoop, isAbortError, registerAgentLoop, unregisterAgentLoop } from '../lib/agent-abort.js'
-import { sendChatMessageSchema, createChatSessionSchema } from '@agentbuddy/shared'
+import { sendChatMessageSchema, createChatSessionSchema } from '@clawbuddy/shared'
 import { validateBody } from '../lib/validate.js'
 import { ValidationError } from '../lib/errors.js'
 

@@ -30,7 +30,7 @@ export const python: CapabilityDefinition = {
   systemPrompt:
     'You can execute Python 3.12 code in a sandboxed environment. Use this for data analysis, scripting, calculations, and any Python-based tasks.',
   sandbox: {
-    dockerImage: 'agentbuddy-sandbox-full',
+    dockerImage: 'clawbuddy-sandbox-full',
     packages: ['python3', 'python3-pip'],
   },
 }

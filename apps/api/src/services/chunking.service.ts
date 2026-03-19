@@ -1,4 +1,4 @@
-import { CHUNK_SIZE, CHUNK_OVERLAP } from '@agentbuddy/shared'
+import { CHUNK_SIZE, CHUNK_OVERLAP } from '@clawbuddy/shared'
 
 export const chunkingService = {
   async splitText(text: string, options?: { chunkSize?: number; overlap?: number }) {

@@ -1,5 +1,5 @@
 import { qdrant } from '../lib/qdrant.js'
-import { QDRANT_COLLECTION_NAME } from '@agentbuddy/shared'
+import { QDRANT_COLLECTION_NAME } from '@clawbuddy/shared'
 import type { Schemas } from '@qdrant/js-client-rest'
 
 export const searchService = {

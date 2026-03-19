@@ -14,9 +14,9 @@ jobs:
       matrix:
         include:
           - target: api
-            image: ghcr.io/danield2g/agentbuddy-api
+            image: ghcr.io/danield2g/clawbuddy-api
           - target: web
-            image: ghcr.io/danield2g/agentbuddy-web
+            image: ghcr.io/danield2g/clawbuddy-web
     steps:
       - uses: actions/checkout@v4
         with:

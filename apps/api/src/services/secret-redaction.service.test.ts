@@ -1,12 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 
-process.env.DATABASE_URL ??= 'postgresql://agentbuddy:agentbuddy@localhost:5432/agentbuddy'
+process.env.DATABASE_URL ??= 'postgresql://clawbuddy:clawbuddy@localhost:5432/clawbuddy'
 process.env.REDIS_URL ??= 'redis://localhost:6379'
 process.env.QDRANT_URL ??= 'http://localhost:6333'
 process.env.MINIO_ENDPOINT ??= 'http://localhost:9000'
 process.env.MINIO_ACCESS_KEY ??= 'minioadmin'
 process.env.MINIO_SECRET_KEY ??= 'minioadmin'
-process.env.MINIO_BUCKET ??= 'agentbuddy'
+process.env.MINIO_BUCKET ??= 'clawbuddy'
 process.env.ENCRYPTION_SECRET ??= 'super-secret-key-123'
 
 const {

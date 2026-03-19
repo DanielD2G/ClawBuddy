@@ -9,4 +9,4 @@ export const EMBEDDING_DIMENSIONS: Record<string, number> = {
 
 export const CHUNK_SIZE = 512
 export const CHUNK_OVERLAP = 50
-export const QDRANT_COLLECTION_NAME = 'agentbuddy_chunks'
+export const QDRANT_COLLECTION_NAME = 'clawbuddy_chunks'

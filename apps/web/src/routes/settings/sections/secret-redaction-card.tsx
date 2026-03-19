@@ -1,4 +1,4 @@
-import { isSecretRedactionEnabled, mergeWorkspaceSettings } from '@agentbuddy/shared'
+import { isSecretRedactionEnabled, mergeWorkspaceSettings } from '@clawbuddy/shared'
 import { ShieldAlert, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'

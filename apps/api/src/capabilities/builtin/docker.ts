@@ -34,7 +34,7 @@ export const docker: CapabilityDefinition = {
     { key: 'dockerHost', label: 'Docker Host', type: 'string', required: false, envVar: 'DOCKER_HOST', default: 'unix:///var/run/docker.sock' },
   ],
   sandbox: {
-    dockerImage: 'agentbuddy-sandbox-full',
+    dockerImage: 'clawbuddy-sandbox-full',
     networkAccess: true,
   },
 }

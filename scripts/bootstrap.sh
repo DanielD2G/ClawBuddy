@@ -486,7 +486,7 @@ step_api_keys() {
       "1. Go to: ${CYAN}https://platform.openai.com/api-keys${NC}" \
       "2. Sign up or log in" \
       "3. Click ${BOLD}Create new secret key${NC}" \
-      "4. Name it (e.g., agentbuddy)" \
+      "4. Name it (e.g., clawbuddy)" \
       "5. Copy the key (starts with ${BOLD}sk-...${NC})"
 
     prompt_api_key "OpenAI" "^sk-" "Key should start with sk-" OPENAI_KEY

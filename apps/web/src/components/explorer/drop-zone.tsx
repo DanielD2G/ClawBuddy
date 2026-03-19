@@ -89,7 +89,7 @@ export function FolderDropTarget({ onFileDrop, onDocumentDrop, children, classNa
     e.preventDefault()
     e.stopPropagation()
     dragCounter.current++
-    if (e.dataTransfer.types.includes('Files') || e.dataTransfer.types.includes('application/x-agentbuddy-doc')) {
+    if (e.dataTransfer.types.includes('Files') || e.dataTransfer.types.includes('application/x-clawbuddy-doc')) {
       setIsOver(true)
     }
   }, [])
@@ -115,7 +115,7 @@ export function FolderDropTarget({ onFileDrop, onDocumentDrop, children, classNa
       setIsOver(false)
       dragCounter.current = 0
 
-      const docId = e.dataTransfer.getData('application/x-agentbuddy-doc')
+      const docId = e.dataTransfer.getData('application/x-clawbuddy-doc')
       if (docId && onDocumentDrop) {
         onDocumentDrop(docId)
         return

@@ -75,12 +75,12 @@ db-studio: ## Open Prisma Studio
 # ─── Sandbox Images ──────────────────────────────────────
 
 build-sandbox-images: ## Build all sandbox Docker images
-	docker build -t agentbuddy-sandbox-base apps/api/sandbox-images/base/
-	docker build -t agentbuddy-sandbox-python apps/api/sandbox-images/python/
-	docker build -t agentbuddy-sandbox-aws apps/api/sandbox-images/aws-cli/
-	docker build -t agentbuddy-sandbox-kubectl apps/api/sandbox-images/kubectl/
-	docker build -t agentbuddy-sandbox-node apps/api/sandbox-images/node/
-	docker build -t agentbuddy-sandbox-full apps/api/sandbox-images/full/
+	docker build -t clawbuddy-sandbox-base apps/api/sandbox-images/base/
+	docker build -t clawbuddy-sandbox-python apps/api/sandbox-images/python/
+	docker build -t clawbuddy-sandbox-aws apps/api/sandbox-images/aws-cli/
+	docker build -t clawbuddy-sandbox-kubectl apps/api/sandbox-images/kubectl/
+	docker build -t clawbuddy-sandbox-node apps/api/sandbox-images/node/
+	docker build -t clawbuddy-sandbox-full apps/api/sandbox-images/full/
 
 # ─── Help ─────────────────────────────────────────────────
 

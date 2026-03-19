@@ -11,12 +11,12 @@ const ThemeContext = createContext<ThemeContextValue | undefined>(undefined)
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>(() => {
-    return (localStorage.getItem('agentbuddy-theme') as Theme) || 'system'
+    return (localStorage.getItem('clawbuddy-theme') as Theme) || 'system'
   })
 
   useEffect(() => {
     const root = document.documentElement
-    localStorage.setItem('agentbuddy-theme', theme)
+    localStorage.setItem('clawbuddy-theme', theme)
 
     const applyTheme = (isDark: boolean) => {
       root.classList.toggle('dark', isDark)

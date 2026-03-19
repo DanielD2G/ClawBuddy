@@ -35,7 +35,7 @@ export const kubectl: CapabilityDefinition = {
     { key: 'kubeContext', label: 'Context', type: 'string', required: false, envVar: 'KUBE_CONTEXT' },
   ],
   sandbox: {
-    dockerImage: 'agentbuddy-sandbox-full',
+    dockerImage: 'clawbuddy-sandbox-full',
     packages: ['kubectl'],
     networkAccess: true,
   },

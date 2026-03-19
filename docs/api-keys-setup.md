@@ -13,7 +13,7 @@ You need at least **one** provider API key to use ClawBuddy. Add it to your `.en
 1. Go to [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
 2. Sign up or log in
 3. Click **Create new secret key**
-4. Name it (e.g., `agentbuddy`)
+4. Name it (e.g., `clawbuddy`)
 5. Copy the key immediately — it's only shown once
 
 ```env

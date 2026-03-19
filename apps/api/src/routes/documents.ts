@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { prisma } from '../lib/prisma.js'
 import { storageService } from '../services/storage.service.js'
 import { ingestionService } from '../services/ingestion.service.js'
-import { createDocumentSchema } from '@agentbuddy/shared'
+import { createDocumentSchema } from '@clawbuddy/shared'
 import { sanitizeFileName } from '../lib/sanitize.js'
 import { validateBody } from '../lib/validate.js'
 

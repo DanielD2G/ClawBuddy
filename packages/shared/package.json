@@ -1,5 +1,5 @@
 {
-  "name": "@agentbuddy/shared",
+  "name": "@clawbuddy/shared",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -16,7 +16,7 @@
     "zod": "^3"
   },
   "devDependencies": {
-    "@agentbuddy/tsconfig": "workspace:*",
+    "@clawbuddy/tsconfig": "workspace:*",
     "typescript": "^5"
   }
 }

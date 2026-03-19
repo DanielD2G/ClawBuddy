@@ -1,7 +1,7 @@
 import { prisma } from '../lib/prisma.js'
 import { Prisma } from '@prisma/client'
-import { mergeWorkspaceSettings } from '@agentbuddy/shared'
-import type { CreateWorkspaceInput, UpdateWorkspaceInput } from '@agentbuddy/shared'
+import { mergeWorkspaceSettings } from '@clawbuddy/shared'
+import type { CreateWorkspaceInput, UpdateWorkspaceInput } from '@clawbuddy/shared'
 
 export const workspaceService = {
   async list() {

@@ -15,7 +15,7 @@ const WorkspaceContext = createContext<WorkspaceContextValue>({
   activeWorkspaceId: undefined,
 })
 
-const STORAGE_KEY = 'agentbuddy-active-workspace'
+const STORAGE_KEY = 'clawbuddy-active-workspace'
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [activeWorkspace, setActiveWorkspaceState] = useState<Workspace | null>(() => {

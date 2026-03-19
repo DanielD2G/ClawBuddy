@@ -1,5 +1,5 @@
 {
-  "name": "@agentbuddy/eslint-config",
+  "name": "@clawbuddy/eslint-config",
   "private": true,
   "main": "base.js",
   "files": ["base.js", "react.js"],

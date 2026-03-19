@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
-import { createWorkspaceSchema, updateWorkspaceSchema, workspaceExportSchema } from '@agentbuddy/shared'
-import type { WorkspaceExport } from '@agentbuddy/shared'
+import { createWorkspaceSchema, updateWorkspaceSchema, workspaceExportSchema } from '@clawbuddy/shared'
+import type { WorkspaceExport } from '@clawbuddy/shared'
 import { workspaceService } from '../services/workspace.service.js'
 import { capabilityService } from '../services/capability.service.js'
 import { sandboxService } from '../services/sandbox.service.js'

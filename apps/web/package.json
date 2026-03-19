@@ -1,5 +1,5 @@
 {
-  "name": "@agentbuddy/web",
+  "name": "@clawbuddy/web",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -11,7 +11,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@agentbuddy/shared": "workspace:*",
+    "@clawbuddy/shared": "workspace:*",
     "@fontsource-variable/geist": "^5.2.8",
     "@tailwindcss/typography": "^0.5.19",
     "@tanstack/react-query": "^5",
@@ -28,7 +28,7 @@
     "tw-animate-css": "^1.4.0"
   },
   "devDependencies": {
-    "@agentbuddy/tsconfig": "workspace:*",
+    "@clawbuddy/tsconfig": "workspace:*",
     "@tailwindcss/vite": "^4",
     "@types/react": "^19",
     "@types/react-dom": "^19",

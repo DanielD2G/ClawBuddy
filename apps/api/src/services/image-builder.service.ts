@@ -51,7 +51,7 @@ export const imageBuilderService = {
   ): Promise<BuildResult> {
     await this.ensureBaseImage(onLog)
 
-    const testTag = `agentbuddy-skill-test-${Date.now()}`
+    const testTag = `clawbuddy-skill-test-${Date.now()}`
     const dockerfile = [
       `FROM ${SANDBOX_BASE_IMAGE}`,
       'USER root',
@@ -111,7 +111,7 @@ export const imageBuilderService = {
       )
       .digest('hex')
       .slice(0, IMAGE_TAG_HASH_LENGTH)
-    const tag = `agentbuddy-sandbox-skills-${hash}`
+    const tag = `clawbuddy-sandbox-skills-${hash}`
 
     // Check if image already exists
     try {
@@ -230,7 +230,7 @@ export const imageBuilderService = {
       for (const img of images) {
         const tags = img.RepoTags ?? []
         for (const tag of tags) {
-          if (tag.startsWith('agentbuddy-sandbox-skills-')) {
+          if (tag.startsWith('clawbuddy-sandbox-skills-')) {
             try {
               await docker.getImage(tag).remove({ force: true })
             } catch {
