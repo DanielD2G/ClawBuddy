@@ -1,5 +1,13 @@
 import { useState, type RefObject } from 'react'
-import { ChevronDown, ChevronRight, CheckCircle2, XCircle, Loader2, Download, FileText } from 'lucide-react'
+import {
+  ChevronDown,
+  ChevronRight,
+  CheckCircle2,
+  XCircle,
+  Loader2,
+  Download,
+  FileText,
+} from 'lucide-react'
 import { CODE_PREVIEW_MAX_LEN } from '@/constants'
 
 export interface ToolExecution {
@@ -28,7 +36,11 @@ const STATUS_CONFIG = {
   pending: { icon: Loader2, color: 'text-muted-foreground animate-spin', label: 'Pending' },
 } as const
 
-export function ToolExecutionBlock({ execution, toolKey, expandedToolsRef }: ToolExecutionBlockProps) {
+export function ToolExecutionBlock({
+  execution,
+  toolKey,
+  expandedToolsRef,
+}: ToolExecutionBlockProps) {
   const [expanded, setExpanded] = useState(() =>
     toolKey && expandedToolsRef?.current ? expandedToolsRef.current.has(toolKey) : false,
   )
@@ -110,12 +122,15 @@ export function ToolExecutionBlock({ execution, toolKey, expandedToolsRef }: Too
       )}
 
       {/* Inline save confirmation for save_document */}
-      {execution.toolName === 'save_document' && execution.output && !execution.error && !expanded && (
-        <div className="px-3 pb-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-          <FileText className="size-3.5" />
-          {execution.output}
-        </div>
-      )}
+      {execution.toolName === 'save_document' &&
+        execution.output &&
+        !execution.error &&
+        !expanded && (
+          <div className="px-3 pb-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+            <FileText className="size-3.5" />
+            {execution.output}
+          </div>
+        )}
 
       {expanded && (
         <div className="border-t px-3 py-2 space-y-2">
@@ -184,7 +199,10 @@ export function ToolExecutionBlock({ execution, toolKey, expandedToolsRef }: Too
           {/* Exit code */}
           {execution.exitCode != null && (
             <div className="text-xs text-muted-foreground">
-              Exit code: <span className={execution.exitCode === 0 ? 'text-green-500' : 'text-red-500'}>{execution.exitCode}</span>
+              Exit code:{' '}
+              <span className={execution.exitCode === 0 ? 'text-green-500' : 'text-red-500'}>
+                {execution.exitCode}
+              </span>
             </div>
           )}
         </div>
@@ -197,14 +215,18 @@ function formatCapabilityName(slug?: string): string {
   if (!slug) return 'Tool'
   return slug
     .split('-')
-    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ')
 }
 
 function getInputPreview(execution: ToolExecution): string {
   const args = execution.input
   if (args.command) return String(args.command)
-  if (args.code) return String(args.code).slice(0, CODE_PREVIEW_MAX_LEN) + (String(args.code).length > CODE_PREVIEW_MAX_LEN ? '...' : '')
+  if (args.code)
+    return (
+      String(args.code).slice(0, CODE_PREVIEW_MAX_LEN) +
+      (String(args.code).length > CODE_PREVIEW_MAX_LEN ? '...' : '')
+    )
   if (args.query) return String(args.query)
   if (args.path) return String(args.path)
   if (args.filename) return String(args.filename)
@@ -212,11 +234,15 @@ function getInputPreview(execution: ToolExecution): string {
   return ''
 }
 
-function parseFileDownload(execution: ToolExecution): { filename: string; downloadUrl: string } | null {
+function parseFileDownload(
+  execution: ToolExecution,
+): { filename: string; downloadUrl: string } | null {
   if (execution.toolName !== 'generate_file' || !execution.output) return null
   try {
     const parsed = JSON.parse(execution.output)
     if (parsed.filename && parsed.downloadUrl) return parsed
-  } catch { /* not JSON */ }
+  } catch {
+    /* not JSON */
+  }
   return null
 }

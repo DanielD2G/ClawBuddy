@@ -1,5 +1,5 @@
 // ── Polling intervals (ms) ───────────────────────
-export const POLL_SESSIONS_FAST_MS = 3000        // when sessions have no title
+export const POLL_SESSIONS_FAST_MS = 3000 // when sessions have no title
 export const POLL_SESSIONS_NORMAL_MS = 10000
 export const POLL_MESSAGES_MS = 10000
 export const POLL_ACTIVE_SESSION_MS = 1500
@@ -35,9 +35,16 @@ export { ALWAYS_ON_CAPABILITY_SLUGS } from '@clawbuddy/shared'
 
 // ── Workspace colors ─────────────────────────────
 export const WORKSPACE_COLORS = [
-  '#6366f1', '#8b5cf6', '#ec4899', '#f43f5e',
-  '#f97316', '#eab308', '#22c55e', '#14b8a6',
-  '#06b6d4', '#3b82f6',
+  '#6366f1',
+  '#8b5cf6',
+  '#ec4899',
+  '#f43f5e',
+  '#f97316',
+  '#eab308',
+  '#22c55e',
+  '#14b8a6',
+  '#06b6d4',
+  '#3b82f6',
 ]
 
 // ── Capability category labels ───────────────────
@@ -100,11 +107,23 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
 }
 
 export function formatToolDisplayName(toolName: string): string {
-  return TOOL_DISPLAY_NAMES[toolName] ?? toolName.split(/[_-]/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+  return (
+    TOOL_DISPLAY_NAMES[toolName] ??
+    toolName
+      .split(/[_-]/)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ')
+  )
 }
 
 // ── Mobile breakpoint ───────────────────────────
 export const MOBILE_BREAKPOINT = 768
 
 // ── Onboarding unlockable skills ────────────────
-export const ONBOARDING_UNLOCKABLE_SLUGS = ['aws-cli', 'docker', 'kubectl', 'gh-cli', 'browser-automation']
+export const ONBOARDING_UNLOCKABLE_SLUGS = [
+  'aws-cli',
+  'docker',
+  'kubectl',
+  'gh-cli',
+  'browser-automation',
+]

@@ -2,12 +2,27 @@ import { useState, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import { Plus, FolderOpen, ArrowRight, Trash2, Download, Upload } from 'lucide-react'
-import { useWorkspaces, useCreateWorkspace, useDeleteWorkspace, useExportWorkspace, useImportWorkspace, type Workspace } from '@/hooks/use-workspaces'
+import {
+  useWorkspaces,
+  useCreateWorkspace,
+  useDeleteWorkspace,
+  useExportWorkspace,
+  useImportWorkspace,
+  type Workspace,
+} from '@/hooks/use-workspaces'
 import { useActiveWorkspace } from '@/providers/workspace-provider'
 import { toast } from 'sonner'
 import { WORKSPACE_COLORS } from '@/constants'
@@ -79,12 +94,14 @@ export function WorkspacesPage() {
               <DialogHeader>
                 <DialogTitle>Import Workspace</DialogTitle>
                 <DialogDescription>
-                  Import a workspace from a previously exported JSON file. A new workspace will be created with the imported settings.
+                  Import a workspace from a previously exported JSON file. A new workspace will be
+                  created with the imported settings.
                 </DialogDescription>
               </DialogHeader>
               <div className="flex flex-col gap-4">
                 <p className="text-sm text-muted-foreground">
-                  Note: Telegram channels will be imported as disabled. You'll need to test and enable them manually.
+                  Note: Telegram channels will be imported as disabled. You&apos;ll need to test and
+                  enable them manually.
                 </p>
                 <input
                   ref={importFileRef}
@@ -100,7 +117,9 @@ export function WorkspacesPage() {
                 )}
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setImportOpen(false)}>Cancel</Button>
+                <Button variant="outline" onClick={() => setImportOpen(false)}>
+                  Cancel
+                </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
@@ -136,14 +155,20 @@ export function WorkspacesPage() {
                         type="button"
                         onClick={() => setColor(c)}
                         className={`size-7 rounded-full transition-all ${
-                          color === c ? 'ring-2 ring-offset-2 ring-brand scale-110' : 'hover:scale-105'
+                          color === c
+                            ? 'ring-2 ring-offset-2 ring-brand scale-110'
+                            : 'hover:scale-105'
                         }`}
                         style={{ backgroundColor: c }}
                       />
                     ))}
                   </div>
                 </div>
-                <Button type="submit" disabled={!name.trim() || createWorkspace.isPending} className="bg-brand text-brand-foreground hover:bg-brand/90">
+                <Button
+                  type="submit"
+                  disabled={!name.trim() || createWorkspace.isPending}
+                  className="bg-brand text-brand-foreground hover:bg-brand/90"
+                >
                   {createWorkspace.isPending ? <Spinner data-icon="inline-start" /> : null}
                   Create
                 </Button>
@@ -189,9 +214,7 @@ export function WorkspacesPage() {
                     )}
                     {ws.name}
                   </CardTitle>
-                  {ws.description && (
-                    <CardDescription>{ws.description}</CardDescription>
-                  )}
+                  {ws.description && <CardDescription>{ws.description}</CardDescription>}
                 </CardHeader>
                 <CardContent className="flex justify-end">
                   <ArrowRight className="text-muted-foreground" />
@@ -214,7 +237,12 @@ export function WorkspacesPage() {
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation()
-                    if (!confirm(`Delete workspace "${ws.name}"? This will delete all documents and chat sessions in it.`)) return
+                    if (
+                      !confirm(
+                        `Delete workspace "${ws.name}"? This will delete all documents and chat sessions in it.`,
+                      )
+                    )
+                      return
                     // Switch to another workspace if deleting the active one
                     if (activeWorkspace?.id === ws.id) {
                       const other = workspaces?.find((w) => w.id !== ws.id)

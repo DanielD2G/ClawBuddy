@@ -11,29 +11,23 @@ export function DropZone({ onDrop, children, className }: DropZoneProps) {
   const [isDragging, setIsDragging] = useState(false)
   const dragCounter = useRef(0)
 
-  const handleDragEnter = useCallback(
-    (e: DragEvent) => {
-      e.preventDefault()
-      e.stopPropagation()
-      dragCounter.current++
-      if (e.dataTransfer.types.includes('Files')) {
-        setIsDragging(true)
-      }
-    },
-    [],
-  )
+  const handleDragEnter = useCallback((e: DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounter.current++
+    if (e.dataTransfer.types.includes('Files')) {
+      setIsDragging(true)
+    }
+  }, [])
 
-  const handleDragLeave = useCallback(
-    (e: DragEvent) => {
-      e.preventDefault()
-      e.stopPropagation()
-      dragCounter.current--
-      if (dragCounter.current === 0) {
-        setIsDragging(false)
-      }
-    },
-    [],
-  )
+  const handleDragLeave = useCallback((e: DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounter.current--
+    if (dragCounter.current === 0) {
+      setIsDragging(false)
+    }
+  }, [])
 
   const handleDragOver = useCallback((e: DragEvent) => {
     e.preventDefault()
@@ -81,7 +75,12 @@ interface FolderDropTargetProps {
   className?: string
 }
 
-export function FolderDropTarget({ onFileDrop, onDocumentDrop, children, className }: FolderDropTargetProps) {
+export function FolderDropTarget({
+  onFileDrop,
+  onDocumentDrop,
+  children,
+  className,
+}: FolderDropTargetProps) {
   const [isOver, setIsOver] = useState(false)
   const dragCounter = useRef(0)
 
@@ -89,7 +88,10 @@ export function FolderDropTarget({ onFileDrop, onDocumentDrop, children, classNa
     e.preventDefault()
     e.stopPropagation()
     dragCounter.current++
-    if (e.dataTransfer.types.includes('Files') || e.dataTransfer.types.includes('application/x-clawbuddy-doc')) {
+    if (
+      e.dataTransfer.types.includes('Files') ||
+      e.dataTransfer.types.includes('application/x-clawbuddy-doc')
+    ) {
       setIsOver(true)
     }
   }, [])

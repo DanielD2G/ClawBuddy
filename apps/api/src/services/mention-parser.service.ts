@@ -21,7 +21,10 @@ export const mentionParserService = {
     }
 
     // Remove /mentions from content for cleaner LLM input
-    const cleanedContent = content.replace(MENTION_REGEX, '').replace(/\s{2,}/g, ' ').trim()
+    const cleanedContent = content
+      .replace(MENTION_REGEX, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim()
 
     return { cleanedContent, mentionedSlugs }
   },

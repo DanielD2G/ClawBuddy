@@ -4,7 +4,9 @@ import { encrypt, decrypt } from './crypto.service.js'
 const MASK = '••••••••'
 
 function getSecretFieldKeys(schema: ConfigFieldDefinition[]): Set<string> {
-  return new Set(schema.filter((f) => f.type === 'password' || f.type === 'textarea').map((f) => f.key))
+  return new Set(
+    schema.filter((f) => f.type === 'password' || f.type === 'textarea').map((f) => f.key),
+  )
 }
 
 interface ValidationResult {

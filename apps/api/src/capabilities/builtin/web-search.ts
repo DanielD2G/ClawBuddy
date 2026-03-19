@@ -3,7 +3,8 @@ import type { CapabilityDefinition } from '../types.js'
 export const webSearch: CapabilityDefinition = {
   slug: 'web-search',
   name: 'Web Search (Gemini)',
-  description: 'Search the web for current information using Google Search via Gemini. Requires a Gemini API key.',
+  description:
+    'Search the web for current information using Google Search via Gemini. Requires a Gemini API key.',
   icon: 'Search',
   category: 'builtin',
   version: '1.0.0',

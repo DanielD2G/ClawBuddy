@@ -1,9 +1,25 @@
 import { useState, useEffect } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
-import { useSetupStatus, useSetupSettings, useCompleteSetup, useSetupCapabilities } from '@/hooks/use-setup'
+import { Navigate } from 'react-router-dom'
+import {
+  useSetupStatus,
+  useSetupSettings,
+  useCompleteSetup,
+  useSetupCapabilities,
+} from '@/hooks/use-setup'
 import { useActiveWorkspace } from '@/providers/workspace-provider'
 import { Spinner } from '@/components/ui/spinner'
-import { Sparkles, Key, Brain, MessageSquare, FolderOpen, Puzzle, Container, ShieldCheck, Settings, Send } from 'lucide-react'
+import {
+  Sparkles,
+  Key,
+  Brain,
+  MessageSquare,
+  FolderOpen,
+  Puzzle,
+  Container,
+  ShieldCheck,
+  Settings,
+  Send,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
@@ -39,8 +55,12 @@ export function SetupPage() {
   const queryClient = useQueryClient()
   const { onboardingComplete, isLoading: statusLoading } = useSetupStatus()
   const [step, setStep] = useState(0)
-  const [selectedCapabilities, setSelectedCapabilities] = useState<string[]>([...ALWAYS_ON_CAPABILITY_SLUGS])
-  const [capabilityConfigs, setCapabilityConfigs] = useState<Record<string, Record<string, unknown>>>({})
+  const [selectedCapabilities, setSelectedCapabilities] = useState<string[]>([
+    ...ALWAYS_ON_CAPABILITY_SLUGS,
+  ])
+  const [capabilityConfigs, setCapabilityConfigs] = useState<
+    Record<string, Record<string, unknown>>
+  >({})
   const [workspaceName, setWorkspaceName] = useState('Default')
   const [workspaceColor, setWorkspaceColor] = useState(WORKSPACE_COLORS[0])
   const [timezone, setTimezone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone)
@@ -49,7 +69,6 @@ export function SetupPage() {
   const [telegramToken, setTelegramToken] = useState('')
   const [telegramTokenTested, setTelegramTokenTested] = useState(false)
   const { setActiveWorkspace } = useActiveWorkspace()
-  const navigate = useNavigate()
   // Sync picked workspace color to CSS --brand variable in real time
   useEffect(() => {
     document.documentElement.style.setProperty('--brand', hexToOklch(workspaceColor))
@@ -73,9 +92,25 @@ export function SetupPage() {
   const importMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) =>
       apiClient.post<{
-        workspace: { name: string; description: string | null; color: string | null; autoExecute: boolean; settings: Record<string, unknown> | null; permissions: { allow: string[] } | null }
-        capabilities: Array<{ slug: string; enabled: boolean; config: Record<string, unknown> | null }>
-        channels: Array<{ type: string; name: string; enabled: boolean; config: Record<string, unknown> }>
+        workspace: {
+          name: string
+          description: string | null
+          color: string | null
+          autoExecute: boolean
+          settings: Record<string, unknown> | null
+          permissions: { allow: string[] } | null
+        }
+        capabilities: Array<{
+          slug: string
+          enabled: boolean
+          config: Record<string, unknown> | null
+        }>
+        channels: Array<{
+          type: string
+          name: string
+          enabled: boolean
+          config: Record<string, unknown>
+        }>
         modelConfig: Record<string, unknown>
       }>('/setup/import', data),
   })
@@ -87,9 +122,7 @@ export function SetupPage() {
       if (result.workspace.name) setWorkspaceName(result.workspace.name)
       if (result.workspace.color) setWorkspaceColor(result.workspace.color)
       // Pre-fill capabilities
-      const enabledSlugs = result.capabilities
-        .filter((c) => c.enabled)
-        .map((c) => c.slug)
+      const enabledSlugs = result.capabilities.filter((c) => c.enabled).map((c) => c.slug)
       setSelectedCapabilities((prev) => [...new Set([...prev, ...enabledSlugs])])
       // Pre-fill capability configs
       const configs: Record<string, Record<string, unknown>> = {}
@@ -137,18 +170,25 @@ export function SetupPage() {
   // Capabilities that need config and are selected (exclude OAuth capabilities — configured post-setup via OAuth flow)
   const OAUTH_CAPABILITY_SLUGS = ['google-workspace']
   const capsNeedingConfig = (capabilities ?? []).filter(
-    (c) => selectedCapabilities.includes(c.slug) && c.configSchema && c.configSchema.length > 0 && !OAUTH_CAPABILITY_SLUGS.includes(c.slug),
+    (c) =>
+      selectedCapabilities.includes(c.slug) &&
+      c.configSchema &&
+      c.configSchema.length > 0 &&
+      !OAUTH_CAPABILITY_SLUGS.includes(c.slug),
   )
   const hasConfigStep = capsNeedingConfig.length > 0
 
   // Show Configure step only when needed (Docker step is always shown)
-  const visibleSteps = hasConfigStep ? ALL_STEPS : ALL_STEPS.filter(s => s.label !== 'Configure')
+  const visibleSteps = hasConfigStep ? ALL_STEPS : ALL_STEPS.filter((s) => s.label !== 'Configure')
 
   const handleComplete = async () => {
     try {
       const configs = { ...capabilityConfigs }
       if (selectedCapabilities.includes('browser-automation') && browserGridUrl) {
-        configs['browser-automation'] = { ...configs['browser-automation'], BROWSER_GRID_URL: browserGridUrl }
+        configs['browser-automation'] = {
+          ...configs['browser-automation'],
+          BROWSER_GRID_URL: browserGridUrl,
+        }
       }
       const result = await completeSetup.mutateAsync({
         capabilities: selectedCapabilities,
@@ -156,7 +196,9 @@ export function SetupPage() {
         workspaceName,
         workspaceColor,
         timezone,
-        ...(telegramEnabled && telegramToken.trim() ? { telegramBotToken: telegramToken.trim(), telegramTokenTested } : {}),
+        ...(telegramEnabled && telegramToken.trim()
+          ? { telegramBotToken: telegramToken.trim(), telegramTokenTested }
+          : {}),
       })
       if (result.workspace) {
         setActiveWorkspace(result.workspace)
@@ -184,7 +226,13 @@ export function SetupPage() {
         <StepNav visibleSteps={visibleSteps} currentStep={step} />
 
         {/* Steps */}
-        {step === 0 && <StepWelcome onNext={() => setStep(1)} onImport={handleImport} isImporting={importMutation.isPending} />}
+        {step === 0 && (
+          <StepWelcome
+            onNext={() => setStep(1)}
+            onImport={handleImport}
+            isImporting={importMutation.isPending}
+          />
+        )}
         {step === 1 && (
           <StepApiKeys
             apiKeys={apiKeys}

@@ -46,7 +46,6 @@ import {
   Unplug,
   Info,
 } from 'lucide-react'
-import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip'
 import { CATEGORY_LABELS, EXAMPLE_PERMISSION_RULES } from '@/constants'
 
 const ICON_MAP: Record<string, React.ElementType> = {

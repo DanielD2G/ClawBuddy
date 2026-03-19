@@ -7,7 +7,7 @@
     "dev": "export $(grep -v '^#' ../../.env | xargs) && prisma db push --skip-generate && bun --env-file=../../.env --watch src/index.ts",
     "build": "bun build src/index.ts --outdir dist --target bun --external playwright-core --external cpu-features --external msgpackr-extract",
     "start": "bun --env-file=../../.env dist/index.js",
-    "lint": "eslint src/",
+    "lint": "bun --cwd ../.. run lint:files apps/api/src",
     "type-check": "tsc --noEmit",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",

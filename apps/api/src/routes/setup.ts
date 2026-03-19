@@ -14,6 +14,7 @@ import { embeddingService } from '../services/embedding.service.js'
 import { env } from '../env.js'
 import { TOOL_DISCOVERY_COLLECTION } from '../constants.js'
 import { ListBucketsCommand } from '@aws-sdk/client-s3'
+import { Prisma } from '@prisma/client'
 import { validateBody } from '../lib/validate.js'
 import Docker from 'dockerode'
 
@@ -194,7 +195,7 @@ app.post('/google-oauth/test', async (c) => {
   if (!gwsCap) return c.json({ success: true, data: result })
 
   const connectedWc = await prisma.workspaceCapability.findFirst({
-    where: { capabilityId: gwsCap.id, enabled: true, config: { not: null as any } },
+    where: { capabilityId: gwsCap.id, enabled: true, config: { not: Prisma.AnyNull } },
   })
   if (!connectedWc?.config) return c.json({ success: true, data: result })
 

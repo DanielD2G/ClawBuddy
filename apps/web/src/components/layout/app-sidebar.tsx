@@ -281,7 +281,11 @@ export function AppSidebar() {
                 }}
                 disabled={stopContainer.isPending}
               >
-                {stopContainer.isPending ? <Spinner className="size-3.5" /> : <Square className="size-3.5" />}
+                {stopContainer.isPending ? (
+                  <Spinner className="size-3.5" />
+                ) : (
+                  <Square className="size-3.5" />
+                )}
               </Button>
             ) : (
               <Button
@@ -296,7 +300,11 @@ export function AppSidebar() {
                 }}
                 disabled={startContainer.isPending}
               >
-                {startContainer.isPending ? <Spinner className="size-3.5" /> : <Play className="size-3.5" />}
+                {startContainer.isPending ? (
+                  <Spinner className="size-3.5" />
+                ) : (
+                  <Play className="size-3.5" />
+                )}
               </Button>
             )}
           </div>

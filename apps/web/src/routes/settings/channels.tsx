@@ -5,7 +5,14 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { useActiveWorkspace } from '@/providers/workspace-provider'
-import { useChannels, useCreateChannel, useToggleChannel, useTestChannel, useUpdateChannel, useDeleteChannel } from '@/hooks/use-channels'
+import {
+  useChannels,
+  useCreateChannel,
+  useToggleChannel,
+  useTestChannel,
+  useUpdateChannel,
+  useDeleteChannel,
+} from '@/hooks/use-channels'
 import { Send, Loader2, CheckCircle2, XCircle, Trash2, ExternalLink } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -117,9 +124,13 @@ export function ChannelsSettingsPage() {
               <div className="flex items-center gap-2">
                 <Badge variant={telegramChannel.running ? 'default' : 'secondary'}>
                   {telegramChannel.running ? (
-                    <><CheckCircle2 className="mr-1 h-3 w-3" /> Running</>
+                    <>
+                      <CheckCircle2 className="mr-1 h-3 w-3" /> Running
+                    </>
                   ) : (
-                    <><XCircle className="mr-1 h-3 w-3" /> Stopped</>
+                    <>
+                      <XCircle className="mr-1 h-3 w-3" /> Stopped
+                    </>
                   )}
                 </Badge>
                 <Switch
@@ -131,7 +142,8 @@ export function ChannelsSettingsPage() {
             )}
           </div>
           <CardDescription>
-            Chat with the AI assistant from Telegram. Messages create conversations visible in the web interface.
+            Chat with the AI assistant from Telegram. Messages create conversations visible in the
+            web interface.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -226,11 +238,7 @@ export function ChannelsSettingsPage() {
 
               {/* Actions */}
               <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  onClick={handleTest}
-                  disabled={testChannel.isPending}
-                >
+                <Button variant="outline" onClick={handleTest} disabled={testChannel.isPending}>
                   {testChannel.isPending ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   ) : testChannel.isSuccess ? (
@@ -263,9 +271,17 @@ export function ChannelsSettingsPage() {
         <CardContent>
           <ul className="space-y-2 text-sm text-muted-foreground">
             <li>Send any message to your bot to start a conversation</li>
-            <li>Use <code className="rounded bg-muted px-1 py-0.5">/new</code> to start a fresh conversation</li>
-            <li>Use <code className="rounded bg-muted px-1 py-0.5">/help</code> to see available commands</li>
-            <li>All conversations appear in the chat sidebar and are fully accessible from the web</li>
+            <li>
+              Use <code className="rounded bg-muted px-1 py-0.5">/new</code> to start a fresh
+              conversation
+            </li>
+            <li>
+              Use <code className="rounded bg-muted px-1 py-0.5">/help</code> to see available
+              commands
+            </li>
+            <li>
+              All conversations appear in the chat sidebar and are fully accessible from the web
+            </li>
           </ul>
         </CardContent>
       </Card>

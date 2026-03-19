@@ -4,7 +4,13 @@ import { Button } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { useFolders, useCreateFolder, useDeleteFolder } from '@/hooks/use-folders'
-import { useDocuments, useUploadDocument, useDeleteDocument, useMoveDocument, useReingestDocument } from '@/hooks/use-documents'
+import {
+  useDocuments,
+  useUploadDocument,
+  useDeleteDocument,
+  useMoveDocument,
+  useReingestDocument,
+} from '@/hooks/use-documents'
 import { ExplorerBreadcrumb } from './explorer-breadcrumb'
 import { ExplorerItemList } from './explorer-item-list'
 import { DropZone } from './drop-zone'
@@ -22,7 +28,10 @@ export function FileExplorer({ workspaceId, workspaceName }: FileExplorerProps) 
   const [modalOpen, setModalOpen] = useState(false)
 
   const { data: folders = [], isLoading: foldersLoading } = useFolders(workspaceId, currentFolderId)
-  const { data: documents = [], isLoading: docsLoading } = useDocuments(workspaceId, currentFolderId ?? 'null')
+  const { data: documents = [], isLoading: docsLoading } = useDocuments(
+    workspaceId,
+    currentFolderId ?? 'null',
+  )
 
   const createFolder = useCreateFolder(workspaceId)
   const deleteFolder = useDeleteFolder(workspaceId)

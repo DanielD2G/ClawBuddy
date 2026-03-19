@@ -42,8 +42,7 @@ export function CapabilityConfigDialog({
     const initial: Record<string, string> = {}
     for (const field of schema) {
       const existing = initialValues?.[field.key]
-      initial[field.key] =
-        existing != null ? String(existing) : field.default ?? ''
+      initial[field.key] = existing != null ? String(existing) : (field.default ?? '')
     }
     return initial
   })
@@ -78,33 +77,22 @@ export function CapabilityConfigDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Configure {capabilityName}</DialogTitle>
-          <DialogDescription>
-            Enter the required credentials and settings.
-          </DialogDescription>
+          <DialogDescription>Enter the required credentials and settings.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           {schema.map((field) => (
             <div key={field.key} className="flex flex-col gap-1.5">
-              <label
-                htmlFor={field.key}
-                className="text-sm font-medium leading-none"
-              >
+              <label htmlFor={field.key} className="text-sm font-medium leading-none">
                 {field.label}
-                {field.required && (
-                  <span className="ml-0.5 text-destructive">*</span>
-                )}
+                {field.required && <span className="ml-0.5 text-destructive">*</span>}
               </label>
               {field.description && (
-                <p className="text-xs text-muted-foreground">
-                  {field.description}
-                </p>
+                <p className="text-xs text-muted-foreground">{field.description}</p>
               )}
               {field.type === 'select' && field.options ? (
                 <Select
                   value={values[field.key]}
-                  onValueChange={(v) =>
-                    setValues((prev) => ({ ...prev, [field.key]: v }))
-                  }
+                  onValueChange={(v) => setValues((prev) => ({ ...prev, [field.key]: v }))}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select..." />
@@ -181,17 +169,11 @@ export function CapabilityConfigDialog({
                   aria-invalid={!!errors[field.key]}
                 />
               )}
-              {errors[field.key] && (
-                <p className="text-xs text-destructive">{errors[field.key]}</p>
-              )}
+              {errors[field.key] && <p className="text-xs text-destructive">{errors[field.key]}</p>}
             </div>
           ))}
           <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-            >
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
             <Button type="submit" disabled={isLoading}>

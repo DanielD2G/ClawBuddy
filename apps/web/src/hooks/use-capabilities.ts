@@ -62,8 +62,13 @@ export function useDisableCapability(workspaceId: string) {
 export function useUpdateCapabilityConfig(workspaceId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ capabilityId, config }: { capabilityId: string; config: Record<string, unknown> }) =>
-      apiClient.patch(`/workspaces/${workspaceId}/capabilities/${capabilityId}`, { config }),
+    mutationFn: ({
+      capabilityId,
+      config,
+    }: {
+      capabilityId: string
+      config: Record<string, unknown>
+    }) => apiClient.patch(`/workspaces/${workspaceId}/capabilities/${capabilityId}`, { config }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workspace-capabilities', workspaceId] })
     },

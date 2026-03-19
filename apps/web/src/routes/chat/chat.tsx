@@ -82,7 +82,6 @@ export function ChatPage() {
     retryLastMessage,
     loadSession,
     clearMessages,
-    getSessionId,
     isCompressing,
   } = useChat(workspaceId ?? '', (sid) => {
     // Navigate to session URL immediately when session is created
@@ -142,7 +141,7 @@ export function ChatPage() {
       navigatedRef.current = false
       clearMessages()
     }
-  }, [sessionId, loadSession, clearMessages])
+  }, [sessionId, loadSession, clearMessages, queryClient])
 
   // Auto-send initial message from landing page
   useEffect(() => {
@@ -158,7 +157,7 @@ export function ChatPage() {
     if (!showScrollDown) {
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
-  }, [messages, isPending, thinkingMessage, pendingApprovals])
+  }, [messages, isPending, thinkingMessage, pendingApprovals, showScrollDown])
 
   const handleScroll = () => {
     const el = scrollContainerRef.current
@@ -324,7 +323,9 @@ export function ChatPage() {
                                       )
                                     }
                                     const Renderer = richBlockRenderers[segment.type]
-                                    return Renderer ? <Renderer key={`rich-${j}`} {...segment} /> : null
+                                    return Renderer ? (
+                                      <Renderer key={`rich-${j}`} {...segment} />
+                                    ) : null
                                   })
                                 )}
                               </div>
@@ -609,9 +610,7 @@ export function ChatPage() {
                     ) : (
                       <button
                         type="submit"
-                        disabled={
-                          (!input.trim() && !pendingFiles.length) || isCompressing
-                        }
+                        disabled={(!input.trim() && !pendingFiles.length) || isCompressing}
                         className={`
                           flex size-8 shrink-0 items-center justify-center rounded-full
                           transition-all duration-200

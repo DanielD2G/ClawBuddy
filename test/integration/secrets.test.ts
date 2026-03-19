@@ -74,7 +74,10 @@ describe('Secret Redaction', () => {
   test(
     'stores pasted configured secrets in redacted form before the model sees them',
     async () => {
-      const result = await sendMessage(`The GitHub token is ${GH_SECRET}. Just acknowledge receipt.`, autoWorkspaceId)
+      const result = await sendMessage(
+        `The GitHub token is ${GH_SECRET}. Just acknowledge receipt.`,
+        autoWorkspaceId,
+      )
       const history = await getMessages(result.sessionId)
       const serialized = JSON.stringify(history)
 

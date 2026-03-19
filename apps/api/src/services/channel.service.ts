@@ -8,7 +8,12 @@ function maskToken(token: string): string {
 }
 
 export const channelService = {
-  async create(data: { workspaceId: string; type: string; name: string; config: TelegramChannelConfig }) {
+  async create(data: {
+    workspaceId: string
+    type: string
+    name: string
+    config: TelegramChannelConfig
+  }) {
     const encryptedConfig = {
       ...data.config,
       botToken: encrypt(data.config.botToken),

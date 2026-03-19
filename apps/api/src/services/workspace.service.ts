@@ -34,10 +34,8 @@ export const workspaceService = {
           where: { id },
           select: { settings: true },
         })
-        const nextSettings = mergeWorkspaceSettings(
-          existing?.settings,
-          data.settings as Record<string, unknown>,
-        ) ?? {}
+        const nextSettings =
+          mergeWorkspaceSettings(existing?.settings, data.settings as Record<string, unknown>) ?? {}
         mergedSettings = nextSettings as Prisma.InputJsonValue
       }
     }
@@ -47,7 +45,9 @@ export const workspaceService = {
       data: {
         ...(data.name !== undefined && { name: data.name }),
         ...(data.description !== undefined && { description: data.description }),
-        ...(data.permissions !== undefined && { permissions: data.permissions as Prisma.InputJsonValue }),
+        ...(data.permissions !== undefined && {
+          permissions: data.permissions as Prisma.InputJsonValue,
+        }),
         ...(data.color !== undefined && { color: data.color }),
         ...(data.settings !== undefined && { settings: mergedSettings }),
         ...(data.autoExecute !== undefined && { autoExecute: data.autoExecute }),

@@ -48,7 +48,12 @@ export function ProductCard({ name, price, image, currency, url }: ProductCardPr
 
   if (url) {
     return (
-      <a href={url} target="_blank" rel="noopener noreferrer" className="block !no-underline [&_*]:!no-underline">
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block !no-underline [&_*]:!no-underline"
+      >
         {content}
       </a>
     )

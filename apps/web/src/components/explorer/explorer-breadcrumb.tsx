@@ -16,9 +16,7 @@ export function ExplorerBreadcrumb({
 }: ExplorerBreadcrumbProps) {
   const { data } = useFolderBreadcrumb(workspaceId, currentFolderId)
 
-  const segments: { id: string | null; name: string }[] = [
-    { id: null, name: workspaceName },
-  ]
+  const segments: { id: string | null; name: string }[] = [{ id: null, name: workspaceName }]
 
   if (data) {
     for (const ancestor of data.ancestors) {
