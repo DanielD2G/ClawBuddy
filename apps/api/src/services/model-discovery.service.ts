@@ -1,6 +1,6 @@
 import OpenAI from 'openai'
 import Anthropic from '@anthropic-ai/sdk'
-import { MODEL_CATALOG } from '../config.js'
+import { MODEL_CATALOG, catalogModelIds } from '../config.js'
 import { settingsService } from './settings.service.js'
 
 const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
@@ -27,9 +27,19 @@ function getCached(cache: Map<string, CacheEntry>, key: string): string[] | null
 
 const OPENAI_CHAT_PREFIXES = ['gpt-', 'o1', 'o3', 'o4']
 const OPENAI_CHAT_EXCLUDES = [
-  'realtime', 'audio', 'search', 'transcribe', 'tts',
-  'dall-e', 'whisper', 'instruct', '-codex', 'moderation',
-  'gpt-image', 'chatgpt-image', 'gpt-oss',
+  'realtime',
+  'audio',
+  'search',
+  'transcribe',
+  'tts',
+  'dall-e',
+  'whisper',
+  'instruct',
+  '-codex',
+  'moderation',
+  'gpt-image',
+  'chatgpt-image',
+  'gpt-oss',
 ]
 const OPENAI_EMBEDDING_PREFIXES = ['text-embedding-']
 
@@ -45,9 +55,7 @@ async function fetchOpenAIModels(apiKey: string): Promise<{ llm: string[]; embed
       .filter((id) => OPENAI_CHAT_PREFIXES.some((p) => id.startsWith(p)))
       .filter((id) => !OPENAI_CHAT_EXCLUDES.some((ex) => id.includes(ex)))
       .sort(),
-    embedding: all
-      .filter((id) => OPENAI_EMBEDDING_PREFIXES.some((p) => id.startsWith(p)))
-      .sort(),
+    embedding: all.filter((id) => OPENAI_EMBEDDING_PREFIXES.some((p) => id.startsWith(p))).sort(),
   }
 }
 
@@ -63,8 +71,15 @@ async function fetchAnthropicModels(apiKey: string): Promise<{ llm: string[] }> 
 // ── Gemini ───────────────────────────────────────────
 
 const GEMINI_LLM_EXCLUDES = [
-  'image', 'tts', 'robotics', 'computer-use', 'deep-research',
-  'nano-banana', 'gemma', 'customtools', 'learnlm',
+  'image',
+  'tts',
+  'robotics',
+  'computer-use',
+  'deep-research',
+  'nano-banana',
+  'gemma',
+  'customtools',
+  'learnlm',
 ]
 
 interface GeminiModel {
@@ -111,7 +126,10 @@ async function fetchGeminiModels(apiKey: string): Promise<{ llm: string[]; embed
 
 // ── Public API ───────────────────────────────────────
 
-async function fetchAndCache(provider: string, apiKey: string): Promise<{ llm: string[]; embedding: string[] }> {
+async function fetchAndCache(
+  provider: string,
+  apiKey: string,
+): Promise<{ llm: string[]; embedding: string[] }> {
   switch (provider) {
     case 'openai':
       return fetchOpenAIModels(apiKey)
@@ -130,7 +148,7 @@ export async function discoverLLMModels(provider: string): Promise<string[]> {
 
   try {
     const apiKey = await settingsService.getApiKey(provider)
-    if (!apiKey) return MODEL_CATALOG.llm[provider] ?? []
+    if (!apiKey) return catalogModelIds(provider)
 
     const result = await fetchAndCache(provider, apiKey)
 
@@ -140,10 +158,13 @@ export async function discoverLLMModels(provider: string): Promise<string[]> {
       embeddingCache.set(provider, { models: result.embedding, fetchedAt: Date.now() })
     }
 
-    return result.llm.length ? result.llm : (MODEL_CATALOG.llm[provider] ?? [])
+    return result.llm.length ? result.llm : catalogModelIds(provider)
   } catch (err) {
-    console.warn(`[model-discovery] Failed to fetch models for ${provider}:`, err instanceof Error ? err.message : err)
-    return MODEL_CATALOG.llm[provider] ?? []
+    console.warn(
+      `[model-discovery] Failed to fetch models for ${provider}:`,
+      err instanceof Error ? err.message : err,
+    )
+    return catalogModelIds(provider)
   }
 }
 
@@ -165,20 +186,24 @@ export async function discoverEmbeddingModels(provider: string): Promise<string[
 
     return result.embedding.length ? result.embedding : (MODEL_CATALOG.embedding[provider] ?? [])
   } catch (err) {
-    console.warn(`[model-discovery] Failed to fetch embedding models for ${provider}:`, err instanceof Error ? err.message : err)
+    console.warn(
+      `[model-discovery] Failed to fetch embedding models for ${provider}:`,
+      err instanceof Error ? err.message : err,
+    )
     return MODEL_CATALOG.embedding[provider] ?? []
   }
 }
 
 /** Build a full model catalog keyed by provider for both LLM and embedding. */
-export async function buildModelCatalogs(available: { llm: string[]; embedding: string[] }): Promise<{
+export async function buildModelCatalogs(available: {
+  llm: string[]
+  embedding: string[]
+}): Promise<{
   llm: Record<string, string[]>
   embedding: Record<string, string[]>
 }> {
   const [llmEntries, embeddingEntries] = await Promise.all([
-    Promise.all(
-      available.llm.map(async (p) => [p, await discoverLLMModels(p)] as const),
-    ),
+    Promise.all(available.llm.map(async (p) => [p, await discoverLLMModels(p)] as const)),
     Promise.all(
       available.embedding.map(async (p) => [p, await discoverEmbeddingModels(p)] as const),
     ),

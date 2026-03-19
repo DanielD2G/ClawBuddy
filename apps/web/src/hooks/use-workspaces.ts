@@ -1,8 +1,9 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import type { WorkspaceSettings } from '@agentbuddy/shared'
 import { apiClient } from '@/lib/api-client'
 import { useActiveWorkspace } from '@/providers/workspace-provider'
 import { POLL_CONTAINER_STATUS_MS } from '@/constants'
+import { createMutation, createMutationWithContext } from './create-mutation'
 
 export interface Workspace {
   id: string
@@ -33,65 +34,67 @@ export function useWorkspace(id: string) {
   })
 }
 
-export function useCreateWorkspace() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (data: { name: string; description?: string; color?: string }) =>
-      apiClient.post<Workspace>('/workspaces', data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['workspaces'] }),
-  })
-}
+export const useCreateWorkspace = createMutation<
+  Workspace,
+  { name: string; description?: string; color?: string }
+>('post', '/workspaces', [['workspaces']])
 
-export function useUpdateWorkspace() {
-  const queryClient = useQueryClient()
-  const { activeWorkspace, setActiveWorkspace } = useActiveWorkspace()
-  return useMutation({
-    mutationFn: ({ id, ...data }: { id: string; name?: string; description?: string; color?: string; settings?: WorkspaceSettings; autoExecute?: boolean }) =>
-      apiClient.patch<Workspace>(`/workspaces/${id}`, data),
-    onSuccess: (updated) => {
-      queryClient.invalidateQueries({ queryKey: ['workspaces'] })
+export const useUpdateWorkspace = createMutationWithContext<
+  Workspace,
+  {
+    id: string
+    name?: string
+    description?: string
+    color?: string
+    settings?: WorkspaceSettings
+    autoExecute?: boolean
+  }
+>(
+  'patch',
+  ({ id }) => `/workspaces/${id}`,
+  [['workspaces']],
+  () => {
+    const { activeWorkspace, setActiveWorkspace } = useActiveWorkspace()
+    return (updated) => {
       if (activeWorkspace && updated.id === activeWorkspace.id) {
         setActiveWorkspace(updated)
       }
-    },
-  })
-}
+    }
+  },
+)
 
-export function useDeleteWorkspace() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (id: string) => apiClient.delete(`/workspaces/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['workspaces'] }),
-  })
-}
+export const useDeleteWorkspace = createMutation<unknown, string>(
+  'delete',
+  (id) => `/workspaces/${id}`,
+  [['workspaces']],
+)
 
 export function useWorkspaceContainerStatus(id: string) {
   return useQuery({
     queryKey: ['workspaces', id, 'container'],
-    queryFn: () => apiClient.get<{ status: string; containerId: string | null }>(`/workspaces/${id}/container/status`),
+    queryFn: () =>
+      apiClient.get<{ status: string; containerId: string | null }>(
+        `/workspaces/${id}/container/status`,
+      ),
     enabled: !!id,
     refetchInterval: POLL_CONTAINER_STATUS_MS,
   })
 }
 
-export function useStartWorkspaceContainer() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (id: string) => apiClient.post(`/workspaces/${id}/container/start`),
-    onSuccess: (_, id) => {
-      queryClient.invalidateQueries({ queryKey: ['workspaces', id, 'container'] })
-      queryClient.invalidateQueries({ queryKey: ['workspaces', id] })
-    },
-  })
-}
+export const useStartWorkspaceContainer = createMutation<unknown, string>(
+  'post',
+  (id) => `/workspaces/${id}/container/start`,
+  (_, id) => [
+    ['workspaces', id, 'container'],
+    ['workspaces', id],
+  ],
+)
 
-export function useStopWorkspaceContainer() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (id: string) => apiClient.post(`/workspaces/${id}/container/stop`),
-    onSuccess: (_, id) => {
-      queryClient.invalidateQueries({ queryKey: ['workspaces', id, 'container'] })
-      queryClient.invalidateQueries({ queryKey: ['workspaces', id] })
-    },
-  })
-}
+export const useStopWorkspaceContainer = createMutation<unknown, string>(
+  'post',
+  (id) => `/workspaces/${id}/container/stop`,
+  (_, id) => [
+    ['workspaces', id, 'container'],
+    ['workspaces', id],
+  ],
+)

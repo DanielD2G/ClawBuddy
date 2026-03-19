@@ -12,6 +12,7 @@ import {
 } from '@/hooks/use-capabilities'
 import { CapabilityConfigDialog } from './capability-config-dialog'
 import type { ConfigFieldDefinition } from '@/types/capability-config'
+import { CATEGORY_LABELS } from '@/constants'
 
 interface WorkspaceCapabilitiesProps {
   workspaceId: string
@@ -72,20 +73,12 @@ export function WorkspaceCapabilities({ workspaceId }: WorkspaceCapabilitiesProp
     {} as Record<string, Capability[]>,
   )
 
-  const categoryLabels: Record<string, string> = {
-    general: 'General',
-    builtin: 'Built-in',
-    languages: 'Languages',
-    cloud: 'Cloud',
-    devops: 'DevOps',
-  }
-
   return (
     <div className="flex flex-col gap-6">
       {Object.entries(grouped).map(([category, caps]) => (
         <div key={category} className="flex flex-col gap-3">
           <h3 className="text-sm font-medium text-muted-foreground">
-            {categoryLabels[category] ?? category}
+            {CATEGORY_LABELS[category] ?? category}
           </h3>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {caps.map((cap) => {

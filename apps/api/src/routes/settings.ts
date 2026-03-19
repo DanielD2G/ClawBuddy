@@ -37,6 +37,9 @@ app.get('/settings/models', async (c) => {
     advancedModelConfig,
     contextLimitTokens,
     maxAgentIterations,
+    subAgentExploreMaxIterations,
+    subAgentAnalyzeMaxIterations,
+    subAgentExecuteMaxIterations,
     available,
     timezone,
   ] = await Promise.all([
@@ -52,6 +55,9 @@ app.get('/settings/models', async (c) => {
     settingsService.getAdvancedModelConfig(),
     settingsService.getContextLimitTokens(),
     settingsService.getMaxAgentIterations(),
+    settingsService.getSubAgentExploreMaxIterations(),
+    settingsService.getSubAgentAnalyzeMaxIterations(),
+    settingsService.getSubAgentExecuteMaxIterations(),
     settingsService.getAvailableProviders(),
     settingsService.getTimezone(),
   ])
@@ -71,6 +77,9 @@ app.get('/settings/models', async (c) => {
       advancedModelConfig,
       contextLimitTokens,
       maxAgentIterations,
+      subAgentExploreMaxIterations,
+      subAgentAnalyzeMaxIterations,
+      subAgentExecuteMaxIterations,
       availableProviders: available.llm,
       catalogs,
       timezone,
@@ -93,6 +102,9 @@ app.patch('/settings/models', async (c) => {
     updateData.advancedModelConfig = body.advancedModelConfig
   if (body.contextLimitTokens !== undefined) updateData.contextLimitTokens = body.contextLimitTokens
   if (body.maxAgentIterations !== undefined) updateData.maxAgentIterations = body.maxAgentIterations
+  if (body.subAgentExploreMaxIterations !== undefined) updateData.subAgentExploreMaxIterations = body.subAgentExploreMaxIterations
+  if (body.subAgentAnalyzeMaxIterations !== undefined) updateData.subAgentAnalyzeMaxIterations = body.subAgentAnalyzeMaxIterations
+  if (body.subAgentExecuteMaxIterations !== undefined) updateData.subAgentExecuteMaxIterations = body.subAgentExecuteMaxIterations
   if (body.timezone !== undefined) updateData.timezone = body.timezone
 
   await settingsService.update(updateData as Parameters<typeof settingsService.update>[0])

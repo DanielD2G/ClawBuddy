@@ -1,5 +1,6 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
+import { createMutation } from './create-mutation'
 
 export interface Folder {
   id: string
@@ -19,8 +20,7 @@ export function useFolders(workspaceId: string, parentId?: string | null) {
   const param = parentId ?? 'null'
   return useQuery({
     queryKey: ['folders', workspaceId, param],
-    queryFn: () =>
-      apiClient.get<Folder[]>(`/workspaces/${workspaceId}/folders?parentId=${param}`),
+    queryFn: () => apiClient.get<Folder[]>(`/workspaces/${workspaceId}/folders?parentId=${param}`),
     enabled: !!workspaceId,
   })
 }
@@ -35,21 +35,17 @@ export function useFolderBreadcrumb(workspaceId: string, folderId: string | null
 }
 
 export function useCreateFolder(workspaceId: string) {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (data: { name: string; parentId?: string | null }) =>
-      apiClient.post<Folder>(`/workspaces/${workspaceId}/folders`, data),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ['folders', workspaceId] }),
-  })
+  return createMutation<Folder, { name: string; parentId?: string | null }>(
+    'post',
+    `/workspaces/${workspaceId}/folders`,
+    [['folders', workspaceId]],
+  )()
 }
 
 export function useDeleteFolder(workspaceId: string) {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (folderId: string) =>
-      apiClient.delete(`/workspaces/${workspaceId}/folders/${folderId}`),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ['folders', workspaceId] }),
-  })
+  return createMutation<unknown, string>(
+    'delete',
+    (folderId) => `/workspaces/${workspaceId}/folders/${folderId}`,
+    [['folders', workspaceId]],
+  )()
 }

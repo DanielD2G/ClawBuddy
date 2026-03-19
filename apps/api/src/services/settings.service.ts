@@ -1,3 +1,4 @@
+import { ValidationError, ConfigurationError } from '../lib/errors.js'
 import { prisma } from '../lib/prisma.js'
 import { env } from '../env.js'
 import { encrypt, decrypt } from './crypto.service.js'
@@ -20,19 +21,40 @@ import {
   MAX_CONTEXT_LIMIT_TOKENS,
   KEY_MASK_THRESHOLD,
   DEFAULT_MAX_AGENT_ITERATIONS,
+  SUB_AGENT_EXPLORE_MAX_ITERATIONS,
+  SUB_AGENT_ANALYZE_MAX_ITERATIONS,
+  SUB_AGENT_EXECUTE_MAX_ITERATIONS,
 } from '../constants.js'
+import type { AppSettings } from '@prisma/client'
+
+let _cache: AppSettings | null = null
+let _cacheTime = 0
+const CACHE_TTL_MS = 30_000
 
 export const settingsService = {
+  _invalidateCache() {
+    _cache = null
+    _cacheTime = 0
+  },
+
   async get() {
+    if (_cache && Date.now() - _cacheTime < CACHE_TTL_MS) return _cache
     const settings = await prisma.appSettings.findUnique({ where: { id: 'singleton' } })
-    if (settings) return settings
-    return prisma.appSettings.create({
+    if (settings) {
+      _cache = settings
+      _cacheTime = Date.now()
+      return settings
+    }
+    const created = await prisma.appSettings.create({
       data: {
         id: 'singleton',
         aiProvider: env.AI_PROVIDER,
         embeddingProvider: env.EMBEDDING_PROVIDER,
       },
     })
+    _cache = created
+    _cacheTime = Date.now()
+    return created
   },
 
   async getAIProvider(): Promise<string> {
@@ -128,6 +150,27 @@ export const settingsService = {
     )
   },
 
+  async getSubAgentExploreMaxIterations(): Promise<number> {
+    const s = await this.get()
+    return (
+      ((s as Record<string, unknown>).subAgentExploreMaxIterations as number) ?? SUB_AGENT_EXPLORE_MAX_ITERATIONS
+    )
+  },
+
+  async getSubAgentAnalyzeMaxIterations(): Promise<number> {
+    const s = await this.get()
+    return (
+      ((s as Record<string, unknown>).subAgentAnalyzeMaxIterations as number) ?? SUB_AGENT_ANALYZE_MAX_ITERATIONS
+    )
+  },
+
+  async getSubAgentExecuteMaxIterations(): Promise<number> {
+    const s = await this.get()
+    return (
+      ((s as Record<string, unknown>).subAgentExecuteMaxIterations as number) ?? SUB_AGENT_EXECUTE_MAX_ITERATIONS
+    )
+  },
+
   async getBrowserGridUrl(): Promise<string> {
     const envUrl = process.env.BROWSER_GRID_URL
     if (envUrl) return envUrl
@@ -176,22 +219,26 @@ export const settingsService = {
 
   async setApiKey(provider: string, plaintext: string) {
     const field = DB_KEY_FIELDS[provider]
-    if (!field) throw new Error(`Unknown provider: ${provider}`)
+    if (!field) throw new ConfigurationError(`Unknown provider: ${provider}`)
     await this.get() // ensure row exists
     const value = plaintext.trim() ? encrypt(plaintext.trim()) : null
-    return prisma.appSettings.update({
+    const result = await prisma.appSettings.update({
       where: { id: 'singleton' },
       data: { [field]: value },
     })
+    this._invalidateCache()
+    return result
   },
 
   async removeApiKey(provider: string) {
     const field = DB_KEY_FIELDS[provider]
     if (!field) throw new Error(`Unknown provider: ${provider}`)
-    return prisma.appSettings.update({
+    const result = await prisma.appSettings.update({
       where: { id: 'singleton' },
       data: { [field]: null },
     })
+    this._invalidateCache()
+    return result
   },
 
   async getAvailableProviders() {
@@ -242,19 +289,23 @@ export const settingsService = {
 
   async completeOnboarding() {
     await this.get() // ensure row exists
-    return prisma.appSettings.update({
+    const result = await prisma.appSettings.update({
       where: { id: 'singleton' },
       data: { onboardingComplete: true },
     })
+    this._invalidateCache()
+    return result
   },
 
   async setBrowserGridApiKey(plaintext: string) {
     await this.get()
     const value = plaintext.trim() ? encrypt(plaintext.trim()) : null
-    return prisma.appSettings.update({
+    const result = await prisma.appSettings.update({
       where: { id: 'singleton' },
       data: { browserGridApiKey: value },
     })
+    this._invalidateCache()
+    return result
   },
 
   async update(data: {
@@ -275,6 +326,9 @@ export const settingsService = {
     browserGridBrowser?: string
     browserModel?: string
     maxAgentIterations?: number
+    subAgentExploreMaxIterations?: number
+    subAgentAnalyzeMaxIterations?: number
+    subAgentExecuteMaxIterations?: number
     timezone?: string
   }) {
     const settings = await this.get()
@@ -282,14 +336,14 @@ export const settingsService = {
 
     // Lock embedding settings after onboarding
     if (settings.onboardingComplete && (data.embeddingProvider || data.embeddingModel)) {
-      throw new Error('Embedding model cannot be changed after initial setup')
+      throw new ValidationError('Embedding model cannot be changed after initial setup')
     }
 
     if (data.aiProvider && !available.llm.includes(data.aiProvider)) {
-      throw new Error(`AI provider "${data.aiProvider}" is not available (no API key)`)
+      throw new ValidationError(`AI provider "${data.aiProvider}" is not available (no API key)`)
     }
     if (data.embeddingProvider && !available.embedding.includes(data.embeddingProvider)) {
-      throw new Error(
+      throw new ValidationError(
         `Embedding provider "${data.embeddingProvider}" is not available (no API key)`,
       )
     }
@@ -335,17 +389,19 @@ export const settingsService = {
         data.contextLimitTokens < MIN_CONTEXT_LIMIT_TOKENS ||
         data.contextLimitTokens > MAX_CONTEXT_LIMIT_TOKENS
       ) {
-        throw new Error(
+        throw new ValidationError(
           `Context limit must be between ${MIN_CONTEXT_LIMIT_TOKENS.toLocaleString()} and ${MAX_CONTEXT_LIMIT_TOKENS.toLocaleString()} tokens`,
         )
       }
     }
 
     await this.get() // ensure row exists
-    return prisma.appSettings.update({
+    const result = await prisma.appSettings.update({
       where: { id: 'singleton' },
       data,
     })
+    this._invalidateCache()
+    return result
   },
 }
 

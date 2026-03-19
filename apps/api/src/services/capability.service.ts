@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma.js'
 import { Prisma } from '@prisma/client'
 import { BUILTIN_CAPABILITIES } from '../capabilities/builtin/index.js'
+import { ALWAYS_ON_CAPABILITY_SLUGS } from '../constants.js'
 import type { ToolDefinition, ConfigFieldDefinition } from '../capabilities/types.js'
 import type { LLMToolDefinition } from '../providers/llm.interface.js'
 import {
@@ -10,6 +11,7 @@ import {
   maskConfigFields,
   mergeWithExistingConfig,
 } from './config-validation.service.js'
+import { buildSystemPrompt as buildSystemPromptText } from './system-prompt-builder.js'
 
 export const capabilityService = {
   /**
@@ -79,26 +81,35 @@ export const capabilityService = {
       })
     }
 
-    // Auto-enable core capabilities that must always be on for every workspace
-    const alwaysEnabledSlugs = ['sub-agent-delegation']
+    // Auto-enable always-on capabilities for all existing workspaces
+    await this.ensureAlwaysOnCapabilities()
+  },
+
+  /**
+   * Ensure all always-on capabilities are enabled for every workspace.
+   * Creates missing WorkspaceCapability records so new core tools
+   * are active immediately without manual activation.
+   */
+  async ensureAlwaysOnCapabilities() {
     const workspaces = await prisma.workspace.findMany({ select: { id: true } })
-    const alwaysEnabledCaps = await prisma.capability.findMany({
-      where: { slug: { in: alwaysEnabledSlugs } },
+    if (!workspaces.length) return
+
+    const alwaysOnCaps = await prisma.capability.findMany({
+      where: { slug: { in: ALWAYS_ON_CAPABILITY_SLUGS } },
       select: { id: true },
     })
-    if (alwaysEnabledCaps.length && workspaces.length) {
-      await prisma.$transaction(
-        workspaces.flatMap((ws) =>
-          alwaysEnabledCaps.map((cap) =>
-            prisma.workspaceCapability.upsert({
-              where: { workspaceId_capabilityId: { workspaceId: ws.id, capabilityId: cap.id } },
-              create: { workspaceId: ws.id, capabilityId: cap.id, enabled: true },
-              update: { enabled: true },
-            }),
-          ),
-        ),
-      )
-    }
+    if (!alwaysOnCaps.length) return
+
+    await prisma.workspaceCapability.createMany({
+      data: workspaces.flatMap((ws) =>
+        alwaysOnCaps.map((cap) => ({
+          workspaceId: ws.id,
+          capabilityId: cap.id,
+          enabled: true,
+        })),
+      ),
+      skipDuplicates: true,
+    })
   },
 
   /**
@@ -251,6 +262,24 @@ export const capabilityService = {
   },
 
   /**
+   * Disable a capability by its slug (resolves to capabilityId internally).
+   */
+  async disableCapabilityBySlug(workspaceId: string, slug: string) {
+    const capability = await prisma.capability.findUnique({ where: { slug } })
+    if (!capability) return
+    return this.disableCapability(workspaceId, capability.id)
+  },
+
+  /**
+   * Remove a workspace capability override entirely.
+   */
+  async removeCapabilityOverride(workspaceId: string, capabilityId: string) {
+    return prisma.workspaceCapability.delete({
+      where: { workspaceId_capabilityId: { workspaceId, capabilityId } },
+    })
+  },
+
+  /**
    * Update config for a workspace capability.
    */
   async updateCapabilityConfig(
@@ -332,81 +361,7 @@ export const capabilityService = {
     capabilities: Array<{ systemPrompt: string; name: string }>,
     timezone?: string,
   ): string {
-    const now = new Date()
-    const tz = timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
-    const locationParts = tz.split('/')
-    const location =
-      locationParts.length >= 2 ? locationParts.slice(1).join(', ').replace(/_/g, ' ') : tz
-    const dateStr = now.toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      timeZone: tz,
-    })
-    const timeStr = now.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-      timeZone: tz,
-    })
-
-    const base = `You are a helpful AI assistant with access to tools.
-
-## Current Date & Time
-Today is ${dateStr}. Current time: ${timeStr} (${tz}). User's approximate location: ${location}. Use this for any date-relative queries and to adapt responses to the user's locale (language, currency, local context).
-
-## How to respond
-
-1. **Document search (search_documents):** Call this tool when the user asks about uploaded documents, references a document by name or title, or asks questions that might be answered by the workspace's indexed content. The document list below shows what's searchable. Do NOT use this for sandbox files, greetings, general conversation, or when the user is clearly asking you to use another tool.
-2. **Other tools (code execution, file ops, etc.):** Before calling any non-search tool, briefly tell the user what you are about to do and why (e.g. "I'll run a Python script to calculate that..."). Then call the tool.
-3. **Direct answers:** For greetings, casual conversation, or questions you can answer from general knowledge, answer directly without calling any tools.
-
-## Tool chaining
-
-You can combine multiple tools in a single task. All tools run in the same sandbox environment, so you can:
-- Use one tool's output as input for another (e.g., run an AWS command, then use Bash to format or filter the result with jq, grep, awk, etc.)
-- Run a command with one tool, then process or analyze the result with Python or Bash
-- Chain as many tools as needed to complete the task — each call builds on previous results
-
-When a task benefits from post-processing (formatting, filtering, aggregating), prefer chaining tools over returning raw output.
-
-## Parallel tool calls
-
-When you need to perform multiple INDEPENDENT operations (e.g., several web searches, multiple document lookups), request ALL of them in a single response by including multiple tool calls at once. This runs them in parallel and is much faster than calling them one at a time. Only call tools sequentially when one depends on another's output.
-
-Large tool outputs are automatically saved to files at /workspace/.outputs/.
-When you see a truncated output with a file path, use Bash to read or process the file (e.g., cat, jq, grep, awk) instead of asking the user to re-run the command.
-
-### Reading files safely
-Before reading a file with \`cat\`, always check its size first with \`ls -lh <file>\` or \`wc -c <file>\`.
-- **Small files (<5KB):** safe to \`cat\` directly.
-- **Medium files (5KB–50KB):** use \`head\`, \`tail\`, \`grep\`, \`jq\`, or \`awk\` to extract only what you need.
-- **Large files (>50KB):** NEVER cat the entire file. Use \`head -n 20\`, \`grep -c\` for counts, \`jq '.[] | .Key'\` for JSON, or \`wc -l\` for line counts. Process in chunks or filter first.
-
-### Data size rules (CRITICAL)
-- **Commands that embed more than 5KB of inline data WILL BE REJECTED and not executed.**
-- NEVER echo, hardcode, or re-paste large tool outputs into subsequent commands.
-- When a previous tool output is saved to /workspace/.outputs/, reference that file path directly.
-- For \`generate_file\`: use the \`sourcePath\` parameter to reference a sandbox file instead of passing large content directly.
-- For \`run_bash\`/\`run_python\`: write a script that reads from the file, do NOT embed data in the script.
-- Example: use \`cat /workspace/.outputs/abc.txt | jq '.[] | .Key'\` instead of embedding data in a command.
-
-## Error handling
-
-If a tool call returns an error:
-1. Report the error clearly to the user in natural language.
-2. Do NOT retry with workarounds — no sudo, no chmod, no alternative paths, no rewriting the same command.
-3. Explain what failed and suggest what the user can do.
-4. If you get "Permission denied", tell the user which path was not writable.`
-
-    if (!capabilities.length) return base
-
-    const capabilityPrompts = capabilities
-      .map((c) => `## ${c.name}\n${c.systemPrompt}`)
-      .join('\n\n')
-
-    return `${base}\n\n# Available Capabilities\n\n${capabilityPrompts}`
+    return buildSystemPromptText(capabilities, timezone)
   },
 
   /**

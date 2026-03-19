@@ -2,16 +2,27 @@ export type SSEEvent =
   | { event: 'thinking'; data: { message: string } }
   | {
       event: 'tool_start'
-      data: { toolName: string; capabilitySlug: string; input: Record<string, unknown> }
+      data: {
+        toolCallId?: string
+        toolName: string
+        capabilitySlug: string
+        input: Record<string, unknown>
+        subAgent?: string
+        subAgentId?: string
+      }
     }
   | {
       event: 'tool_result'
       data: {
+        toolCallId?: string
         toolName: string
         output?: string
         error?: string
         exitCode?: number
         durationMs: number
+        screenshot?: string
+        subAgent?: string
+        subAgentId?: string
       }
     }
   | {
@@ -35,8 +46,11 @@ export type SSEEvent =
       event: 'compressing'
       data: { status: 'start' | 'done' | 'skipped'; summarizedCount?: number; keptCount?: number }
     }
-  | { event: 'sub_agent_start'; data: { role: string; task: string } }
-  | { event: 'sub_agent_done'; data: { role: string; summary: string } }
+  | { event: 'sub_agent_start'; data: { subAgentId: string; role: string; task: string } }
+  | {
+      event: 'sub_agent_done'
+      data: { subAgentId: string; role: string; summary: string }
+    }
 
 export type SSEEmit = (event: SSEEvent['event'], data: Record<string, unknown>) => void
 

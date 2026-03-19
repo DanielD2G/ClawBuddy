@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useLayoutEffect, type ReactNode } from 'react'
 import type { Workspace } from '@/hooks/use-workspaces'
 import { apiClient } from '@/lib/api-client'
 import { hexToOklch } from '@/lib/color'
@@ -21,7 +21,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [activeWorkspace, setActiveWorkspaceState] = useState<Workspace | null>(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY)
-      return stored ? JSON.parse(stored) : null
+      if (stored) {
+        const ws: Workspace = JSON.parse(stored)
+        // Apply brand color synchronously to avoid flash of default color
+        if (ws.color) {
+          document.documentElement.style.setProperty('--brand', hexToOklch(ws.color))
+        }
+        return ws
+      }
+      return null
     } catch {
       return null
     }
@@ -40,28 +48,34 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (activeWorkspace) return
 
+    let stale = false
     apiClient.get<Workspace[]>('/workspaces').then((workspaces) => {
-      if (workspaces && workspaces.length > 0 && !activeWorkspace) {
+      if (!stale && workspaces && workspaces.length > 0) {
         setActiveWorkspace(workspaces[0])
       }
-    }).catch(() => {
-      // Ignore — setup may not be complete yet
+    }).catch((err) => {
+      console.warn('[WorkspaceProvider] Failed to auto-select workspace:', err)
     })
+    return () => { stale = true }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync workspace data when it changes externally
   useEffect(() => {
     const handler = (e: StorageEvent) => {
       if (e.key === STORAGE_KEY) {
-        setActiveWorkspaceState(e.newValue ? JSON.parse(e.newValue) : null)
+        try {
+          setActiveWorkspaceState(e.newValue ? JSON.parse(e.newValue) : null)
+        } catch {
+          setActiveWorkspaceState(null)
+        }
       }
     }
     window.addEventListener('storage', handler)
     return () => window.removeEventListener('storage', handler)
   }, [])
 
-  // Sync app accent color with active workspace color
-  useEffect(() => {
+  // Sync app accent color with active workspace color (before paint)
+  useLayoutEffect(() => {
     const root = document.documentElement
     if (activeWorkspace?.color) {
       root.style.setProperty('--brand', hexToOklch(activeWorkspace.color))

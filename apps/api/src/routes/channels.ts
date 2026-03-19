@@ -4,6 +4,7 @@ import { channelService } from '../services/channel.service.js'
 import { telegramBotManager } from '../channels/telegram/telegram-bot-manager.js'
 import { decrypt } from '../services/crypto.service.js'
 import type { TelegramChannelConfig } from '../channels/types.js'
+import { ok, fail } from '../lib/responses.js'
 
 const app = new Hono()
 
@@ -11,29 +12,27 @@ const app = new Hono()
 app.get('/', async (c) => {
   const workspaceId = c.req.query('workspaceId')
   const channels = await channelService.list(workspaceId)
-  return c.json({
-    success: true,
-    data: channels.map((ch) => ({
+  return ok(
+    c,
+    channels.map((ch) => ({
       ...ch,
       running: ch.type === 'telegram' ? telegramBotManager.isRunning(ch.id) : false,
     })),
-  })
+  )
 })
 
 // Get single channel
 app.get('/:id', async (c) => {
   const { id } = c.req.param()
-  const channel = await channelService.getByWorkspaceAndType(id, 'telegram')
-    ?? await channelService.list().then((chs) => chs.find((ch) => ch.id === id))
+  const channel =
+    (await channelService.getByWorkspaceAndType(id, 'telegram')) ??
+    (await channelService.list().then((chs) => chs.find((ch) => ch.id === id)))
   if (!channel) {
-    return c.json({ success: false, error: 'Channel not found' }, 404)
+    return fail(c, 'Channel not found', 404)
   }
-  return c.json({
-    success: true,
-    data: {
-      ...channel,
-      running: channel.type === 'telegram' ? telegramBotManager.isRunning(channel.id) : false,
-    },
+  return ok(c, {
+    ...channel,
+    running: channel.type === 'telegram' ? telegramBotManager.isRunning(channel.id) : false,
   })
 })
 
@@ -48,11 +47,11 @@ app.post('/', async (c) => {
   }
 
   if (!workspaceId || !type || !name || !config?.botToken) {
-    return c.json({ success: false, error: 'workspaceId, type, name, and config.botToken are required' }, 400)
+    return fail(c, 'workspaceId, type, name, and config.botToken are required')
   }
 
   const channel = await channelService.create({ workspaceId, type, name, config })
-  return c.json({ success: true, data: channel }, 201)
+  return ok(c, channel, 201)
 })
 
 // Update channel
@@ -60,7 +59,7 @@ app.patch('/:id', async (c) => {
   const { id } = c.req.param()
   const body = await c.req.json()
   const channel = await channelService.update(id, body)
-  return c.json({ success: true, data: channel })
+  return ok(c, channel)
 })
 
 // Delete channel
@@ -103,20 +102,14 @@ app.post('/:id/test', async (c) => {
     const config = channel.config as TelegramChannelConfig
     const bot = new Bot(config.botToken)
     const me = await bot.api.getMe()
-    return c.json({
-      success: true,
-      data: {
-        username: me.username,
-        firstName: me.first_name,
-        canJoinGroups: me.can_join_groups,
-        canReadAllGroupMessages: me.can_read_all_group_messages,
-      },
+    return ok(c, {
+      username: me.username,
+      firstName: me.first_name,
+      canJoinGroups: me.can_join_groups,
+      canReadAllGroupMessages: me.can_read_all_group_messages,
     })
   } catch (err) {
-    return c.json({
-      success: false,
-      error: err instanceof Error ? err.message : 'Failed to connect to Telegram',
-    }, 400)
+    return fail(c, err instanceof Error ? err.message : 'Failed to connect to Telegram')
   }
 })
 
@@ -125,23 +118,17 @@ app.post('/test-token', async (c) => {
   const body = await c.req.json()
   const { botToken } = body as { botToken: string }
   if (!botToken) {
-    return c.json({ success: false, error: 'botToken is required' }, 400)
+    return fail(c, 'botToken is required')
   }
   try {
     const bot = new Bot(botToken)
     const me = await bot.api.getMe()
-    return c.json({
-      success: true,
-      data: {
-        username: me.username,
-        firstName: me.first_name,
-      },
+    return ok(c, {
+      username: me.username,
+      firstName: me.first_name,
     })
   } catch (err) {
-    return c.json({
-      success: false,
-      error: err instanceof Error ? err.message : 'Invalid bot token',
-    }, 400)
+    return fail(c, err instanceof Error ? err.message : 'Invalid bot token')
   }
 })
 

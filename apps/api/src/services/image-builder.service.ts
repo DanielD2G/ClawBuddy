@@ -4,10 +4,9 @@ import { readFileSync } from 'fs'
 import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { prisma } from '../lib/prisma.js'
-import { IMAGE_TAG_HASH_LENGTH } from '../constants.js'
+import { IMAGE_TAG_HASH_LENGTH, SANDBOX_BASE_IMAGE } from '../constants.js'
 
 const docker = new Docker()
-const BASE_IMAGE = 'agentbuddy-sandbox-base'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -23,7 +22,7 @@ export const imageBuilderService = {
    */
   async ensureBaseImage(onLog?: (line: string) => void): Promise<void> {
     try {
-      await docker.getImage(BASE_IMAGE).inspect()
+      await docker.getImage(SANDBOX_BASE_IMAGE).inspect()
       return // already exists
     } catch {
       // Image doesn't exist — build it
@@ -33,7 +32,7 @@ export const imageBuilderService = {
 
     const dockerfilePath = resolve(__dirname, '../../sandbox-images/base/Dockerfile')
     const dockerfile = readFileSync(dockerfilePath, 'utf-8')
-    const result = await this.buildFromDockerfile(dockerfile, BASE_IMAGE, onLog)
+    const result = await this.buildFromDockerfile(dockerfile, SANDBOX_BASE_IMAGE, onLog)
 
     if (!result.success) {
       throw new Error(`Failed to build base sandbox image: ${result.logs}`)
@@ -54,7 +53,7 @@ export const imageBuilderService = {
 
     const testTag = `agentbuddy-skill-test-${Date.now()}`
     const dockerfile = [
-      `FROM ${BASE_IMAGE}`,
+      `FROM ${SANDBOX_BASE_IMAGE}`,
       'USER root',
       `RUN ${installationScript}`,
       'USER sandbox',
@@ -100,7 +99,7 @@ export const imageBuilderService = {
 
     // If no skills have installation scripts, use base image
     if (!capabilities.length) {
-      return BASE_IMAGE
+      return SANDBOX_BASE_IMAGE
     }
 
     // Generate deterministic tag from installation scripts
@@ -123,7 +122,7 @@ export const imageBuilderService = {
     }
 
     // Generate Dockerfile
-    const dockerfileLines = [`FROM ${BASE_IMAGE}`, 'USER root', '']
+    const dockerfileLines = [`FROM ${SANDBOX_BASE_IMAGE}`, 'USER root', '']
     for (const cap of capabilities) {
       if (cap.installationScript) {
         dockerfileLines.push(`# Skill: ${cap.slug}`)
@@ -140,7 +139,7 @@ export const imageBuilderService = {
     if (!result.success) {
       console.error(`[ImageBuilder] Failed to build skill image:`, result.logs)
       // Fall back to base image
-      return BASE_IMAGE
+      return SANDBOX_BASE_IMAGE
     }
 
     return tag

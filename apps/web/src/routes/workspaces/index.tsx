@@ -79,7 +79,7 @@ export function WorkspacesPage() {
                   ))}
                 </div>
               </div>
-              <Button type="submit" disabled={createWorkspace.isPending} className="bg-brand text-brand-foreground hover:bg-brand/90">
+              <Button type="submit" disabled={!name.trim() || createWorkspace.isPending} className="bg-brand text-brand-foreground hover:bg-brand/90">
                 {createWorkspace.isPending ? <Spinner data-icon="inline-start" /> : null}
                 Create
               </Button>

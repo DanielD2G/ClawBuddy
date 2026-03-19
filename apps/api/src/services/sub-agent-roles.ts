@@ -1,4 +1,9 @@
 import type { SubAgentRole, SubAgentRoleConfig } from './sub-agent.types.js'
+import {
+  SUB_AGENT_EXPLORE_MAX_ITERATIONS,
+  SUB_AGENT_ANALYZE_MAX_ITERATIONS,
+  SUB_AGENT_EXECUTE_MAX_ITERATIONS,
+} from '../constants.js'
 
 export const SUB_AGENT_ROLES: Record<SubAgentRole, SubAgentRoleConfig> = {
   explore: {
@@ -6,7 +11,7 @@ export const SUB_AGENT_ROLES: Record<SubAgentRole, SubAgentRoleConfig> = {
     description:
       'Fast, read-only agent for information gathering: searching documents, reading files, web searches, and browsing. Uses a cheaper/faster model. Cannot modify files or run destructive commands.',
     modelTier: 'explore',
-    maxIterations: 15,
+    maxIterations: SUB_AGENT_EXPLORE_MAX_ITERATIONS,
     readOnly: true,
     allowedTools: [
       'search_documents',
@@ -21,7 +26,7 @@ export const SUB_AGENT_ROLES: Record<SubAgentRole, SubAgentRoleConfig> = {
     description:
       'Read-only agent for data analysis and summarization. Can run Python code in a sandboxed environment and search documents. Uses a compact model.',
     modelTier: 'light',
-    maxIterations: 10,
+    maxIterations: SUB_AGENT_ANALYZE_MAX_ITERATIONS,
     readOnly: true,
     allowedTools: ['search_documents', 'run_bash', 'run_python'],
   },
@@ -30,7 +35,7 @@ export const SUB_AGENT_ROLES: Record<SubAgentRole, SubAgentRoleConfig> = {
     description:
       'Full-capability agent for complex multi-step tasks. Has access to all workspace tools including bash, file writing, and code execution. Uses the primary model. Use for tasks that require modifications or multi-step workflows.',
     modelTier: 'execute',
-    maxIterations: 25,
+    maxIterations: SUB_AGENT_EXECUTE_MAX_ITERATIONS,
     readOnly: false,
     allowedTools: 'all',
     deniedTools: ['delegate_task'],

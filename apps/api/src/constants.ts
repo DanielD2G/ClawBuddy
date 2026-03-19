@@ -25,6 +25,8 @@ export const SANDBOX_MEMORY_BYTES = 512 * 1024 * 1024 // 512MB
 export const SANDBOX_NANOCPUS = 1_000_000_000 // 1 CPU
 export const SANDBOX_PID_LIMIT = 100
 export const SANDBOX_TIMEOUT_EXIT_CODE = 124
+export const SANDBOX_BASE_IMAGE = 'agentbuddy-sandbox-base'
+export const SANDBOX_FALLBACK_IMAGE = 'ubuntu:22.04'
 
 // ── Truncation ────────────────────────────────────
 export const OUTPUT_TRUNCATE_THRESHOLD = 20_000
@@ -95,23 +97,32 @@ export const ALWAYS_ON_CAPABILITY_SLUGS = [
   'agent-memory',
   'bash',
   'python',
+  'web-fetch',
   'sub-agent-delegation',
 ]
 
 // ── Sub-agent delegation ────────────────────────
-export const SUB_AGENT_EXPLORE_MAX_ITERATIONS = 15
-export const SUB_AGENT_ANALYZE_MAX_ITERATIONS = 10
-export const SUB_AGENT_EXECUTE_MAX_ITERATIONS = 25
+export const SUB_AGENT_EXPLORE_MAX_ITERATIONS = 50
+export const SUB_AGENT_ANALYZE_MAX_ITERATIONS = 25
+export const SUB_AGENT_EXECUTE_MAX_ITERATIONS = 50
 
 /** Tools the main agent cannot use directly — must delegate to a sub-agent */
 export const DELEGATION_ONLY_TOOLS = new Set(['run_browser_script'])
 
+// ── Always-allowed tools (no approval needed) ───
+export const ALWAYS_ALLOWED_TOOLS = new Set([
+  'search_documents', 'save_document', 'generate_file',
+  'create_cron', 'list_crons', 'delete_cron', 'web_search', 'web_fetch',
+])
+
 // ── Parallel tool execution ─────────────────────
 export const PARALLEL_SAFE_TOOLS = new Set([
   'web_search',
+  'web_fetch',
   'search_documents',
   'discover_tools',
   'list_crons',
+  'delegate_task',
 ])
 
 // ── API key masking ─────────────────────────────

@@ -11,14 +11,16 @@ export const subAgentDelegation: CapabilityDefinition = {
     {
       name: 'delegate_task',
       description: `Delegate a task to a focused sub-agent. Available roles:
-- explore: Fast read-only agent for searching, reading files, web browsing (cheap model, max 15 iterations)
-- analyze: Read-only agent for data analysis with Python and document search (compact model, max 10 iterations)
-- execute: Full-capability agent for complex multi-step tasks (primary model, max 25 iterations)
+- explore: Fast read-only agent for searching, reading files, web browsing (cheap model, default 50 iterations, configurable)
+- analyze: Read-only agent for data analysis with Python and document search (compact model, default 25 iterations, configurable)
+- execute: Full-capability agent for complex multi-step tasks (primary model, default 50 iterations, configurable)
 
 The sub-agent runs in an isolated context and returns its findings. Use this when:
 1. A task can be cleanly separated (e.g., "search for X" while you work on Y)
 2. A task needs focused attention without polluting the main conversation context
-3. You want to use a cheaper model for simple information gathering`,
+3. You want to use a cheaper model for simple information gathering
+
+You can delegate multiple tasks in parallel by including several delegate_task calls in a single response. They will run concurrently.`,
       parameters: {
         type: 'object',
         properties: {
@@ -53,6 +55,9 @@ Some tools are only available through sub-agent delegation. You MUST use delegat
 - Complex multi-step file operations → delegate_task(role='execute', task='...')
 
 ### How to delegate effectively
-Provide a clear, self-contained task description. Include the full URL and what information to extract. The sub-agent has no access to the current conversation — pass all relevant context in the task and context parameters.`,
+Provide a clear, self-contained task description. Include the full URL and what information to extract. The sub-agent has no access to the current conversation — pass all relevant context in the task and context parameters.
+
+### Parallel delegation
+When a task involves multiple independent sub-tasks (e.g., searching 3 different products, browsing 3 different URLs), delegate ALL of them in a single response with multiple delegate_task calls. They execute concurrently — each sub-agent gets its own isolated browser session — and complete much faster than sequential delegation.`,
   sandbox: {},
 }

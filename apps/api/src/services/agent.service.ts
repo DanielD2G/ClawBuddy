@@ -6,11 +6,8 @@ import type {
   ToolCall,
   TokenUsage,
   MessageContent,
-  ContentBlock,
   LLMToolDefinition,
-  LLMResponse,
 } from '../providers/llm.interface.js'
-import { getTextContent } from '../providers/llm.interface.js'
 import type { SSEEmit } from '../lib/sse.js'
 import { capabilityService } from './capability.service.js'
 import { toolExecutorService, NON_SANDBOX_TOOLS } from './tool-executor.service.js'
@@ -19,85 +16,41 @@ import { permissionService } from './permission.service.js'
 import { compressContext } from './context-compression.service.js'
 import { settingsService } from './settings.service.js'
 import {
-  DEFAULT_MAX_AGENT_ITERATIONS,
-  OUTPUT_TRUNCATE_THRESHOLD,
   TOOL_ARG_SIZE_LIMIT,
-  MAX_SCREENSHOT_SSE_SIZE,
   LARGE_TOOL_ARG_THRESHOLD,
   MAX_AGENT_DOCUMENTS,
   TOOL_DISCOVERY_THRESHOLD,
-  TOOL_DISCOVERY_MAX_CALLS,
   ALWAYS_ON_CAPABILITY_SLUGS,
   PREFLIGHT_DISCOVERY_SCORE_THRESHOLD,
   DELEGATION_ONLY_TOOLS,
-  TOOL_RESULT_PROTECTION_WINDOW,
-  MIN_PRUNE_SIZE,
-  TOKEN_ESTIMATION_DIVISOR,
   PARALLEL_SAFE_TOOLS,
 } from '../constants.js'
 import { toolDiscoveryService } from './tool-discovery.service.js'
 import type { ToolDefinition } from '../capabilities/types.js'
 import { stripNullBytes } from '../lib/sanitize.js'
-import { extractScreenshotBase64 } from '../lib/screenshot.js'
-import { decrypt, encrypt } from './crypto.service.js'
 import type { SecretInventory } from './secret-redaction.service.js'
 import { secretRedactionService } from './secret-redaction.service.js'
 import { buildConversationMessages } from './agent-message-builder.js'
+import {
+  buildToolResultContent,
+  maybeTruncateOutput,
+  prepareToolResultForSSE,
+  pruneOldToolResults,
+} from './agent-tool-results.service.js'
+import { createSessionLogger } from './agent-debug.service.js'
+import { buildCapabilityBlocks, buildPromptSection } from './system-prompt-builder.js'
+import { SUB_AGENT_ROLES } from './sub-agent-roles.js'
+import type { SubAgentRole } from './sub-agent.types.js'
+import { filterTools } from './sub-agent.service.js'
+import type { AgentResult, AgentState } from './agent-state.service.js'
+import {
+  serializeEncryptedAgentState,
+  deserializeAgentState,
+  buildPublicAgentState,
+} from './agent-state.service.js'
 
 /** Tools exempt from the argument size guard (they have proper alternatives like sourcePath) */
 const SIZE_GUARD_EXEMPT = new Set(['generate_file', 'save_document', 'search_documents'])
-
-/** Models known to support vision/multimodal input */
-const VISION_MODELS = new Set([
-  'claude-sonnet-4-6',
-  'claude-opus-4-6',
-  'claude-sonnet-4-20250514',
-  'claude-opus-4-0-20250514',
-  'claude-sonnet-4-5-20250929',
-  'claude-opus-4-5-20251101',
-  'claude-haiku-4-5-20251001',
-  'gpt-5.4',
-  'gpt-5.4-pro',
-  'gpt-5',
-  'gpt-5-mini',
-  'gpt-5-nano',
-  'gpt-4o',
-  'gpt-4o-mini',
-  'gpt-4-turbo',
-  'gpt-4.1',
-  'gpt-4.1-mini',
-  'gpt-4.1-nano',
-  'gemini-2.5-flash',
-  'gemini-2.5-flash-lite',
-  'gemini-2.5-pro',
-  'gemini-3-flash-preview',
-  'gemini-3.1-pro-preview',
-  'gemini-3.1-flash-lite-preview',
-])
-
-/**
- * Build a multimodal tool result message if the output contains a base64 screenshot.
- * Returns ContentBlock[] if screenshot found and model supports vision, otherwise returns the text string.
- */
-function buildToolResultContent(output: string, modelId: string): MessageContent {
-  const { screenshotB64, description } = extractScreenshotBase64(output)
-
-  if (screenshotB64) {
-    if (VISION_MODELS.has(modelId)) {
-      const blocks: ContentBlock[] = []
-      if (description) {
-        blocks.push({ type: 'text', text: String(description) })
-      }
-      blocks.push({
-        type: 'image',
-        source: { type: 'base64', mediaType: 'image/jpeg', data: screenshotB64 },
-      })
-      return blocks
-    }
-    return description ?? 'Screenshot captured but the current model does not support vision.'
-  }
-  return output
-}
 
 /**
  * Check if a tool call's arguments exceed the size limit.
@@ -121,121 +74,6 @@ export function checkToolArgSize(toolCall: {
     `3. For generate_file, use sourcePath to reference the sandbox file\n\n` +
     `Command was NOT executed. Rewrite to reference files.`
   )
-}
-
-/**
- * If output exceeds threshold, save it to a file in the sandbox and return a truncated version.
- */
-async function maybeTruncateOutput(
-  output: string,
-  toolCallId: string,
-  workspaceId: string,
-  linuxUser: string,
-): Promise<string> {
-  if (output.length <= OUTPUT_TRUNCATE_THRESHOLD) return output
-
-  const filename = `/workspace/.outputs/${toolCallId}.txt`
-  try {
-    // Write the full output to a file in the sandbox using base64 to avoid quoting issues
-    const b64 = Buffer.from(output).toString('base64')
-    await sandboxService.execInWorkspace(
-      workspaceId,
-      `echo '${b64}' | base64 -d > ${filename}`,
-      linuxUser,
-      { timeout: 10 },
-    )
-  } catch {
-    // If we can't write the file, return the full output
-    return output
-  }
-
-  const headSize = Math.floor(OUTPUT_TRUNCATE_THRESHOLD * 0.6)
-  const tailSize = OUTPUT_TRUNCATE_THRESHOLD - headSize
-  const head = output.slice(0, headSize)
-  const tail = output.slice(-tailSize)
-  const preview = `${head}\n\n... [TRUNCATED — ${output.length - headSize - tailSize} chars omitted] ...\n\n${tail}`
-  return `${preview}\n\n⚠️ OUTPUT TRUNCATED (${output.length} chars) — full result saved to ${filename}\nIMPORTANT: Do NOT re-run this command. Use \`cat ${filename}\` or pipe through jq/grep/awk to process the saved file.\nDo NOT embed or echo the data — reference the file path directly.`
-}
-
-/** Max base64 size for screenshots sent via SSE (~500KB base64 ≈ ~375KB image) */
-
-/**
- * Prepare tool result for SSE emission — strips large base64 screenshots
- * from the output field and sends them as a separate `screenshot` field.
- */
-function prepareToolResultForSSE(
-  toolName: string,
-  result: { output?: string },
-): { output?: string; screenshot?: string } {
-  if (toolName !== 'run_browser_script' || !result.output) {
-    return { output: result.output }
-  }
-
-  const { screenshotB64, description } = extractScreenshotBase64(result.output)
-
-  if (screenshotB64) {
-    if (screenshotB64.length > MAX_SCREENSHOT_SSE_SIZE) {
-      return { output: description || 'Screenshot captured (too large to display)' }
-    }
-    const desc = description || 'Screenshot captured'
-    return {
-      output: typeof desc === 'string' ? desc : 'Screenshot captured',
-      screenshot: `data:image/jpeg;base64,${screenshotB64}`,
-    }
-  }
-
-  return { output: result.output }
-}
-
-/**
- * Prune old tool results from the messages array to reduce context size.
- * Protects the most recent tool outputs (within TOOL_RESULT_PROTECTION_WINDOW tokens)
- * and replaces older ones with placeholders.
- */
-function pruneOldToolResults(messages: ChatMessage[], iteration: number): number {
-  if (iteration < 3) return 0
-
-  // Build a set of toolCallIds that belong to delegate_task calls (sub-agent results)
-  // These should never be pruned since re-running a sub-agent is expensive
-  const delegateTaskCallIds = new Set<string>()
-  for (const msg of messages) {
-    if (msg.role === 'assistant' && msg.toolCalls) {
-      for (const tc of msg.toolCalls) {
-        if (tc.name === 'delegate_task') delegateTaskCallIds.add(tc.id)
-      }
-    }
-  }
-
-  let recentToolTokens = 0
-  let pruned = 0
-  let foundBoundary = false
-
-  // Walk backward to find the protection boundary
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i]
-    if (msg.role !== 'tool') continue
-    const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
-    const tokens = Math.ceil(content.length / TOKEN_ESTIMATION_DIVISOR)
-
-    if (!foundBoundary) {
-      recentToolTokens += tokens
-      if (recentToolTokens > TOOL_RESULT_PROTECTION_WINDOW) {
-        foundBoundary = true
-      }
-      continue
-    }
-
-    // Never prune sub-agent results — re-running delegation is expensive
-    if (msg.toolCallId && delegateTaskCallIds.has(msg.toolCallId)) continue
-
-    // Beyond protection window — prune if large enough
-    if (content.length <= MIN_PRUNE_SIZE) continue
-    ;(msg as { content: string }).content =
-      `[Tool result cleared — was ${content.length} chars. Re-run the tool if needed.]`
-    pruned++
-  }
-
-  return pruned
 }
 
 export async function recordTokenUsage(
@@ -269,164 +107,6 @@ export async function recordTokenUsage(
   }
 }
 
-const DEBUG = process.env.DEBUG_AGENT === '1' || process.env.DEBUG === '1'
-
-// ── Session-scoped debug file logger ────────────────────────────
-import { mkdirSync, appendFileSync } from 'fs'
-import { join } from 'path'
-
-const DEBUG_LOG_DIR = join(process.cwd(), 'logs', 'agent')
-
-/** Ensure the logs directory exists (created once at startup) */
-let logDirReady = false
-function ensureLogDir() {
-  if (logDirReady) return
-  try {
-    mkdirSync(DEBUG_LOG_DIR, { recursive: true })
-    logDirReady = true
-  } catch {
-    // ignore — logging is best-effort
-  }
-}
-
-/**
- * Per-session debug logger. Keeps log file path and inventory as instance state
- * to avoid module-level mutable globals (which race across concurrent requests).
- */
-interface SessionLogger {
-  debugLog(label: string, data?: unknown): void
-  logLLMRequest(messages: ChatMessage[], tools: LLMToolDefinition[], iteration: number): void
-  logLLMResponse(response: LLMResponse, durationMs: number, iteration: number): void
-  logToolResult(
-    toolName: string,
-    result: { output?: string; error?: string; exitCode?: number; durationMs: number },
-  ): void
-}
-
-function createSessionLogger(sessionId: string, inventory: SecretInventory): SessionLogger {
-  let logFile: string | null = null
-  if (DEBUG) {
-    ensureLogDir()
-    const dateStr = new Date().toISOString().slice(0, 10)
-    logFile = join(DEBUG_LOG_DIR, `${dateStr}_${sessionId}.log`)
-  }
-
-  function redact<T>(value: T): T {
-    return secretRedactionService.redactForPublicStorage(value as never, inventory) as T
-  }
-
-  function writeLine(line: string) {
-    console.debug(line)
-    if (logFile) {
-      try {
-        appendFileSync(logFile, line + '\n')
-      } catch {
-        /* ignore */
-      }
-    }
-  }
-
-  function writeBlock(lines: string[]) {
-    if (logFile) {
-      try {
-        appendFileSync(logFile, lines.join('\n') + '\n')
-      } catch {
-        /* ignore */
-      }
-    }
-  }
-
-  const logger: SessionLogger = {
-    debugLog(label, data) {
-      if (!DEBUG) return
-      const ts = new Date().toISOString().slice(11, 23)
-      const safeData = data !== undefined ? redact(data) : undefined
-      const dataStr =
-        data !== undefined
-          ? typeof safeData === 'string'
-            ? safeData
-            : JSON.stringify(safeData, null, 2)
-          : ''
-      writeLine(dataStr ? `[Agent ${ts}] ${label} ${dataStr}` : `[Agent ${ts}] ${label}`)
-    },
-
-    logLLMRequest(messages, tools, iteration) {
-      if (!DEBUG || !logFile) return
-      const safeMessages = redact(messages)
-      const safeTools = redact(tools)
-      const separator = `\n${'─'.repeat(80)}\n`
-      writeBlock([
-        separator,
-        `>>> LLM REQUEST (iteration ${iteration})`,
-        `>>> ${safeMessages.length} messages, ${safeTools.length} tools`,
-        separator,
-        '>>> SYSTEM PROMPT:',
-        getTextContent(safeMessages[0]?.content ?? '').slice(0, 5000),
-        separator,
-        '>>> TOOLS:',
-        safeTools.map((t) => `  - ${t.name}: ${t.description.slice(0, 120)}`).join('\n'),
-        separator,
-        '>>> MESSAGES (last 5):',
-        ...safeMessages.slice(-5).map((m) => {
-          const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
-          const preview = content.slice(0, 1000)
-          const toolCallsSummary =
-            m.toolCalls
-              ?.map(
-                (tc) =>
-                  `    [tool_call: ${tc.name}(${JSON.stringify(tc.arguments).slice(0, 200)})]`,
-              )
-              .join('\n') ?? ''
-          return `  [${m.role}${m.toolCallId ? ` toolCallId=${m.toolCallId}` : ''}] ${preview}${content.length > 1000 ? `... (${content.length} chars)` : ''}${toolCallsSummary ? '\n' + toolCallsSummary : ''}`
-        }),
-        separator,
-      ])
-    },
-
-    logLLMResponse(response, durationMs, iteration) {
-      if (!DEBUG || !logFile) return
-      const safeResponse = redact(response)
-      const separator = `\n${'─'.repeat(80)}\n`
-      writeBlock([
-        separator,
-        `<<< LLM RESPONSE (iteration ${iteration}, ${durationMs}ms)`,
-        `<<< finishReason: ${safeResponse.finishReason}`,
-        `<<< usage: ${safeResponse.usage ? `in=${safeResponse.usage.inputTokens} out=${safeResponse.usage.outputTokens} total=${safeResponse.usage.totalTokens}` : 'n/a'}`,
-        separator,
-        '<<< CONTENT:',
-        safeResponse.content || '(empty)',
-        ...(safeResponse.toolCalls?.length
-          ? [
-              separator,
-              '<<< TOOL CALLS:',
-              ...safeResponse.toolCalls.map(
-                (tc) => `  - ${tc.name}(${JSON.stringify(tc.arguments, null, 2)})`,
-              ),
-            ]
-          : []),
-        separator,
-      ])
-    },
-
-    logToolResult(toolName, result) {
-      if (!DEBUG || !logFile) return
-      const safeResult = redact(result)
-      writeBlock(
-        [
-          `  ┌── TOOL RESULT: ${toolName} (${safeResult.durationMs}ms, exit=${safeResult.exitCode ?? 'n/a'})`,
-          safeResult.error ? `  │ ERROR: ${safeResult.error}` : '',
-          `  │ OUTPUT (${safeResult.output?.length ?? 0} chars):`,
-          `  │ ${(safeResult.output ?? '').slice(0, 2000)}${(safeResult.output?.length ?? 0) > 2000 ? `\n  │ ... (truncated)` : ''}`,
-          `  └──`,
-        ].filter(Boolean),
-      )
-    },
-  }
-
-  logger.debugLog('═══ Session log initialized ═══')
-  return logger
-}
-
 function redactAssistantToolCalls(
   toolCalls: ToolCall[] | undefined,
   inventory: SecretInventory,
@@ -435,74 +115,6 @@ function redactAssistantToolCalls(
     ...toolCall,
     arguments: secretRedactionService.redactForPublicStorage(toolCall.arguments, inventory),
   }))
-}
-
-function buildPublicAgentState(state: AgentState, inventory: SecretInventory) {
-  return {
-    iteration: state.iteration,
-    linuxUser: state.linuxUser ?? null,
-    workspaceId: state.workspaceId,
-    sessionId: state.sessionId,
-    pendingToolCalls: state.pendingToolCalls.map((toolCall) => ({
-      id: toolCall.id,
-      name: toolCall.name,
-      arguments: secretRedactionService.redactForPublicStorage(toolCall.arguments, inventory),
-    })),
-  }
-}
-
-function serializeEncryptedAgentState(state: AgentState): string {
-  return encrypt(JSON.stringify(state))
-}
-
-function deserializeAgentState(session: {
-  agentState: Prisma.JsonValue | null
-  agentStateEncrypted?: string | null
-}): AgentState | null {
-  if (session.agentStateEncrypted) {
-    try {
-      return JSON.parse(decrypt(session.agentStateEncrypted)) as AgentState
-    } catch {
-      // Fall through to legacy plain JSON state below.
-    }
-  }
-  return session.agentState as unknown as AgentState | null
-}
-
-interface AgentResult {
-  content: string
-  toolExecutions: Array<{
-    toolName: string
-    capabilitySlug: string
-    input: Record<string, unknown>
-    output?: string
-    error?: string
-    exitCode?: number
-    durationMs: number
-    subAgentExecutionIds?: string[]
-  }>
-  sources?: Array<{
-    documentId: string
-    documentTitle: string
-    chunkId: string
-    chunkIndex: number
-  }>
-  messageId?: string
-  /** ID of the last ChatMessage saved during the agent loop */
-  lastMessageId?: string
-}
-
-interface AgentState {
-  messages: ChatMessage[]
-  iteration: number
-  pendingToolCalls: ToolCall[]
-  completedToolResults: Array<{ toolCallId: string; content: string }>
-  linuxUser?: string
-  toolExecutionLog: AgentResult['toolExecutions']
-  workspaceId: string
-  sessionId: string
-  /** Slugs of capabilities discovered via tool discovery (for resume) */
-  discoveredCapabilitySlugs?: string[]
 }
 
 type ExecutableCapability = {
@@ -601,10 +213,13 @@ export const agentService = {
             }
           }
         }
-        const capPrompts = preflightResults
-          .map((c) => `## ${c.name}\n${c.instructions}`)
-          .join('\n\n')
-        systemPrompt += `\n\n${capPrompts}`
+        const capPrompts = buildCapabilityBlocks(
+          preflightResults.map((c) => ({
+            name: c.name,
+            systemPrompt: c.instructions,
+          })),
+        )
+        systemPrompt += `\n\n${buildPromptSection('dynamically_loaded_capabilities', capPrompts)}`
         discoveryCallCount++
         log.debugLog('Pre-flight discovery loaded', {
           slugs: preflightResults.map((c) => c.slug),
@@ -628,7 +243,11 @@ export const agentService = {
     })
     if (docs.length) {
       const manifest = docs.map((d) => `- ${d.title} (${d.type})`).join('\n')
-      systemPrompt += `\n\n# Workspace Documents\n\nThe following ${docs.length} documents are available for search via search_documents:\n${manifest}`
+      systemPrompt += `\n\n${buildPromptSection(
+        'workspace_documents',
+        `The following ${docs.length} documents are available for search via search_documents:
+${manifest}`,
+      )}`
     }
 
     // Inject mandatory instruction when user explicitly mentioned capabilities
@@ -637,7 +256,11 @@ export const agentService = {
         .map((slug) => capabilities.find((c) => c.slug === slug)?.name ?? slug)
         .filter(Boolean)
       if (mentionedNames.length) {
-        systemPrompt += `\n\n## Explicitly Requested Tools\nThe user explicitly requested the following capabilities: ${mentionedNames.join(', ')}.\nYou MUST use the tools from these capabilities to fulfill this request. Do NOT substitute with other tools unless the requested tool fails or is clearly not applicable.`
+        systemPrompt += `\n\n${buildPromptSection(
+          'explicitly_requested_capabilities',
+          `The user explicitly requested the following capabilities: ${mentionedNames.join(', ')}.
+You MUST use the tools from these capabilities to fulfill this request. Do NOT substitute with other tools unless the requested tool fails or is clearly not applicable.`,
+        )}`
       }
     }
 
@@ -760,16 +383,17 @@ export const agentService = {
       ].sort()
 
       // Inject sandbox context into system prompt so the LLM knows writable paths
-      const sandboxContext =
-        `\n\n## Your Sandbox Environment\n` +
-        `- Username: ${linuxUser}\n` +
-        `- Working directory (cwd): /workspace/users/${linuxUser}/ — all relative paths resolve here\n` +
-        `- Shared outputs: /workspace/.outputs/ (writable)\n` +
-        `- /workspace/ root: READ-ONLY — do not write files there directly\n` +
-        `- When using sourcePath in generate_file, use the full path: /workspace/users/${linuxUser}/filename or /workspace/.outputs/filename` +
-        (inventory.enabled && secretEnvRefs.length
-          ? `\n- Available secret env references (values hidden): ${secretEnvRefs.join(', ')}`
-          : '')
+      const sandboxContext = `\n\n${buildPromptSection(
+        'sandbox_environment',
+        `Username: ${linuxUser}
+Working directory (cwd): /workspace/users/${linuxUser}/. All relative paths resolve here.
+Shared outputs: /workspace/.outputs/ (writable)
+/workspace/ root: read-only. Do not write files there directly.
+When using sourcePath in generate_file, use the full path: /workspace/users/${linuxUser}/filename or /workspace/.outputs/filename` +
+          (inventory.enabled && secretEnvRefs.length
+            ? `\nAvailable secret env references (values hidden): ${secretEnvRefs.join(', ')}`
+            : ''),
+      )}`
       ;(messages[0] as { content: string }).content += sandboxContext
     }
 
@@ -922,8 +546,14 @@ export const agentService = {
         if (useDiscovery && !tools.some((t) => t.name === toolCall.name)) {
           const rejection = `Tool "${toolCall.name}" is not yet available. Call discover_tools first to find and load the appropriate tools for your task.`
           log.debugLog(`[REJECTED] "${toolCall.name}" — not in available tools (discovery mode)`)
-          emit?.('tool_start', { toolName: toolCall.name, capabilitySlug, input: publicToolArgs })
+          emit?.('tool_start', {
+            toolCallId: toolCall.id,
+            toolName: toolCall.name,
+            capabilitySlug,
+            input: publicToolArgs,
+          })
           emit?.('tool_result', {
+            toolCallId: toolCall.id,
             toolName: toolCall.name,
             error: rejection,
             exitCode: 1,
@@ -954,11 +584,29 @@ export const agentService = {
               toolCallId: toolCall.id,
             },
           })
+
+          // Resolve sub-agent tool list for delegate_task approvals
+          let subAgentMeta: Record<string, unknown> = {}
+          if (toolCall.name === 'delegate_task') {
+            const role = (toolCall.arguments as { role?: string }).role
+            const roleConfig = role ? SUB_AGENT_ROLES[role as SubAgentRole] : undefined
+            if (roleConfig) {
+              const allTools = capabilityService.buildToolDefinitions(capabilities)
+              const resolved = filterTools(allTools, roleConfig)
+              subAgentMeta = {
+                subAgentRole: role,
+                subAgentDescription: roleConfig.description,
+                subAgentToolNames: resolved.map((t) => t.name),
+              }
+            }
+          }
+
           emit?.('approval_required', {
             approvalId: approval.id,
             toolName: toolCall.name,
             capabilitySlug,
             input: publicToolArgs,
+            ...subAgentMeta,
           })
 
           const agentState: AgentState = {
@@ -998,11 +646,13 @@ export const agentService = {
             size: JSON.stringify(toolCall.arguments).length,
           })
           emit?.('tool_start', {
+            toolCallId: toolCall.id,
             toolName: toolCall.name,
             capabilitySlug,
             input: { _blocked: true },
           })
           emit?.('tool_result', {
+            toolCallId: toolCall.id,
             toolName: toolCall.name,
             error: sizeRejection,
             exitCode: 1,
@@ -1034,7 +684,12 @@ export const agentService = {
         })
         const isDiscoveryTool = toolCall.name === 'discover_tools'
         if (isDiscoveryTool) emit?.('thinking', { message: 'Looking for the right tools...' })
-        emit?.('tool_start', { toolName: toolCall.name, capabilitySlug, input: publicToolArgs })
+        emit?.('tool_start', {
+          toolCallId: toolCall.id,
+          toolName: toolCall.name,
+          capabilitySlug,
+          input: publicToolArgs,
+        })
 
         const toolStart = Date.now()
         const result = await toolExecutorService.execute(toolCall, capabilitySlug, {
@@ -1110,6 +765,7 @@ export const agentService = {
           }
         }
         return {
+          paused: true,
           content: accumulatedContent.trim(),
           toolExecutions: toolExecutionLog,
           sources: collectedSources.length ? collectedSources : undefined,
@@ -1169,6 +825,7 @@ export const agentService = {
               /* keep raw output */
             }
             emit?.('tool_result', {
+              toolCallId: toolCall.id,
               toolName: toolCall.name,
               output: discoveryOutput,
               durationMs: result.durationMs,
@@ -1176,6 +833,7 @@ export const agentService = {
           } else {
             const ssePayload = prepareToolResultForSSE(toolCall.name, result)
             emit?.('tool_result', {
+              toolCallId: toolCall.id,
               toolName: toolCall.name,
               ...ssePayload,
               error: result.error,
@@ -1303,6 +961,7 @@ export const agentService = {
           | {
               type: 'sub_agent'
               toolIndex: number
+              subAgentId: string
               role: string
               task: string
               subToolIds?: string[]
@@ -1321,6 +980,7 @@ export const agentService = {
             iterBlocks.push({
               type: 'sub_agent',
               toolIndex: t,
+              subAgentId: rt.toolCall.id,
               role: String(args.role ?? 'execute'),
               task: String(args.task ?? ''),
               subToolIds: logEntry?.subAgentExecutionIds,
@@ -1527,7 +1187,12 @@ export const agentService = {
       if (isDiscoveryToolResume) {
         emit?.('thinking', { message: 'Looking for the right tools...' })
       } else {
-        emit?.('tool_start', { toolName: toolCall.name, capabilitySlug, input: publicToolArgs })
+        emit?.('tool_start', {
+          toolCallId: toolCall.id,
+          toolName: toolCall.name,
+          capabilitySlug,
+          input: publicToolArgs,
+        })
       }
 
       const result = await toolExecutorService.execute(toolCall, capabilitySlug, {
@@ -1549,6 +1214,7 @@ export const agentService = {
       if (!isDiscoveryToolResume) {
         const resumeSsePayload = prepareToolResultForSSE(toolCall.name, result)
         emit?.('tool_result', {
+          toolCallId: toolCall.id,
           toolName: toolCall.name,
           ...resumeSsePayload,
           error: result.error,
@@ -1743,6 +1409,17 @@ export const agentService = {
       })
 
       const resumeLoopExecIds: string[] = []
+
+      // ── First pass: pre-check all tools (permissions, size) ──
+      type ResumeReadyTool = {
+        toolCall: ToolCall
+        capabilitySlug: string
+        matchedCap: (typeof capabilities)[0] | undefined
+        publicToolArgs: Record<string, unknown>
+      }
+      const resumeReadyTools: ResumeReadyTool[] = []
+      let resumePaused = false
+
       for (const toolCall of response.toolCalls) {
         const publicToolArgs = secretRedactionService.redactForPublicStorage(
           toolCall.arguments,
@@ -1765,11 +1442,28 @@ export const agentService = {
             },
           })
 
+          // Resolve sub-agent tool list for delegate_task approvals
+          let subAgentMeta: Record<string, unknown> = {}
+          if (toolCall.name === 'delegate_task') {
+            const role = (toolCall.arguments as { role?: string }).role
+            const roleConfig = role ? SUB_AGENT_ROLES[role as SubAgentRole] : undefined
+            if (roleConfig) {
+              const allTools = capabilityService.buildToolDefinitions(capabilities)
+              const resolved = filterTools(allTools, roleConfig)
+              subAgentMeta = {
+                subAgentRole: role,
+                subAgentDescription: roleConfig.description,
+                subAgentToolNames: resolved.map((t) => t.name),
+              }
+            }
+          }
+
           emit?.('approval_required', {
             approvalId: approval.id,
             toolName: toolCall.name,
             capabilitySlug,
             input: publicToolArgs,
+            ...subAgentMeta,
           })
 
           const agentState: AgentState = {
@@ -1798,12 +1492,8 @@ export const agentService = {
           })
 
           emit?.('awaiting_approval', { approvalIds: pending.map((a) => a.id) })
-          return {
-            content: '',
-            toolExecutions: toolExecutionLog,
-            sources: collectedSourcesResume.length ? collectedSourcesResume : undefined,
-            lastMessageId: lastSavedMessageId,
-          }
+          resumePaused = true
+          break
         }
 
         // Guard: reject oversized tool call arguments
@@ -1813,11 +1503,13 @@ export const agentService = {
             size: JSON.stringify(toolCall.arguments).length,
           })
           emit?.('tool_start', {
+            toolCallId: toolCall.id,
             toolName: toolCall.name,
             capabilitySlug,
             input: { _blocked: true },
           })
           emit?.('tool_result', {
+            toolCallId: toolCall.id,
             toolName: toolCall.name,
             error: sizeRejection,
             exitCode: 1,
@@ -1834,89 +1526,164 @@ export const agentService = {
           continue
         }
 
-        const isDiscoveryToolLoop = toolCall.name === 'discover_tools'
-        if (isDiscoveryToolLoop) {
-          emit?.('thinking', { message: 'Looking for the right tools...' })
-        } else {
-          emit?.('tool_start', { toolName: toolCall.name, capabilitySlug, input: publicToolArgs })
+        resumeReadyTools.push({ toolCall, capabilitySlug, matchedCap, publicToolArgs })
+      }
+
+      if (resumePaused) {
+        return {
+          paused: true,
+          content: '',
+          toolExecutions: toolExecutionLog,
+          sources: collectedSourcesResume.length ? collectedSourcesResume : undefined,
+          lastMessageId: lastSavedMessageId,
         }
+      }
 
-        const result = await toolExecutorService.execute(toolCall, capabilitySlug, {
-          workspaceId,
-          chatSessionId: sessionId,
-          linuxUser: linuxUser ?? '',
-          secretInventory: inventory,
-          capability: matchedCap
-            ? {
-                slug: matchedCap.slug,
-                skillType: (matchedCap as Record<string, unknown>).skillType as string | null,
-                toolDefinitions: matchedCap.toolDefinitions,
+      // ── Second pass: execute with parallel batching ──
+      const resumeParallelBatch = resumeReadyTools.filter((t) =>
+        PARALLEL_SAFE_TOOLS.has(t.toolCall.name),
+      )
+      const resumeSequentialBatch = resumeReadyTools.filter(
+        (t) => !PARALLEL_SAFE_TOOLS.has(t.toolCall.name),
+      )
+
+      const executeResumeAndProcess = async (batch: ResumeReadyTool[], parallel: boolean) => {
+        if (batch.length === 0) return
+
+        const results =
+          parallel && batch.length > 1
+            ? await Promise.all(
+                batch.map((t) => {
+                  emit?.('tool_start', {
+                    toolCallId: t.toolCall.id,
+                    toolName: t.toolCall.name,
+                    capabilitySlug: t.capabilitySlug,
+                    input: t.publicToolArgs,
+                  })
+                  return toolExecutorService.execute(t.toolCall, t.capabilitySlug, {
+                    workspaceId,
+                    chatSessionId: sessionId,
+                    linuxUser: linuxUser ?? '',
+                    secretInventory: inventory,
+                    capability: t.matchedCap
+                      ? {
+                          slug: t.matchedCap.slug,
+                          skillType: (t.matchedCap as Record<string, unknown>).skillType as
+                            | string
+                            | null,
+                          toolDefinitions: t.matchedCap.toolDefinitions,
+                        }
+                      : undefined,
+                    capabilities,
+                  })
+                }),
+              )
+            : []
+
+        for (let idx = 0; idx < batch.length; idx++) {
+          const { toolCall, capabilitySlug, matchedCap, publicToolArgs } = batch[idx]
+
+          const isDiscoveryToolLoop = toolCall.name === 'discover_tools'
+          if (!parallel || batch.length <= 1) {
+            if (isDiscoveryToolLoop) {
+              emit?.('thinking', { message: 'Looking for the right tools...' })
+            } else {
+              emit?.('tool_start', {
+                toolCallId: toolCall.id,
+                toolName: toolCall.name,
+                capabilitySlug,
+                input: publicToolArgs,
+              })
+            }
+          }
+
+          const result =
+            parallel && batch.length > 1
+              ? results[idx]
+              : await toolExecutorService.execute(toolCall, capabilitySlug, {
+                  workspaceId,
+                  chatSessionId: sessionId,
+                  linuxUser: linuxUser ?? '',
+                  secretInventory: inventory,
+                  capability: matchedCap
+                    ? {
+                        slug: matchedCap.slug,
+                        skillType: (matchedCap as Record<string, unknown>).skillType as
+                          | string
+                          | null,
+                        toolDefinitions: matchedCap.toolDefinitions,
+                      }
+                    : undefined,
+                  capabilities,
+                })
+
+          log.logToolResult(toolCall.name, result)
+          if (!isDiscoveryToolLoop) {
+            const resumeLoopSsePayload = prepareToolResultForSSE(toolCall.name, result)
+            emit?.('tool_result', {
+              toolCallId: toolCall.id,
+              toolName: toolCall.name,
+              ...resumeLoopSsePayload,
+              error: result.error,
+              exitCode: result.exitCode,
+              durationMs: result.durationMs,
+            })
+          }
+
+          // Collect document sources from search_documents
+          if (result.sources?.length) {
+            for (const s of result.sources) {
+              if (!collectedSourcesResume.some((cs) => cs.documentId === s.documentId)) {
+                collectedSourcesResume.push(s)
               }
-            : undefined,
-          capabilities,
-        })
+            }
+            emit?.('sources', { sources: collectedSourcesResume })
+          }
 
-        log.logToolResult(toolCall.name, result)
-        if (!isDiscoveryToolLoop) {
-          const resumeLoopSsePayload = prepareToolResultForSSE(toolCall.name, result)
-          emit?.('tool_result', {
+          toolExecutionLog.push({
             toolName: toolCall.name,
-            ...resumeLoopSsePayload,
+            capabilitySlug,
+            input: publicToolArgs,
+            output: result.output || undefined,
             error: result.error,
             exitCode: result.exitCode,
             durationMs: result.durationMs,
+            subAgentExecutionIds: result.subAgentExecutionIds,
+          })
+          if (result.executionId) resumeLoopExecIds.push(result.executionId)
+          if (result.subAgentExecutionIds?.length) {
+            resumeLoopExecIds.push(...result.subAgentExecutionIds)
+          }
+
+          // Truncate large outputs to save context
+          const rawContent =
+            toolCall.name === 'run_browser_script'
+              ? result.output
+              : result.error
+                ? `Error: ${result.error}\n\n${result.output}`
+                : result.output
+          const isSandboxTool = !NON_SANDBOX_TOOLS.has(toolCall.name)
+          const toolContent =
+            linuxUser && isSandboxTool
+              ? await maybeTruncateOutput(rawContent, toolCall.id, workspaceId, linuxUser)
+              : rawContent
+          const resumeMessageContent: MessageContent =
+            toolCall.name === 'run_browser_script'
+              ? buildToolResultContent(
+                  typeof toolContent === 'string' ? toolContent : toolContent,
+                  llm.modelId,
+                )
+              : toolContent
+          messages.push({
+            role: 'tool',
+            toolCallId: toolCall.id,
+            content: resumeMessageContent,
           })
         }
-
-        // Collect document sources from search_documents
-        if (result.sources?.length) {
-          for (const s of result.sources) {
-            if (!collectedSourcesResume.some((cs) => cs.documentId === s.documentId)) {
-              collectedSourcesResume.push(s)
-            }
-          }
-          emit?.('sources', { sources: collectedSourcesResume })
-        }
-
-        toolExecutionLog.push({
-          toolName: toolCall.name,
-          capabilitySlug,
-          input: publicToolArgs,
-          output: result.output || undefined,
-          error: result.error,
-          exitCode: result.exitCode,
-          durationMs: result.durationMs,
-        })
-        if (result.executionId) resumeLoopExecIds.push(result.executionId)
-
-        // Truncate large outputs to save context
-        // For browser scripts, pass output directly to preserve JSON structure for screenshot extraction
-        const rawContent =
-          toolCall.name === 'run_browser_script'
-            ? result.output
-            : result.error
-              ? `Error: ${result.error}\n\n${result.output}`
-              : result.output
-        // Only truncate sandbox tool outputs — non-sandbox tools (search, memory, web) return full results
-        const isSandboxTool = !NON_SANDBOX_TOOLS.has(toolCall.name)
-        const toolContent =
-          linuxUser && isSandboxTool
-            ? await maybeTruncateOutput(rawContent, toolCall.id, workspaceId, linuxUser)
-            : rawContent
-        // For browser scripts, check if result contains screenshot for multimodal handling
-        const resumeMessageContent: MessageContent =
-          toolCall.name === 'run_browser_script'
-            ? buildToolResultContent(
-                typeof toolContent === 'string' ? toolContent : toolContent,
-                llm.modelId,
-              )
-            : toolContent
-        messages.push({
-          role: 'tool',
-          toolCallId: toolCall.id,
-          content: resumeMessageContent,
-        })
       }
+
+      await executeResumeAndProcess(resumeParallelBatch, true)
+      await executeResumeAndProcess(resumeSequentialBatch, false)
 
       // ── Per-iteration DB persistence (resume loop) ──
       try {
@@ -1934,18 +1701,29 @@ export const agentService = {
         const iterBlocks: Array<
           | { type: 'text'; text: string }
           | { type: 'tool'; toolIndex: number }
-          | { type: 'sub_agent'; toolIndex: number; role: string; task: string }
+          | {
+              type: 'sub_agent'
+              toolIndex: number
+              subAgentId: string
+              role: string
+              task: string
+              subToolIds?: string[]
+            }
         > = []
         if (iterContent.trim()) iterBlocks.push({ type: 'text', text: iterContent })
+        const resumeIterLogEntries = toolExecutionLog.slice(-response.toolCalls.length)
         for (let t = 0; t < response.toolCalls.length; t++) {
           const tc = response.toolCalls[t]
           if (tc.name === 'delegate_task') {
             const args = tc.arguments as Record<string, unknown>
+            const logEntry = resumeIterLogEntries[t]
             iterBlocks.push({
               type: 'sub_agent',
               toolIndex: t,
+              subAgentId: tc.id,
               role: String(args.role ?? 'execute'),
               task: String(args.task ?? ''),
+              subToolIds: logEntry?.subAgentExecutionIds,
             })
           } else {
             iterBlocks.push({ type: 'tool', toolIndex: t })

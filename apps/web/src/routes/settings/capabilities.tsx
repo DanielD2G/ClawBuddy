@@ -46,6 +46,7 @@ import {
   Info,
 } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip'
+import { CATEGORY_LABELS, EXAMPLE_PERMISSION_RULES } from '@/constants'
 
 const ICON_MAP: Record<string, React.ElementType> = {
   Terminal,
@@ -57,15 +58,6 @@ const ICON_MAP: Record<string, React.ElementType> = {
   FileSearch,
   Puzzle,
   Mail,
-}
-
-const CATEGORY_LABELS: Record<string, string> = {
-  builtin: 'Built-in',
-  general: 'General',
-  languages: 'Languages',
-  cloud: 'Cloud',
-  devops: 'DevOps',
-  integrations: 'Integrations',
 }
 
 interface WorkspaceCapability {
@@ -571,17 +563,6 @@ function CapabilityCard({ capability, googleOAuthConfigured, onCapabilityToggled
   )
 }
 
-const EXAMPLE_RULES = [
-  'Bash(aws s3 ls *)',
-  'Bash(aws ecs describe-*)',
-  'Bash(kubectl get *)',
-  'Bash(docker ps *)',
-  'Read(*)',
-  'Write(*)',
-  'Python(*)',
-  'SearchDocuments(*)',
-]
-
 function GlobalPermissions() {
   const queryClient = useQueryClient()
   const [newRule, setNewRule] = useState('')
@@ -671,7 +652,7 @@ function GlobalPermissions() {
 
           {/* Quick add examples */}
           <div className="flex flex-wrap gap-1.5">
-            {EXAMPLE_RULES.filter((r) => !rules.includes(r)).slice(0, 4).map((rule) => (
+            {EXAMPLE_PERMISSION_RULES.filter((r) => !rules.includes(r)).slice(0, 4).map((rule) => (
               <button
                 key={rule}
                 type="button"

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type RefObject } from 'react'
 import { ChevronDown, ChevronRight, CheckCircle2, XCircle, Loader2, Download, FileText } from 'lucide-react'
 import { CODE_PREVIEW_MAX_LEN } from '@/constants'
 
@@ -17,6 +17,8 @@ export interface ToolExecution {
 
 interface ToolExecutionBlockProps {
   execution: ToolExecution
+  toolKey?: string
+  expandedToolsRef?: RefObject<Set<string>>
 }
 
 const STATUS_CONFIG = {
@@ -26,8 +28,21 @@ const STATUS_CONFIG = {
   pending: { icon: Loader2, color: 'text-muted-foreground animate-spin', label: 'Pending' },
 } as const
 
-export function ToolExecutionBlock({ execution }: ToolExecutionBlockProps) {
-  const [expanded, setExpanded] = useState(false)
+export function ToolExecutionBlock({ execution, toolKey, expandedToolsRef }: ToolExecutionBlockProps) {
+  const [expanded, setExpanded] = useState(() =>
+    toolKey && expandedToolsRef?.current ? expandedToolsRef.current.has(toolKey) : false,
+  )
+
+  const toggleExpanded = () => {
+    setExpanded((prev) => {
+      const next = !prev
+      if (toolKey && expandedToolsRef?.current) {
+        if (next) expandedToolsRef.current.add(toolKey)
+        else expandedToolsRef.current.delete(toolKey)
+      }
+      return next
+    })
+  }
 
   const status = execution.status ?? (execution.error ? 'failed' : 'completed')
   const config = STATUS_CONFIG[status as keyof typeof STATUS_CONFIG] ?? STATUS_CONFIG.completed
@@ -40,7 +55,7 @@ export function ToolExecutionBlock({ execution }: ToolExecutionBlockProps) {
     <div className="rounded-lg border bg-muted/30 text-sm my-2">
       <button
         type="button"
-        onClick={() => setExpanded(!expanded)}
+        onClick={toggleExpanded}
         className="flex w-full items-center gap-1.5 px-3 py-2 text-left hover:bg-muted/50 transition-colors rounded-lg min-w-0"
       >
         {expanded ? (

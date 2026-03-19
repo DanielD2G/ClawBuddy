@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { folderService } from '../services/folder.service.js'
 import { createFolderSchema } from '@agentbuddy/shared'
+import { validateBody } from '../lib/validate.js'
 
 const app = new Hono()
 
@@ -26,14 +27,11 @@ app.get('/workspaces/:workspaceId/folders/:folderId', async (c) => {
 app.post('/workspaces/:workspaceId/folders', async (c) => {
   const { workspaceId } = c.req.param()
   const body = await c.req.json()
-  const parsed = createFolderSchema.safeParse(body)
-  if (!parsed.success) {
-    return c.json({ success: false, error: parsed.error.issues[0]?.message ?? 'Invalid input' }, 400)
-  }
+  const data = validateBody(createFolderSchema, body)
   const folder = await folderService.create({
-    name: parsed.data.name,
+    name: data.name,
     workspaceId,
-    parentId: parsed.data.parentId,
+    parentId: data.parentId,
   })
   return c.json({ success: true, data: folder }, 201)
 })

@@ -26,6 +26,9 @@ export const DEFAULT_PAGE_SIZE = 20
 // ── Default settings ─────────────────────────────
 export const DEFAULT_CONTEXT_LIMIT_TOKENS = 30000
 export const DEFAULT_MAX_AGENT_ITERATIONS = 50
+export const DEFAULT_SUB_AGENT_EXPLORE_MAX_ITERATIONS = 50
+export const DEFAULT_SUB_AGENT_ANALYZE_MAX_ITERATIONS = 25
+export const DEFAULT_SUB_AGENT_EXECUTE_MAX_ITERATIONS = 50
 
 // ── Feature flags ────────────────────────────────
 export const ALWAYS_ON_CAPABILITY_SLUGS = ['document-search', 'bash', 'file-ops', 'tool-discovery']
@@ -37,11 +40,67 @@ export const WORKSPACE_COLORS = [
   '#06b6d4', '#3b82f6',
 ]
 
+// ── Capability category labels ───────────────────
+export const CATEGORY_LABELS: Record<string, string> = {
+  builtin: 'Built-in',
+  general: 'General',
+  languages: 'Languages',
+  cloud: 'Cloud',
+  devops: 'DevOps',
+  integrations: 'Integrations',
+}
+
+// ── Permission example rules ────────────────────
+export const EXAMPLE_PERMISSION_RULES = [
+  'Bash(aws s3 ls *)',
+  'Bash(aws ecs describe-*)',
+  'Bash(kubectl get *)',
+  'Bash(docker ps *)',
+  'Read(*)',
+  'Write(*)',
+  'Python(*)',
+  'SearchDocuments(*)',
+]
+
 // ── Provider labels ──────────────────────────────
 export const PROVIDER_LABELS: Record<string, string> = {
   openai: 'OpenAI',
   gemini: 'Google Gemini',
   claude: 'Anthropic Claude',
+}
+
+// ── Model provider inference ────────────────────
+export function inferProvider(modelId: string, availableProviders: string[]): string {
+  if (
+    modelId.startsWith('gpt-') ||
+    modelId.startsWith('o1') ||
+    modelId.startsWith('o3') ||
+    modelId.startsWith('o4')
+  )
+    return 'openai'
+  if (modelId.startsWith('gemini-')) return 'gemini'
+  if (modelId.startsWith('claude-')) return 'claude'
+  return availableProviders[0] ?? 'openai'
+}
+
+// ── Tool display names ──────────────────────────
+export const TOOL_DISPLAY_NAMES: Record<string, string> = {
+  search_documents: 'Document Search',
+  web_search: 'Web Search',
+  run_bash: 'Bash',
+  run_browser_script: 'Browser',
+  discover_tools: 'Tool Discovery',
+  run_python: 'Python',
+  save_document: 'Save Document',
+  generate_file: 'File Generator',
+  aws_command: 'AWS CLI',
+  kubectl_command: 'Kubectl',
+  docker_command: 'Docker',
+  delegate_task: 'Sub-Agent',
+}
+
+export function formatToolDisplayName(toolName: string): string {
+  return TOOL_DISPLAY_NAMES[toolName] ?? toolName.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
 }
 
 // ── Mobile breakpoint ───────────────────────────
