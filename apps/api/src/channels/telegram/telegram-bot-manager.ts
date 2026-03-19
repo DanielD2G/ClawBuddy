@@ -10,6 +10,57 @@ interface BotEntry {
 class TelegramBotManager {
   private bots = new Map<string, BotEntry>()
 
+  /** Find the bot entry for a given workspace. */
+  findByWorkspace(workspaceId: string): BotEntry | undefined {
+    for (const entry of this.bots.values()) {
+      if (entry.workspaceId === workspaceId) return entry
+    }
+    return undefined
+  }
+
+  /** Send a formatted message to a Telegram chat proactively (outside of a handler context). */
+  async sendToChat(workspaceId: string, chatId: string, text: string): Promise<void> {
+    const entry = this.findByWorkspace(workspaceId)
+    if (!entry) {
+      console.warn(`[Telegram] No active bot for workspace ${workspaceId}, cannot send message`)
+      return
+    }
+    await this.sendFormattedMessage(entry.bot, chatId, text)
+  }
+
+  /** Send a message with HTML formatting, splitting, and plain-text fallback. */
+  private async sendFormattedMessage(
+    bot: Bot,
+    chatId: string | number,
+    text: string,
+  ): Promise<void> {
+    const html = markdownToTelegramHtml(text)
+    try {
+      if (html.length <= 4096) {
+        await bot.api.sendMessage(chatId, html, { parse_mode: 'HTML' })
+      } else {
+        const parts = splitHtmlMessage(html, 4096)
+        for (const part of parts) {
+          await bot.api.sendMessage(chatId, part, { parse_mode: 'HTML' })
+        }
+      }
+    } catch (err) {
+      console.warn('[Telegram] HTML send failed, retrying as plain text:', err)
+      const plain = text
+        .replace(/#{1,6}\s+/gm, '')
+        .replace(/\*\*/g, '')
+        .replace(/(?<!\w)\*(?!\s)/g, '')
+      if (plain.length <= 4096) {
+        await bot.api.sendMessage(chatId, plain)
+      } else {
+        const parts = splitMessage(plain, 4096)
+        for (const part of parts) {
+          await bot.api.sendMessage(chatId, part)
+        }
+      }
+    }
+  }
+
   async startBot(channelId: string, botToken: string, workspaceId: string): Promise<string> {
     // Stop existing bot for this channel if running
     if (this.bots.has(channelId)) {
@@ -58,30 +109,7 @@ class TelegramBotManager {
 
       try {
         const sendFn = async (msg: string) => {
-          const html = markdownToTelegramHtml(msg)
-
-          try {
-            if (html.length <= 4096) {
-              await ctx.reply(html, { parse_mode: 'HTML' })
-            } else {
-              const parts = splitHtmlMessage(html, 4096)
-              for (const part of parts) {
-                await ctx.reply(part, { parse_mode: 'HTML' })
-              }
-            }
-          } catch (err) {
-            console.warn('[Telegram] HTML send failed, retrying as plain text:', err)
-            // Fallback: strip HTML tags and send as plain text
-            const plain = msg.replace(/#{1,6}\s+/gm, '').replace(/\*\*/g, '').replace(/(?<!\w)\*(?!\s)/g, '')
-            if (plain.length <= 4096) {
-              await ctx.reply(plain)
-            } else {
-              const parts = splitMessage(plain, 4096)
-              for (const part of parts) {
-                await ctx.reply(part)
-              }
-            }
-          }
+          await this.sendFormattedMessage(bot, ctx.chat.id, msg)
         }
 
         await handleTelegramMessage(workspaceId, telegramChatId, text, sendFn)
