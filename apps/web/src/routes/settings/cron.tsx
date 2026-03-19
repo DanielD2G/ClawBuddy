@@ -34,14 +34,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Plus,
-  Play,
-  Trash2,
-  CheckCircle,
-  XCircle,
-  Clock,
-} from 'lucide-react'
+import { Plus, Play, Trash2, CheckCircle, XCircle, Clock } from 'lucide-react'
 
 export function CronSettingsPage() {
   const [createOpen, setCreateOpen] = useState(false)
@@ -49,9 +42,7 @@ export function CronSettingsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <p className="text-muted-foreground">
-          Manage scheduled tasks and recurring agent jobs.
-        </p>
+        <p className="text-muted-foreground">Manage scheduled tasks and recurring agent jobs.</p>
         <Button onClick={() => setCreateOpen(true)}>
           <Plus className="size-4 mr-1" />
           New Cron Job
@@ -102,9 +93,7 @@ function CronJobsTable() {
             <CronJobRow
               key={job.id}
               job={job}
-              onToggle={(enabled) =>
-                toggleMutation.mutate({ id: job.id, enabled })
-              }
+              onToggle={(enabled) => toggleMutation.mutate({ id: job.id, enabled })}
               onTrigger={() => triggerMutation.mutate(job.id)}
               onDelete={() => deleteMutation.mutate(job.id)}
               isToggling={toggleMutation.isPending}
@@ -141,16 +130,12 @@ function CronJobRow({
         <div>
           <div className="font-medium text-sm">{job.name}</div>
           {job.description && (
-            <div className="text-xs text-muted-foreground mt-0.5">
-              {job.description}
-            </div>
+            <div className="text-xs text-muted-foreground mt-0.5">{job.description}</div>
           )}
         </div>
       </TableCell>
       <TableCell>
-        <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
-          {job.schedule}
-        </code>
+        <code className="text-xs bg-muted px-1.5 py-0.5 rounded">{job.schedule}</code>
       </TableCell>
       <TableCell>
         <Badge variant={job.type === 'internal' ? 'secondary' : 'outline'} className="text-xs">
@@ -163,11 +148,7 @@ function CronJobRow({
         )}
       </TableCell>
       <TableCell>
-        <Switch
-          checked={job.enabled}
-          onCheckedChange={onToggle}
-          disabled={isToggling}
-        />
+        <Switch checked={job.enabled} onCheckedChange={onToggle} disabled={isToggling} />
       </TableCell>
       <TableCell>
         {job.lastRunAt ? (
@@ -177,9 +158,7 @@ function CronJobRow({
             ) : (
               <XCircle className="size-3.5 text-destructive" />
             )}
-            <span className="text-muted-foreground">
-              {formatRelativeTime(job.lastRunAt)}
-            </span>
+            <span className="text-muted-foreground">{formatRelativeTime(job.lastRunAt)}</span>
           </div>
         ) : (
           <span className="text-xs text-muted-foreground">Never</span>
@@ -271,7 +250,8 @@ function CreateCronDialog({
               className="font-mono"
             />
             <p className="text-xs text-muted-foreground">
-              Examples: <code>*/5 * * * *</code> (every 5 min), <code>0 9 * * *</code> (daily 9am), <code>0 */2 * * *</code> (every 2 hours)
+              Examples: <code>*/5 * * * *</code> (every 5 min), <code>0 9 * * *</code> (daily 9am),{' '}
+              <code>0 */2 * * *</code> (every 2 hours)
             </p>
           </div>
 

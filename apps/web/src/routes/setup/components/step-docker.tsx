@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -25,9 +25,21 @@ function ImageRow({ label, state }: { label: string; state: ImageTaskState }) {
           <Container className="size-4" />
           <span className="text-sm font-medium">{label}</span>
         </div>
-        {isDone && <Badge variant="default"><CheckCircle2 className="mr-1 size-3" /> Ready</Badge>}
-        {isPulling && <Badge variant="secondary"><Loader2 className="mr-1 size-3 animate-spin" /> Building</Badge>}
-        {isError && <Badge variant="destructive"><XCircle className="mr-1 size-3" /> Error</Badge>}
+        {isDone && (
+          <Badge variant="default">
+            <CheckCircle2 className="mr-1 size-3" /> Ready
+          </Badge>
+        )}
+        {isPulling && (
+          <Badge variant="secondary">
+            <Loader2 className="mr-1 size-3 animate-spin" /> Building
+          </Badge>
+        )}
+        {isError && (
+          <Badge variant="destructive">
+            <XCircle className="mr-1 size-3" /> Error
+          </Badge>
+        )}
         {state.status === 'idle' && <Badge variant="secondary">Waiting</Badge>}
       </div>
 
@@ -40,13 +52,9 @@ function ImageRow({ label, state }: { label: string; state: ImageTaskState }) {
         </div>
       )}
 
-      {isDone && (
-        <p className="text-xs text-muted-foreground">{state.progress}</p>
-      )}
+      {isDone && <p className="text-xs text-muted-foreground">{state.progress}</p>}
 
-      {isError && (
-        <p className="text-xs text-destructive">{state.error}</p>
-      )}
+      {isError && <p className="text-xs text-destructive">{state.error}</p>}
     </div>
   )
 }
@@ -72,7 +80,7 @@ export function StepDockerImages({
     sandbox: { status: 'idle', progress: '' },
   })
 
-  const startPull = async () => {
+  const startPull = useCallback(async () => {
     try {
       const res = await apiClient.post<{
         status: string
@@ -85,7 +93,7 @@ export function StepDockerImages({
         sandbox: { status: 'error', progress: '', error: 'Failed to connect to Docker' },
       })
     }
-  }
+  }, [])
 
   // Poll for status while pulling
   useEffect(() => {
@@ -113,7 +121,7 @@ export function StepDockerImages({
   // Auto-start on mount
   useEffect(() => {
     startPull()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [startPull])
 
   const hasError = images.sandbox.status === 'error'
 

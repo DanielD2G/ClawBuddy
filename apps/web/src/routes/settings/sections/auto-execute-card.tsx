@@ -68,7 +68,8 @@ export function AutoExecuteCard() {
           <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 p-3">
             <AlertTriangle className="size-4 text-amber-500 mt-0.5 shrink-0" />
             <p className="text-sm text-amber-600 dark:text-amber-400">
-              All commands (bash, python, file writes, etc.) run without confirmation in this workspace — including destructive operations.
+              All commands (bash, python, file writes, etc.) run without confirmation in this
+              workspace — including destructive operations.
             </p>
           </div>
         </CardContent>
@@ -84,14 +85,17 @@ export function AutoExecuteCard() {
           </DialogHeader>
           <div className="space-y-3 py-2">
             <p className="text-sm text-muted-foreground">
-              This will allow all tool calls — including bash commands, Python scripts, and file operations — to execute <strong>without asking for your approval</strong>.
+              This will allow all tool calls — including bash commands, Python scripts, and file
+              operations — to execute <strong>without asking for your approval</strong>.
             </p>
             <p className="text-sm text-muted-foreground">
-              This includes potentially destructive operations. Only enable this for trusted workspaces.
+              This includes potentially destructive operations. Only enable this for trusted
+              workspaces.
             </p>
             <div className="space-y-1.5">
               <label className="text-sm font-medium">
-                Type <code className="rounded bg-muted px-1.5 py-0.5 text-xs">ENABLE</code> to confirm
+                Type <code className="rounded bg-muted px-1.5 py-0.5 text-xs">ENABLE</code> to
+                confirm
               </label>
               <input
                 type="text"

@@ -3,7 +3,8 @@ import type { CapabilityDefinition } from '../types.js'
 export const documentSearch: CapabilityDefinition = {
   slug: 'document-search',
   name: 'Document Search',
-  description: 'Search through uploaded documents using semantic similarity. This is the core RAG capability.',
+  description:
+    'Search through uploaded documents using semantic similarity. This is the core RAG capability.',
   icon: 'FileSearch',
   category: 'builtin',
   version: '1.0.0',

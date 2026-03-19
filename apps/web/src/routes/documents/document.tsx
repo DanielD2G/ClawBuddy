@@ -53,11 +53,7 @@ export function DocumentPage() {
     <div className="flex flex-col gap-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => navigate(`/workspaces/${workspaceId}`)}
-        >
+        <Button variant="ghost" size="icon" onClick={() => navigate(`/workspaces/${workspaceId}`)}>
           <ArrowLeft className="size-4" />
         </Button>
         <div className="flex-1 min-w-0">
@@ -87,9 +83,7 @@ export function DocumentPage() {
             <Markdown remarkPlugins={[remarkGfm]}>{doc.content}</Markdown>
           </div>
         ) : (
-          <pre className="whitespace-pre-wrap text-sm font-sans leading-relaxed">
-            {doc.content}
-          </pre>
+          <pre className="whitespace-pre-wrap text-sm font-sans leading-relaxed">{doc.content}</pre>
         )}
       </div>
     </div>

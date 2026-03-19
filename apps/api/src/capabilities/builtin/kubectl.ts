@@ -17,7 +17,8 @@ export const kubectl: CapabilityDefinition = {
         properties: {
           command: {
             type: 'string',
-            description: 'The kubectl command (without the "kubectl" prefix), e.g. "get pods" or "describe deployment my-app"',
+            description:
+              'The kubectl command (without the "kubectl" prefix), e.g. "get pods" or "describe deployment my-app"',
           },
           timeout: {
             type: 'number',
@@ -31,8 +32,21 @@ export const kubectl: CapabilityDefinition = {
   systemPrompt:
     'You can execute kubectl commands to manage Kubernetes clusters. Kubeconfig should be configured in the workspace.',
   configSchema: [
-    { key: 'kubeconfig', label: 'Kubeconfig (base64)', type: 'password', required: true, envVar: 'KUBECONFIG_B64', description: 'Base64-encoded kubeconfig content' },
-    { key: 'kubeContext', label: 'Context', type: 'string', required: false, envVar: 'KUBE_CONTEXT' },
+    {
+      key: 'kubeconfig',
+      label: 'Kubeconfig (base64)',
+      type: 'password',
+      required: true,
+      envVar: 'KUBECONFIG_B64',
+      description: 'Base64-encoded kubeconfig content',
+    },
+    {
+      key: 'kubeContext',
+      label: 'Context',
+      type: 'string',
+      required: false,
+      envVar: 'KUBE_CONTEXT',
+    },
   ],
   sandbox: {
     dockerImage: 'clawbuddy-sandbox-full',

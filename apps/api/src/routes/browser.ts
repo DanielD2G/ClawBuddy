@@ -36,7 +36,10 @@ app.patch('/config', async (c) => {
 
   // Validate browser
   if (browser && !['chromium', 'firefox', 'camoufox'].includes(browser)) {
-    return c.json({ success: false, error: 'Invalid browser. Must be "chromium", "firefox", or "camoufox".' }, 400)
+    return c.json(
+      { success: false, error: 'Invalid browser. Must be "chromium", "firefox", or "camoufox".' },
+      400,
+    )
   }
 
   // Update settings (non-sensitive fields)

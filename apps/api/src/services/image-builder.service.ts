@@ -25,7 +25,11 @@ export const imageBuilderService = {
 
     onLog?.('Building base sandbox image...')
 
-    const result = await this.buildFromDockerfile(SANDBOX_BASE_DOCKERFILE, SANDBOX_BASE_IMAGE, onLog)
+    const result = await this.buildFromDockerfile(
+      SANDBOX_BASE_DOCKERFILE,
+      SANDBOX_BASE_IMAGE,
+      onLog,
+    )
 
     if (!result.success) {
       throw new Error(`Failed to build base sandbox image: ${result.logs}`)
@@ -97,11 +101,7 @@ export const imageBuilderService = {
 
     // Generate deterministic tag from installation scripts
     const hash = createHash('sha256')
-      .update(
-        capabilities
-          .map((c) => `${c.slug}:${c.installationScript}`)
-          .join('\n'),
-      )
+      .update(capabilities.map((c) => `${c.slug}:${c.installationScript}`).join('\n'))
       .digest('hex')
       .slice(0, IMAGE_TAG_HASH_LENGTH)
     const tag = `clawbuddy-sandbox-skills-${hash}`

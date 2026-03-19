@@ -39,5 +39,7 @@ export const env = envSchema.parse(process.env)
 // Warn at startup if no API keys are configured at all
 const hasAnyKey = !!(env.OPENAI_API_KEY || env.GEMINI_API_KEY || env.ANTHROPIC_API_KEY)
 if (!hasAnyKey) {
-  console.warn('⚠️  No AI provider API keys configured. Set at least one of: OPENAI_API_KEY, GEMINI_API_KEY, ANTHROPIC_API_KEY')
+  console.warn(
+    '⚠️  No AI provider API keys configured. Set at least one of: OPENAI_API_KEY, GEMINI_API_KEY, ANTHROPIC_API_KEY',
+  )
 }

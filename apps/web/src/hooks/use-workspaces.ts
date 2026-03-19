@@ -99,21 +99,19 @@ export const useStopWorkspaceContainer = createMutation<unknown, string>(
   ],
 )
 
-export const useExportWorkspace = createCustomMutation<void, string>(
-  async (id) => {
-    const res = await fetch(`/api/workspaces/${id}/export`, { credentials: 'include' })
-    if (!res.ok) throw new Error('Export failed')
-    const json = await res.json()
-    const exportData = json.data
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `workspace-export.json`
-    a.click()
-    URL.revokeObjectURL(url)
-  },
-)
+export const useExportWorkspace = createCustomMutation<void, string>(async (id) => {
+  const res = await fetch(`/api/workspaces/${id}/export`, { credentials: 'include' })
+  if (!res.ok) throw new Error('Export failed')
+  const json = await res.json()
+  const exportData = json.data
+  const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `workspace-export.json`
+  a.click()
+  URL.revokeObjectURL(url)
+})
 
 export const useImportWorkspace = createMutation<
   { workspace: Workspace; skippedCapabilities: string[]; warnings: string[] },

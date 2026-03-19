@@ -80,10 +80,7 @@ function SidebarProvider({
   // Keyboard shortcut: Cmd+B / Ctrl+B
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (
-        event.key === SIDEBAR_KEYBOARD_SHORTCUT &&
-        (event.metaKey || event.ctrlKey)
-      ) {
+      if (event.key === SIDEBAR_KEYBOARD_SHORTCUT && (event.metaKey || event.ctrlKey)) {
         event.preventDefault()
         toggleSidebar()
       }
@@ -117,10 +114,7 @@ function SidebarProvider({
             ...style,
           } as React.CSSProperties
         }
-        className={cn(
-          'group/sidebar-wrapper flex min-h-svh w-full',
-          className,
-        )}
+        className={cn('group/sidebar-wrapper flex min-h-svh w-full', className)}
         {...props}
       >
         {children}
@@ -131,11 +125,7 @@ function SidebarProvider({
 
 // ── Sidebar ─────────────────────────────────────────
 
-function Sidebar({
-  className,
-  children,
-  ...props
-}: React.ComponentProps<'div'>) {
+function Sidebar({ className, children, ...props }: React.ComponentProps<'div'>) {
   const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
 
   if (isMobile) {
@@ -179,9 +169,7 @@ function Sidebar({
         )}
         {...props}
       >
-        <div className="flex size-full flex-col bg-sidebar">
-          {children}
-        </div>
+        <div className="flex size-full flex-col bg-sidebar">{children}</div>
       </div>
     </div>
   )
@@ -219,11 +207,7 @@ function SidebarInset({ className, ...props }: React.ComponentProps<'main'>) {
   )
 }
 
-function SidebarTrigger({
-  className,
-  onClick,
-  ...props
-}: React.ComponentProps<typeof Button>) {
+function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<typeof Button>) {
   const { toggleSidebar } = useSidebar()
 
   return (

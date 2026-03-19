@@ -14,7 +14,13 @@ import type { ConfigFieldDefinition } from '@/types/capability-config'
 const ALWAYS_ON_SLUGS = ALWAYS_ON_CAPABILITY_SLUGS
 
 interface StepCapabilitiesProps {
-  capabilities: Array<{ slug: string; name: string; description: string; category: string; configSchema: ConfigFieldDefinition[] | null }>
+  capabilities: Array<{
+    slug: string
+    name: string
+    description: string
+    category: string
+    configSchema: ConfigFieldDefinition[] | null
+  }>
   selected: string[]
   googleOAuthConfigured: boolean
   onToggle: (slug: string) => void
@@ -46,7 +52,8 @@ export function StepCapabilities({
   // Browser health detection
   const { data: browserHealth } = useQuery({
     queryKey: ['browser-health-check'],
-    queryFn: () => apiClient.get<{ status: string }>('/browser/health').catch(() => ({ status: 'error' })),
+    queryFn: () =>
+      apiClient.get<{ status: string }>('/browser/health').catch(() => ({ status: 'error' })),
     retry: false,
   })
 
@@ -129,7 +136,8 @@ export function StepCapabilities({
                     <TooltipContent side="left" className="max-w-[240px]">
                       <p className="text-xs">
                         Add <code className="bg-muted px-1 rounded">GOOGLE_CLIENT_ID</code> and{' '}
-                        <code className="bg-muted px-1 rounded">GOOGLE_CLIENT_SECRET</code> to your environment to enable this capability.
+                        <code className="bg-muted px-1 rounded">GOOGLE_CLIENT_SECRET</code> to your
+                        environment to enable this capability.
                       </p>
                     </TooltipContent>
                   </Tooltip>

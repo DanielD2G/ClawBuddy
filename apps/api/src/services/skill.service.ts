@@ -26,7 +26,9 @@ export const skillService = {
     // Parse the JSON
     let raw: unknown
     try {
-      raw = JSON.parse(typeof fileContent === 'string' ? fileContent : fileContent.toString('utf-8'))
+      raw = JSON.parse(
+        typeof fileContent === 'string' ? fileContent : fileContent.toString('utf-8'),
+      )
     } catch {
       return { success: false, error: 'Invalid JSON in .skill file' }
     }
@@ -160,9 +162,7 @@ export const skillService = {
     // In prod bundle: import.meta.dir = dist/ → ../skills = apps/api/skills ✓
     const baseDir = import.meta.dir ?? process.cwd()
     const isDist = baseDir.endsWith('/dist') || baseDir.includes('/dist/')
-    const skillsDir = isDist
-      ? join(baseDir, '..', 'skills')
-      : join(baseDir, '..', '..', 'skills')
+    const skillsDir = isDist ? join(baseDir, '..', 'skills') : join(baseDir, '..', '..', 'skills')
 
     let files: string[]
     try {

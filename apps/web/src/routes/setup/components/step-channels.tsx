@@ -41,7 +41,8 @@ export function StepChannels({
       <CardHeader>
         <CardTitle>Channels</CardTitle>
         <CardDescription>
-          Connect external messaging platforms to interact with the assistant outside the web interface.
+          Connect external messaging platforms to interact with the assistant outside the web
+          interface.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
@@ -55,10 +56,7 @@ export function StepChannels({
                 <p className="text-xs text-muted-foreground">Chat via Telegram bot</p>
               </div>
             </div>
-            <Switch
-              checked={telegramEnabled}
-              onCheckedChange={onTelegramEnabledChange}
-            />
+            <Switch checked={telegramEnabled} onCheckedChange={onTelegramEnabledChange} />
           </div>
 
           {telegramEnabled && (
@@ -106,9 +104,7 @@ export function StepChannels({
                   </Button>
                 </div>
                 {testToken.isSuccess && (
-                  <p className="text-xs text-green-600">
-                    Connected to @{testToken.data.username}
-                  </p>
+                  <p className="text-xs text-green-600">Connected to @{testToken.data.username}</p>
                 )}
                 {testToken.isError && (
                   <p className="text-xs text-destructive">

@@ -8,8 +8,9 @@
   "scripts": {
     "dev": "bun run db:generate && bun --filter './apps/*' dev",
     "build": "bun --filter './apps/*' build",
-    "fmt": "prettier --write",
-    "lint": "bun --filter '*' lint",
+    "fmt": "bun run format",
+    "lint": "bun run lint:files apps/api/src apps/web/src packages/shared/src test eslint.config.mjs packages/eslint-config",
+    "lint:files": "bun x eslint --config ./eslint.config.mjs",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "typecheck": "bun --filter '*' type-check",
@@ -21,7 +22,15 @@
     "db:push": "bun --filter @clawbuddy/api db:push"
   },
   "devDependencies": {
+    "@eslint/js": "^9",
+    "@typescript-eslint/eslint-plugin": "^8",
+    "@typescript-eslint/parser": "^8",
     "@types/ws": "^8.18.1",
+    "eslint": "^9",
+    "eslint-config-prettier": "^10",
+    "eslint-plugin-react": "^7",
+    "eslint-plugin-react-hooks": "^5",
+    "globals": "^16",
     "prettier": "^3",
     "ws": "^8.19.0"
   },

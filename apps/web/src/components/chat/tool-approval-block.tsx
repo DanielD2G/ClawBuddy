@@ -7,7 +7,7 @@ function formatCapabilityName(slug?: string): string {
   if (!slug) return 'Tool'
   return slug
     .split('-')
-    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ')
 }
 
@@ -20,7 +20,8 @@ export function ToolApprovalBlock({ approval }: ToolApprovalBlockProps) {
 
   const isSubAgent = approval.toolName === 'delegate_task' && approval.subAgentToolNames
   const inputPreview = isSubAgent
-    ? String(approval.input.task ?? '').slice(0, CODE_PREVIEW_MAX_LEN) + (String(approval.input.task ?? '').length > CODE_PREVIEW_MAX_LEN ? '...' : '')
+    ? String(approval.input.task ?? '').slice(0, CODE_PREVIEW_MAX_LEN) +
+      (String(approval.input.task ?? '').length > CODE_PREVIEW_MAX_LEN ? '...' : '')
     : getInputPreview(approval)
 
   return (
@@ -69,7 +70,9 @@ export function ToolApprovalBlock({ approval }: ToolApprovalBlockProps) {
               )}
               <div>
                 <span className="text-xs font-medium text-muted-foreground">Task</span>
-                <p className="mt-0.5 text-xs text-foreground">{String(approval.input.task ?? '')}</p>
+                <p className="mt-0.5 text-xs text-foreground">
+                  {String(approval.input.task ?? '')}
+                </p>
               </div>
               <div>
                 <span className="text-xs font-medium text-muted-foreground">
@@ -104,7 +107,11 @@ export function ToolApprovalBlock({ approval }: ToolApprovalBlockProps) {
 function getInputPreview(approval: PendingApproval): string {
   const args = approval.input
   if (args.command) return String(args.command)
-  if (args.code) return String(args.code).slice(0, CODE_PREVIEW_MAX_LEN) + (String(args.code).length > CODE_PREVIEW_MAX_LEN ? '...' : '')
+  if (args.code)
+    return (
+      String(args.code).slice(0, CODE_PREVIEW_MAX_LEN) +
+      (String(args.code).length > CODE_PREVIEW_MAX_LEN ? '...' : '')
+    )
   if (args.query) return String(args.query)
   if (args.path) return String(args.path)
   return ''

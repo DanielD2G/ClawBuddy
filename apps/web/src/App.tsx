@@ -25,10 +25,7 @@ export function App() {
           <Route index element={<DashboardPage />} />
           <Route path="workspaces" element={<WorkspacesPage />} />
           <Route path="workspaces/:id" element={<WorkspacePage />} />
-          <Route
-            path="workspaces/:id/documents/:docId"
-            element={<DocumentPage />}
-          />
+          <Route path="workspaces/:id/documents/:docId" element={<DocumentPage />} />
           <Route path="workspaces/:id/chat" element={<Navigate to="/" replace />} />
           <Route path="chat/:sessionId" element={<ChatPage />} />
           <Route path="chat" element={<ChatPage />} />

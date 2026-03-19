@@ -63,7 +63,9 @@ export function StepWorkspace({
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-medium">Timezone</label>
           <TimezoneSelect value={timezone} onChange={onTimezoneChange} />
-          <p className="text-xs text-muted-foreground">Auto-detected from your browser. Change if needed.</p>
+          <p className="text-xs text-muted-foreground">
+            Auto-detected from your browser. Change if needed.
+          </p>
         </div>
         <div className="flex justify-between mt-4">
           <Button variant="outline" onClick={onBack}>

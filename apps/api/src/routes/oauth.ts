@@ -108,7 +108,9 @@ app.get('/google/callback', async (c) => {
   }
 
   if (!tokens.refresh_token) {
-    return c.redirect('/settings/capabilities?oauth=error&message=No+refresh+token.+Try+revoking+access+at+myaccount.google.com')
+    return c.redirect(
+      '/settings/capabilities?oauth=error&message=No+refresh+token.+Try+revoking+access+at+myaccount.google.com',
+    )
   }
 
   // Fetch user email
@@ -182,7 +184,9 @@ app.get('/google/callback', async (c) => {
   try {
     const { sandboxService } = await import('../services/sandbox.service.js')
     await sandboxService.stopWorkspaceContainer(stateData.workspaceId)
-  } catch { /* ok */ }
+  } catch {
+    /* ok */
+  }
 
   return c.redirect(`/workspaces/${stateData.workspaceId}?oauth=success`)
 })
@@ -218,7 +222,9 @@ app.delete('/google/disconnect', async (c) => {
   try {
     const { sandboxService } = await import('../services/sandbox.service.js')
     await sandboxService.stopWorkspaceContainer(workspaceId)
-  } catch { /* ok */ }
+  } catch {
+    /* ok */
+  }
 
   return c.json({ success: true })
 })

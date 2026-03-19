@@ -51,7 +51,8 @@ const worker = new Worker<CronJobData>(
         let workspaceId = cronJob.workspaceId
         if (!workspaceId) {
           const fallback = await prisma.workspace.findFirst({ orderBy: { createdAt: 'asc' } })
-          if (!fallback) throw new Error('Agent cron job has no workspaceId and no workspaces exist')
+          if (!fallback)
+            throw new Error('Agent cron job has no workspaceId and no workspaces exist')
           workspaceId = fallback.id
         }
 
@@ -86,20 +87,21 @@ const worker = new Worker<CronJobData>(
           where: { id: sessionId },
           select: { source: true, externalChatId: true, workspaceId: true },
         })
-        if (cronSession?.source === 'telegram' && cronSession.externalChatId && cronSession.workspaceId) {
+        if (
+          cronSession?.source === 'telegram' &&
+          cronSession.externalChatId &&
+          cronSession.workspaceId
+        ) {
           cronEmit = createTelegramEmit(cronSession.workspaceId, cronSession.externalChatId)
         }
 
         // Run agent (headless unless Telegram-linked, auto-approve tools since no user to decide)
         // Agent loop saves ChatMessages per-iteration directly to DB
         try {
-          await agentService.runAgentLoop(
-            sessionId,
-            cronJob.prompt,
-            workspaceId,
-            cronEmit,
-            { autoApprove: true, historyIncludesCurrentUserMessage: true },
-          )
+          await agentService.runAgentLoop(sessionId, cronJob.prompt, workspaceId, cronEmit, {
+            autoApprove: true,
+            historyIncludesCurrentUserMessage: true,
+          })
         } catch (agentErr) {
           // Save error as assistant message so the chat shows what happened
           const errMsg = agentErr instanceof Error ? agentErr.message : String(agentErr)

@@ -1,6 +1,10 @@
-import { describe, test, expect, beforeEach, mock } from 'bun:test'
+import { describe, test, expect, beforeEach } from 'bun:test'
 import { getTextContent } from '../../apps/api/src/providers/llm.interface'
-import type { MessageContent, ContentBlock, TextBlock, ImageBlock } from '../../apps/api/src/providers/llm.interface'
+import type {
+  MessageContent,
+  ContentBlock,
+  ImageBlock,
+} from '../../apps/api/src/providers/llm.interface'
 
 // ─── getTextContent ───
 
@@ -46,9 +50,12 @@ describe('getTextContent', () => {
 
 // Re-implement the logic inline since it's not exported — tests validate the algorithm
 const VISION_MODELS = new Set([
-  'claude-sonnet-4-6', 'claude-opus-4-6',
-  'gpt-4o', 'gpt-4o-mini',
-  'gemini-2.5-flash', 'gemini-2.5-pro',
+  'claude-sonnet-4-6',
+  'claude-opus-4-6',
+  'gpt-4o',
+  'gpt-4o-mini',
+  'gemini-2.5-flash',
+  'gemini-2.5-pro',
 ])
 
 function buildToolResultContent(output: string, modelId: string): MessageContent {
@@ -166,7 +173,9 @@ describe('buildToolResultContent', () => {
 // ─── Browser capability definition ───
 
 describe('browser-automation capability', () => {
-  let browserAutomation: any
+  let browserAutomation: Awaited<
+    typeof import('../../apps/api/src/capabilities/builtin/browser-automation')
+  >['browserAutomation']
 
   beforeEach(async () => {
     const mod = await import('../../apps/api/src/capabilities/builtin/browser-automation')
@@ -242,7 +251,7 @@ describe('browser service security checks', () => {
 // ─── Constants validation ───
 
 describe('browser constants', () => {
-  let constants: any
+  let constants: Awaited<typeof import('../../apps/api/src/constants')>
 
   beforeEach(async () => {
     constants = await import('../../apps/api/src/constants')
@@ -256,8 +265,12 @@ describe('browser constants', () => {
     expect(constants.BROWSER_SCRIPT_DEFAULT_TIMEOUT_S).toBe(30)
     expect(constants.BROWSER_SCRIPT_MIN_TIMEOUT_S).toBe(5)
     expect(constants.BROWSER_SCRIPT_MAX_TIMEOUT_S).toBe(120)
-    expect(constants.BROWSER_SCRIPT_MIN_TIMEOUT_S).toBeLessThan(constants.BROWSER_SCRIPT_DEFAULT_TIMEOUT_S)
-    expect(constants.BROWSER_SCRIPT_DEFAULT_TIMEOUT_S).toBeLessThan(constants.BROWSER_SCRIPT_MAX_TIMEOUT_S)
+    expect(constants.BROWSER_SCRIPT_MIN_TIMEOUT_S).toBeLessThan(
+      constants.BROWSER_SCRIPT_DEFAULT_TIMEOUT_S,
+    )
+    expect(constants.BROWSER_SCRIPT_DEFAULT_TIMEOUT_S).toBeLessThan(
+      constants.BROWSER_SCRIPT_MAX_TIMEOUT_S,
+    )
   })
 
   test('extraction limits are positive', () => {

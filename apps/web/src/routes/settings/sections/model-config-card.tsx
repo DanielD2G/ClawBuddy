@@ -95,9 +95,15 @@ export function ModelConfigCard() {
   const [advancedMode, setAdvancedMode] = useState(false)
   const [contextLimitTokens, setContextLimitTokens] = useState(DEFAULT_CONTEXT_LIMIT_TOKENS)
   const [maxAgentIterations, setMaxAgentIterations] = useState(DEFAULT_MAX_AGENT_ITERATIONS)
-  const [subAgentExploreMaxIterations, setSubAgentExploreMaxIterations] = useState(DEFAULT_SUB_AGENT_EXPLORE_MAX_ITERATIONS)
-  const [subAgentAnalyzeMaxIterations, setSubAgentAnalyzeMaxIterations] = useState(DEFAULT_SUB_AGENT_ANALYZE_MAX_ITERATIONS)
-  const [subAgentExecuteMaxIterations, setSubAgentExecuteMaxIterations] = useState(DEFAULT_SUB_AGENT_EXECUTE_MAX_ITERATIONS)
+  const [subAgentExploreMaxIterations, setSubAgentExploreMaxIterations] = useState(
+    DEFAULT_SUB_AGENT_EXPLORE_MAX_ITERATIONS,
+  )
+  const [subAgentAnalyzeMaxIterations, setSubAgentAnalyzeMaxIterations] = useState(
+    DEFAULT_SUB_AGENT_ANALYZE_MAX_ITERATIONS,
+  )
+  const [subAgentExecuteMaxIterations, setSubAgentExecuteMaxIterations] = useState(
+    DEFAULT_SUB_AGENT_EXECUTE_MAX_ITERATIONS,
+  )
   const [dirty, setDirty] = useState(false)
 
   const roles = advancedMode ? ADVANCED_ROLES : SIMPLE_ROLES
@@ -305,11 +311,28 @@ export function ModelConfigCard() {
                   Maximum tool calls per sub-agent type before it stops
                 </div>
               </div>
-              {([
-                { key: 'explore', label: 'Explore', value: subAgentExploreMaxIterations, setter: setSubAgentExploreMaxIterations },
-                { key: 'analyze', label: 'Analyze', value: subAgentAnalyzeMaxIterations, setter: setSubAgentAnalyzeMaxIterations },
-                { key: 'execute', label: 'Execute', value: subAgentExecuteMaxIterations, setter: setSubAgentExecuteMaxIterations },
-              ] as const).map(({ key, label, value, setter }) => (
+              {(
+                [
+                  {
+                    key: 'explore',
+                    label: 'Explore',
+                    value: subAgentExploreMaxIterations,
+                    setter: setSubAgentExploreMaxIterations,
+                  },
+                  {
+                    key: 'analyze',
+                    label: 'Analyze',
+                    value: subAgentAnalyzeMaxIterations,
+                    setter: setSubAgentAnalyzeMaxIterations,
+                  },
+                  {
+                    key: 'execute',
+                    label: 'Execute',
+                    value: subAgentExecuteMaxIterations,
+                    setter: setSubAgentExecuteMaxIterations,
+                  },
+                ] as const
+              ).map(({ key, label, value, setter }) => (
                 <div key={key} className="flex items-center justify-between gap-2">
                   <span className="text-xs text-muted-foreground">{label}</span>
                   <Input

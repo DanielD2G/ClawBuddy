@@ -59,13 +59,16 @@ export const cronService = {
     return cronJob
   },
 
-  async update(id: string, data: {
-    name?: string
-    description?: string
-    schedule?: string
-    prompt?: string
-    enabled?: boolean
-  }) {
+  async update(
+    id: string,
+    data: {
+      name?: string
+      description?: string
+      schedule?: string
+      prompt?: string
+      enabled?: boolean
+    },
+  ) {
     const existing = await prisma.cronJob.findUniqueOrThrow({ where: { id } })
 
     // Remove old repeatable before updating
@@ -147,7 +150,6 @@ export const cronService = {
     }
 
     // Add enabled jobs missing from BullMQ
-    const existingKeys = new Set(existingRepeatables.map((r) => r.key))
     for (const job of dbJobs) {
       if (!job.enabled) continue
       // Check if already registered (key format varies, so just re-add — BullMQ deduplicates)

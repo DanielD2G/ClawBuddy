@@ -41,7 +41,11 @@ const sessions = new Map<string, BrowserSession>()
  */
 async function captureOptimizedScreenshot(page: Page): Promise<string | undefined> {
   try {
-    const buf = await page.screenshot({ type: 'jpeg', quality: SCREENSHOT_JPEG_QUALITY, scale: 'css' })
+    const buf = await page.screenshot({
+      type: 'jpeg',
+      quality: SCREENSHOT_JPEG_QUALITY,
+      scale: 'css',
+    })
     return buf.toString('base64')
   } catch {
     return undefined
@@ -222,7 +226,11 @@ export const browserService = {
       } catch {
         // Connection is dead — clean up and create a new session
         console.log(`[Browser] Stale session detected for ${chatSessionId}, reconnecting...`)
-        try { await existing.closeFn() } catch { /* best effort */ }
+        try {
+          await existing.closeFn()
+        } catch {
+          /* best effort */
+        }
         sessions.delete(chatSessionId)
       }
     }
@@ -232,10 +240,12 @@ export const browserService = {
     const browserType = await settingsService.getBrowserGridBrowser()
 
     const grid = new BrowserGrid(url, apiKey || undefined)
-    const conn = await grid.configure({
-      browserType: browserType as 'chromium' | 'firefox' | 'camoufox',
-      contextKey: `clawbuddy-${chatSessionId}`,
-    }).connect()
+    const conn = await grid
+      .configure({
+        browserType: browserType as 'chromium' | 'firefox' | 'camoufox',
+        contextKey: `clawbuddy-${chatSessionId}`,
+      })
+      .connect()
 
     const page = await conn.context.newPage()
     page.setDefaultTimeout(BROWSER_ACTION_TIMEOUT_MS)
@@ -256,13 +266,20 @@ export const browserService = {
   /**
    * Execute a Playwright script from the agent.
    */
-  async executeScript(chatSessionId: string, script: string, timeout = BROWSER_SCRIPT_DEFAULT_TIMEOUT_S): Promise<ScriptResult> {
+  async executeScript(
+    chatSessionId: string,
+    script: string,
+    timeout = BROWSER_SCRIPT_DEFAULT_TIMEOUT_S,
+  ): Promise<ScriptResult> {
     // Security: block dangerous URL schemes
     if (/\b(file|javascript):\/\//i.test(script)) {
       return { success: false, error: 'Scripts cannot use file:// or javascript:// URLs' }
     }
 
-    const clampedTimeout = Math.min(Math.max(timeout, BROWSER_SCRIPT_MIN_TIMEOUT_S), BROWSER_SCRIPT_MAX_TIMEOUT_S)
+    const clampedTimeout = Math.min(
+      Math.max(timeout, BROWSER_SCRIPT_MIN_TIMEOUT_S),
+      BROWSER_SCRIPT_MAX_TIMEOUT_S,
+    )
 
     let session: BrowserSession
     try {
@@ -285,12 +302,28 @@ export const browserService = {
     try {
       // Execute the script with page and helpers available
       const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
-      const fn = new AsyncFunction('page', 'getReadableContent', 'getLinks', 'getInteractiveElements', 'getPageSnapshot', script)
+      const fn = new AsyncFunction(
+        'page',
+        'getReadableContent',
+        'getLinks',
+        'getInteractiveElements',
+        'getPageSnapshot',
+        script,
+      )
 
       const result = await Promise.race([
-        fn(page, boundGetReadableContent, boundGetLinks, boundGetInteractiveElements, boundGetPageSnapshot),
+        fn(
+          page,
+          boundGetReadableContent,
+          boundGetLinks,
+          boundGetInteractiveElements,
+          boundGetPageSnapshot,
+        ),
         new Promise((_, reject) =>
-          setTimeout(() => reject(new Error(`Script timed out after ${clampedTimeout}s`)), clampedTimeout * 1000),
+          setTimeout(
+            () => reject(new Error(`Script timed out after ${clampedTimeout}s`)),
+            clampedTimeout * 1000,
+          ),
         ),
       ])
 
@@ -302,7 +335,11 @@ export const browserService = {
         output = result
       } else {
         // If result contains a screenshot, replace with a resized optimized JPEG
-        if (typeof result === 'object' && result !== null && (Buffer.isBuffer(result.screenshot) || typeof result.screenshot === 'string')) {
+        if (
+          typeof result === 'object' &&
+          result !== null &&
+          (Buffer.isBuffer(result.screenshot) || typeof result.screenshot === 'string')
+        ) {
           const resized = await captureOptimizedScreenshot(page)
           if (resized) {
             result.screenshot = resized
@@ -326,14 +363,18 @@ export const browserService = {
       const errorMessage = err instanceof Error ? err.message : String(err)
 
       // If the connection died, clean up the stale session so next call creates a fresh one
-      const isConnectionError = errorMessage.includes('Connection ended') ||
+      const isConnectionError =
+        errorMessage.includes('Connection ended') ||
         errorMessage.includes('Connection closed') ||
         errorMessage.includes('Target closed') ||
         errorMessage.includes('Browser has been closed')
       if (isConnectionError) {
         console.log(`[Browser] Connection lost for ${chatSessionId}, cleaning up stale session`)
         await this.closeSession(chatSessionId)
-        return { success: false, error: `${errorMessage}. The browser session was lost — please retry.` }
+        return {
+          success: false,
+          error: `${errorMessage}. The browser session was lost — please retry.`,
+        }
       }
 
       // Auto-screenshot on error for visual context (resized JPEG for smaller token cost)

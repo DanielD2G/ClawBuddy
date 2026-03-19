@@ -3,7 +3,8 @@ import type { CapabilityDefinition } from '../types.js'
 export const cronManagement: CapabilityDefinition = {
   slug: 'cron-management',
   name: 'Cron Management',
-  description: 'Create, list, and delete recurring scheduled tasks (cron jobs). Use this when the user asks for something to happen on a schedule or periodically.',
+  description:
+    'Create, list, and delete recurring scheduled tasks (cron jobs). Use this when the user asks for something to happen on a schedule or periodically.',
   icon: 'Clock',
   category: 'builtin',
   version: '1.0.0',

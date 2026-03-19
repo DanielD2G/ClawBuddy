@@ -10,7 +10,15 @@ interface FormFieldProps {
   children: React.ReactNode
 }
 
-export function FormField({ label, description, required, error, htmlFor, className, children }: FormFieldProps) {
+export function FormField({
+  label,
+  description,
+  required,
+  error,
+  htmlFor,
+  className,
+  children,
+}: FormFieldProps) {
   return (
     <div className={cn('flex flex-col gap-1.5', className)}>
       <label htmlFor={htmlFor} className="text-sm font-medium leading-none">

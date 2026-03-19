@@ -8,10 +8,8 @@ export function sanitizeFileName(name: string): string {
  * This is the canonical sanitizer for any text destined for DB storage.
  */
 export function stripNullBytes(s: string): string {
-  // eslint-disable-next-line no-control-regex
   let result = s.replace(/\x00/g, '')
   result = result.replace(/\\u0000/g, '')
-  // eslint-disable-next-line no-control-regex
   result = result.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
   return result
 }

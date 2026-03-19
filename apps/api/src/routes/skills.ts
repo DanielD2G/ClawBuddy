@@ -24,12 +24,9 @@ app.post('/skills/upload', async (c) => {
   if (hasInstallation) {
     // Stream build logs via SSE
     return streamSSE(c, async (stream) => {
-      const result = await skillService.uploadSkill(
-        JSON.stringify(body),
-        (line) => {
-          stream.writeSSE({ event: 'build_log', data: line })
-        },
-      )
+      const result = await skillService.uploadSkill(JSON.stringify(body), (line) => {
+        stream.writeSSE({ event: 'build_log', data: line })
+      })
 
       if (result.success) {
         await stream.writeSSE({
@@ -52,10 +49,7 @@ app.post('/skills/upload', async (c) => {
   // No installation script — simple JSON response
   const result = await skillService.uploadSkill(JSON.stringify(body))
   if (!result.success) {
-    return c.json(
-      { success: false, error: result.error, logs: result.logs },
-      400,
-    )
+    return c.json({ success: false, error: result.error, logs: result.logs }, 400)
   }
   return c.json({ success: true, data: { slug: result.slug } }, 201)
 })
