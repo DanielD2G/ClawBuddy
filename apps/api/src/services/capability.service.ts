@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma.js'
 import { Prisma } from '@prisma/client'
 import { BUILTIN_CAPABILITIES } from '../capabilities/builtin/index.js'
+import { ALWAYS_ON_CAPABILITY_SLUGS } from '../constants.js'
 import type { ToolDefinition, ConfigFieldDefinition } from '../capabilities/types.js'
 import type { LLMToolDefinition } from '../providers/llm.interface.js'
 import {
@@ -78,6 +79,36 @@ export const capabilityService = {
         },
       })
     }
+
+    // Auto-enable always-on capabilities for all existing workspaces
+    await this.ensureAlwaysOnCapabilities()
+  },
+
+  /**
+   * Ensure all always-on capabilities are enabled for every workspace.
+   * Creates missing WorkspaceCapability records so new core tools
+   * are active immediately without manual activation.
+   */
+  async ensureAlwaysOnCapabilities() {
+    const workspaces = await prisma.workspace.findMany({ select: { id: true } })
+    if (!workspaces.length) return
+
+    const alwaysOnCaps = await prisma.capability.findMany({
+      where: { slug: { in: ALWAYS_ON_CAPABILITY_SLUGS } },
+      select: { id: true },
+    })
+    if (!alwaysOnCaps.length) return
+
+    await prisma.workspaceCapability.createMany({
+      data: workspaces.flatMap((ws) =>
+        alwaysOnCaps.map((cap) => ({
+          workspaceId: ws.id,
+          capabilityId: cap.id,
+          enabled: true,
+        })),
+      ),
+      skipDuplicates: true,
+    })
   },
 
   /**
