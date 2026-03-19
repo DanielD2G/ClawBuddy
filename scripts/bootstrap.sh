@@ -1,162 +1,804 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# ── Colors & Logging ─────────────────────────────────
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
+BOLD='\033[1m'
+DIM='\033[2m'
 NC='\033[0m'
 
 info()  { echo -e "${CYAN}[INFO]${NC}  $*"; }
-ok()    { echo -e "${GREEN}[OK]${NC}    $*"; }
+ok()    { echo -e "${GREEN}  ✓${NC}  $*"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
-fail()  { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
+fail()  { echo -e "${RED}  ✗  $*${NC}"; exit 1; }
+step_header() { echo -e "\n${BOLD}${CYAN}━━━ Step $1/$TOTAL_STEPS: $2 ━━━${NC}\n"; }
 
+TOTAL_STEPS=5
 RAW_BASE="https://raw.githubusercontent.com/DanielD2G/AgentBuddy/main"
 
-# ── 0. Create project directory ───────────────────
-if [[ ! -f "docker-compose.yml" ]]; then
-  mkdir -p AgentBuddy && cd AgentBuddy
-  info "Downloading docker-compose.yml..."
-  curl -fsSL "$RAW_BASE/docker-compose.yml" -o docker-compose.yml
-  info "Downloading .env.example..."
-  curl -fsSL "$RAW_BASE/.env.example" -o .env.example
-  ok "Files downloaded"
-fi
+# ── Collected config (globals) ───────────────────────
+AI_PROVIDER=""
+EMBEDDING_PROVIDER=""
+OPENAI_KEY=""
+ANTHROPIC_KEY=""
+GEMINI_KEY=""
+GOOGLE_CLIENT_ID=""
+GOOGLE_CLIENT_SECRET=""
+APP_URL=""
+SKIP_API_SETUP=false
 
-# ── 1. Check Docker ──────────────────────────────
-info "Checking Docker..."
+# ── Trap ─────────────────────────────────────────────
+cleanup() {
+  local exit_code=$?
+  if [[ $exit_code -ne 0 ]]; then
+    echo ""
+    warn "Setup was interrupted. You can safely re-run this script to continue."
+  fi
+}
+trap cleanup EXIT
 
-if ! command -v docker &>/dev/null; then
-  warn "Docker not found. Attempting to install..."
+# ── Utility Functions ────────────────────────────────
 
-  if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-    if command -v apt-get &>/dev/null; then
-      info "Installing Docker via apt..."
-      sudo apt-get update -qq
-      sudo apt-get install -y -qq docker.io docker-compose-plugin
-      sudo systemctl enable --now docker
-      sudo usermod -aG docker "$USER"
-      warn "You were added to the docker group. You may need to log out and back in."
-    else
-      fail "Unsupported Linux package manager. Install Docker manually: https://docs.docker.com/engine/install/"
+# Read from terminal even when script is piped via curl | bash
+read_input() {
+  local prompt="$1"
+  local var_name="$2"
+  local default="${3:-}"
+
+  if [[ -n "$default" ]]; then
+    prompt="$prompt [$default]"
+  fi
+
+  if [[ -t 0 ]]; then
+    read -rp "  $prompt " "$var_name"
+  else
+    read -rp "  $prompt " "$var_name" </dev/tty
+  fi
+
+  # Apply default if empty
+  if [[ -z "${!var_name}" && -n "$default" ]]; then
+    printf -v "$var_name" '%s' "$default"
+  fi
+}
+
+# Read a secret value (no echo)
+read_secret() {
+  local prompt="$1"
+  local var_name="$2"
+
+  if [[ -t 0 ]]; then
+    read -rsp "  $prompt " "$var_name"
+  else
+    read -rsp "  $prompt " "$var_name" </dev/tty
+  fi
+  echo ""
+}
+
+# Numbered menu → sets MENU_RESULT to the value
+prompt_choice() {
+  local prompt="$1"
+  shift
+  local options=("$@")
+  local count=${#options[@]}
+
+  echo -e "  ${BOLD}$prompt${NC}"
+  echo ""
+  for i in "${!options[@]}"; do
+    echo -e "    ${CYAN}$((i + 1)))${NC} ${options[$i]}"
+  done
+  echo ""
+
+  while true; do
+    local choice
+    read_input "Enter choice [1-$count]:" choice
+    if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= count )); then
+      MENU_RESULT=$((choice - 1))
+      return
     fi
-  elif [[ "$OSTYPE" == "darwin"* ]]; then
-    if command -v brew &>/dev/null; then
-      info "Installing Docker via Homebrew..."
-      brew install --cask docker
+    echo -e "  ${RED}Invalid choice. Please enter a number between 1 and $count.${NC}"
+  done
+}
+
+# y/n prompt → returns 0 for yes, 1 for no
+prompt_yes_no() {
+  local prompt="$1"
+  local default="${2:-n}"
+
+  local hint
+  if [[ "$default" == "y" ]]; then
+    hint="Y/n"
+  else
+    hint="y/N"
+  fi
+
+  while true; do
+    local answer
+    read_input "$prompt ($hint):" answer "$default"
+    case "${answer,,}" in
+      y|yes) return 0 ;;
+      n|no)  return 1 ;;
+      *)     echo -e "  ${RED}Please answer y or n.${NC}" ;;
+    esac
+  done
+}
+
+# Prompt for API key with format validation and retry
+prompt_api_key() {
+  local provider_name="$1"
+  local pattern="$2"
+  local hint="$3"
+  local var_name="$4"
+
+  while true; do
+    local key
+    read_secret "Paste your $provider_name API key:" key
+
+    if [[ -z "$key" ]]; then
       echo ""
-      fail "Docker Desktop was installed. Please open Docker Desktop, wait for it to start, then re-run this script."
-    else
-      fail "Install Docker Desktop from https://www.docker.com/products/docker-desktop/ then re-run this script."
+      if prompt_yes_no "Skip $provider_name key for now?" "n"; then
+        printf -v "$var_name" ''
+        warn "Skipped $provider_name key. You can add it later in .env"
+        return
+      fi
+      continue
     fi
-  else
-    fail "Unsupported OS. Install Docker manually: https://docs.docker.com/engine/install/"
-  fi
-fi
 
-if ! docker info &>/dev/null; then
-  fail "Docker is installed but not running. Start Docker Desktop (macOS) or 'sudo systemctl start docker' (Linux), then re-run."
-fi
+    if [[ "$key" =~ $pattern ]]; then
+      printf -v "$var_name" '%s' "$key"
+      ok "$provider_name API key set"
+      return
+    fi
 
-if ! docker compose version &>/dev/null; then
-  fail "Docker Compose plugin not found. Install it: https://docs.docker.com/compose/install/"
-fi
+    echo -e "  ${RED}Invalid format. $hint${NC}"
+    echo -e "  ${DIM}Try again or press Enter to skip.${NC}"
+  done
+}
 
-ok "Docker $(docker --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+') + Compose $(docker compose version --short)"
+# Show instructions in a box
+show_guide() {
+  local title="$1"
+  shift
+  local lines=("$@")
 
-# ── 2. Check ports ───────────────────────────────
-info "Checking ports..."
+  local max_len=${#title}
+  for line in "${lines[@]}"; do
+    local stripped
+    stripped=$(echo -e "$line" | sed 's/\x1b\[[0-9;]*m//g')
+    (( ${#stripped} > max_len )) && max_len=${#stripped}
+  done
+  max_len=$((max_len + 2))
 
-PORTS=(4321 4000 5433 6333 6334 6380 9000 9001 9090)
-BUSY=()
-
-for port in "${PORTS[@]}"; do
-  if lsof -iTCP:"$port" -sTCP:LISTEN -t &>/dev/null; then
-    BUSY+=("$port")
-  fi
-done
-
-if [[ ${#BUSY[@]} -gt 0 ]]; then
-  fail "Ports in use: ${BUSY[*]}. Free them before continuing.\n       Use 'lsof -i :PORT' to find what's using each port."
-fi
-
-ok "All required ports are free"
-
-# ── 3. Setup .env ────────────────────────────────
-info "Setting up environment..."
-
-if [[ ! -f .env ]]; then
-  cp .env.example .env
-  info "Created .env from .env.example"
-
-  # Generate random ENCRYPTION_SECRET
-  SECRET=$(openssl rand -base64 32)
-  if [[ "$OSTYPE" == "darwin"* ]]; then
-    sed -i '' "s|change-me-to-a-random-secret|${SECRET}|" .env
-  else
-    sed -i "s|change-me-to-a-random-secret|${SECRET}|" .env
-  fi
-  ok "Generated random ENCRYPTION_SECRET"
+  local border
+  border=$(printf '─%.0s' $(seq 1 $((max_len + 2))))
 
   echo ""
-  warn "Add your AI provider API keys to .env before using the app:"
-  warn "  OPENAI_API_KEY, GEMINI_API_KEY, or ANTHROPIC_API_KEY"
+  echo -e "  ${DIM}┌─${border}─┐${NC}"
+  printf "  ${DIM}│${NC}  ${BOLD}%-${max_len}s${NC}  ${DIM}│${NC}\n" "$title"
+  echo -e "  ${DIM}│${NC}  $(printf ' %.0s' $(seq 1 $max_len))  ${DIM}│${NC}"
+  for line in "${lines[@]}"; do
+    local stripped
+    stripped=$(echo -e "$line" | sed 's/\x1b\[[0-9;]*m//g')
+    local padding=$((max_len - ${#stripped}))
+    local pad
+    pad=$(printf ' %.0s' $(seq 1 $padding) 2>/dev/null || true)
+    echo -e "  ${DIM}│${NC}  ${line}${pad}  ${DIM}│${NC}"
+  done
+  echo -e "  ${DIM}└─${border}─┘${NC}"
   echo ""
-else
-  ok ".env already exists"
+}
 
-  # Check ENCRYPTION_SECRET
-  if grep -q "change-me-to-a-random-secret" .env; then
-    SECRET=$(openssl rand -base64 32)
+# Set a variable in the .env file
+set_env_var() {
+  local key="$1"
+  local value="$2"
+  local file="${3:-.env}"
+
+  if grep -q "^${key}=" "$file" 2>/dev/null; then
     if [[ "$OSTYPE" == "darwin"* ]]; then
-      sed -i '' "s|change-me-to-a-random-secret|${SECRET}|" .env
+      sed -i '' "s|^${key}=.*|${key}=\"${value}\"|" "$file"
     else
-      sed -i "s|change-me-to-a-random-secret|${SECRET}|" .env
+      sed -i "s|^${key}=.*|${key}=\"${value}\"|" "$file"
     fi
-    ok "Generated random ENCRYPTION_SECRET (was still default)"
+  else
+    echo "${key}=\"${value}\"" >> "$file"
   fi
-fi
+}
 
-# ── 4. Pull & start ─────────────────────────────
-info "Pulling images and starting services..."
-docker compose up -d
-
-# ── 5. Wait for health ──────────────────────────
-info "Waiting for API to be healthy..."
-
-TIMEOUT=120
-ELAPSED=0
-
-while [[ $ELAPSED -lt $TIMEOUT ]]; do
-  STATUS=$(docker compose ps api --format json 2>/dev/null | grep -o '"Health":"[^"]*"' | head -1 || true)
-  if [[ "$STATUS" == *"healthy"* ]]; then
-    break
+# Detect OS type
+detect_os() {
+  if [[ -f /proc/version ]] && grep -qi "microsoft\|wsl" /proc/version 2>/dev/null; then
+    OS_TYPE="wsl"
+  elif [[ "$OSTYPE" == "darwin"* ]]; then
+    OS_TYPE="macos"
+  elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    if command -v apt-get &>/dev/null; then
+      OS_TYPE="linux-apt"
+    elif command -v dnf &>/dev/null; then
+      OS_TYPE="linux-dnf"
+    elif command -v yum &>/dev/null; then
+      OS_TYPE="linux-yum"
+    else
+      OS_TYPE="linux-unknown"
+    fi
+  else
+    OS_TYPE="unsupported"
   fi
-  sleep 5
-  ELAPSED=$((ELAPSED + 5))
-  echo -ne "\r  Waiting... ${ELAPSED}s / ${TIMEOUT}s"
-done
-echo ""
+}
 
-if [[ $ELAPSED -ge $TIMEOUT ]]; then
-  warn "API did not become healthy within ${TIMEOUT}s. Check logs:"
-  warn "  docker compose logs api"
+# ── Banner ───────────────────────────────────────────
+
+show_banner() {
   echo ""
-else
-  ok "API is healthy"
-fi
+  echo -e "${BOLD}${CYAN}"
+  echo "  ╔══════════════════════════════════════════════╗"
+  echo "  ║                                              ║"
+  echo "  ║            AgentBuddy Setup Wizard           ║"
+  echo "  ║                                              ║"
+  echo "  ║   Self-hosted AI agent platform              ║"
+  echo "  ║   with sandboxed tool execution              ║"
+  echo "  ║                                              ║"
+  echo "  ╚══════════════════════════════════════════════╝"
+  echo -e "${NC}"
+  echo -e "  This wizard will guide you through the complete setup."
+  echo -e "  It should take about ${BOLD}5 minutes${NC}."
+  echo ""
+}
 
-# ── 6. Done ──────────────────────────────────────
-echo ""
-echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${GREEN}  AgentBuddy is running!${NC}"
-echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo ""
-echo -e "  Web app:       ${CYAN}http://localhost:4321${NC}"
-echo -e "  API:           ${CYAN}http://localhost:4000${NC}"
-echo -e "  MinIO console: ${CYAN}http://localhost:9001${NC}"
-echo ""
-echo -e "  Logs:  docker compose logs -f"
-echo -e "  Stop:  docker compose down"
-echo ""
+# ── Step 1: Docker ───────────────────────────────────
+
+step_docker_check() {
+  step_header 1 "Docker"
+
+  detect_os
+  info "Detected system: ${BOLD}$OS_TYPE${NC}"
+
+  # Check if Docker is installed
+  if ! command -v docker &>/dev/null; then
+    warn "Docker is not installed."
+    echo ""
+
+    case "$OS_TYPE" in
+      linux-apt|wsl)
+        if prompt_yes_no "Install Docker automatically via apt?" "y"; then
+          info "Installing Docker..."
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq docker.io docker-compose-plugin
+          sudo systemctl enable --now docker
+          sudo usermod -aG docker "$USER"
+          ok "Docker installed"
+          warn "You were added to the 'docker' group."
+          warn "If you get permission errors, log out and back in, then re-run this script."
+        else
+          fail "Docker is required. Install it manually: https://docs.docker.com/engine/install/"
+        fi
+        ;;
+      linux-dnf)
+        if prompt_yes_no "Install Docker automatically via dnf?" "y"; then
+          info "Installing Docker..."
+          sudo dnf install -y dnf-plugins-core
+          sudo dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo
+          sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+          sudo systemctl enable --now docker
+          sudo usermod -aG docker "$USER"
+          ok "Docker installed"
+          warn "You were added to the 'docker' group. Log out and back in if you get permission errors."
+        else
+          fail "Docker is required. Install it manually: https://docs.docker.com/engine/install/"
+        fi
+        ;;
+      linux-yum)
+        if prompt_yes_no "Install Docker automatically via yum?" "y"; then
+          info "Installing Docker..."
+          sudo yum install -y yum-utils
+          sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+          sudo yum install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+          sudo systemctl enable --now docker
+          sudo usermod -aG docker "$USER"
+          ok "Docker installed"
+          warn "You were added to the 'docker' group. Log out and back in if you get permission errors."
+        else
+          fail "Docker is required. Install it manually: https://docs.docker.com/engine/install/"
+        fi
+        ;;
+      macos)
+        if command -v brew &>/dev/null; then
+          if prompt_yes_no "Install Docker Desktop via Homebrew?" "y"; then
+            info "Installing Docker Desktop..."
+            brew install --cask docker
+            echo ""
+            echo -e "  ${YELLOW}Docker Desktop has been installed.${NC}"
+            echo -e "  ${BOLD}Please open Docker Desktop from your Applications folder,${NC}"
+            echo -e "  ${BOLD}wait for it to fully start, then re-run this script.${NC}"
+            echo ""
+            exit 0
+          else
+            fail "Docker is required. Download Docker Desktop: https://www.docker.com/products/docker-desktop/"
+          fi
+        else
+          echo -e "  ${BOLD}To install Docker on macOS:${NC}"
+          echo ""
+          echo -e "    1. Download Docker Desktop from:"
+          echo -e "       ${CYAN}https://www.docker.com/products/docker-desktop/${NC}"
+          echo -e "    2. Open the .dmg and drag Docker to Applications"
+          echo -e "    3. Open Docker Desktop and wait for it to start"
+          echo -e "    4. Re-run this script"
+          echo ""
+          fail "Docker is required to continue."
+        fi
+        ;;
+      linux-unknown)
+        echo -e "  ${BOLD}Could not detect your package manager.${NC}"
+        echo -e "  Install Docker manually: ${CYAN}https://docs.docker.com/engine/install/${NC}"
+        fail "Docker is required to continue."
+        ;;
+      unsupported)
+        echo -e "  ${BOLD}Unsupported operating system.${NC}"
+        echo -e "  Install Docker manually: ${CYAN}https://docs.docker.com/engine/install/${NC}"
+        fail "Docker is required to continue."
+        ;;
+    esac
+  fi
+
+  # Verify Docker is running
+  if ! docker info &>/dev/null; then
+    echo ""
+    case "$OS_TYPE" in
+      macos)
+        echo -e "  ${BOLD}Docker is installed but not running.${NC}"
+        echo -e "  Open ${CYAN}Docker Desktop${NC} from your Applications folder,"
+        echo -e "  wait for it to fully start, then re-run this script."
+        ;;
+      *)
+        echo -e "  ${BOLD}Docker is installed but not running.${NC}"
+        echo -e "  Start it with: ${CYAN}sudo systemctl start docker${NC}"
+        echo -e "  Then re-run this script."
+        ;;
+    esac
+    fail "Docker daemon is not running."
+  fi
+
+  # Verify Docker Compose
+  if ! docker compose version &>/dev/null; then
+    echo ""
+    echo -e "  ${BOLD}Docker Compose plugin is not installed.${NC}"
+    echo -e "  Install it: ${CYAN}https://docs.docker.com/compose/install/${NC}"
+    fail "Docker Compose is required to continue."
+  fi
+
+  ok "Docker $(docker --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+  ok "Docker Compose $(docker compose version --short)"
+}
+
+# ── Step 2: Download & Pull ──────────────────────────
+
+step_pull_images() {
+  step_header 2 "Download & Pull Images"
+
+  # Download files if not present
+  if [[ ! -f "docker-compose.yml" ]]; then
+    mkdir -p AgentBuddy && cd AgentBuddy
+    info "Downloading docker-compose.yml..."
+    curl -fsSL "$RAW_BASE/docker-compose.yml" -o docker-compose.yml || \
+      fail "Could not download docker-compose.yml. Check your internet connection."
+    info "Downloading .env.example..."
+    curl -fsSL "$RAW_BASE/.env.example" -o .env.example || \
+      fail "Could not download .env.example. Check your internet connection."
+    ok "Project files downloaded to $(pwd)"
+  else
+    ok "docker-compose.yml found in current directory"
+  fi
+
+  # Check ports
+  info "Checking required ports..."
+  local PORTS=(4321 4000 5433 6333 6334 6380 9000 9001 9090)
+  local BUSY=()
+
+  for port in "${PORTS[@]}"; do
+    if lsof -iTCP:"$port" -sTCP:LISTEN -t &>/dev/null 2>&1; then
+      BUSY+=("$port")
+    fi
+  done
+
+  if [[ ${#BUSY[@]} -gt 0 ]]; then
+    echo ""
+    echo -e "  ${RED}The following ports are already in use: ${BOLD}${BUSY[*]}${NC}"
+    echo ""
+    echo -e "  AgentBuddy needs these ports:"
+    echo -e "    4321 - Web app       4000 - API"
+    echo -e "    5433 - PostgreSQL    6333 - Qdrant"
+    echo -e "    6380 - Redis         9000 - MinIO"
+    echo -e "    9001 - MinIO Console 9090 - BrowserGrid"
+    echo ""
+    echo -e "  To find what's using a port: ${CYAN}lsof -i :PORT${NC}"
+    fail "Free the ports listed above and re-run this script."
+  fi
+  ok "All required ports are free"
+
+  # Pull images
+  info "Pulling Docker images (this may take a few minutes on first run)..."
+  echo ""
+  docker compose pull
+  echo ""
+  ok "All images pulled"
+}
+
+# ── Step 3: API Keys ────────────────────────────────
+
+step_api_keys() {
+  step_header 3 "AI Provider Configuration"
+
+  # Check for existing .env
+  if [[ -f .env ]]; then
+    echo -e "  An existing ${BOLD}.env${NC} configuration was found."
+    echo ""
+    if ! prompt_yes_no "Do you want to reconfigure your AI providers?" "n"; then
+      SKIP_API_SETUP=true
+      ok "Keeping existing configuration"
+      return
+    fi
+    echo ""
+  fi
+
+  # ── Choose AI Provider ──
+  echo -e "  ${BOLD}Choose your AI provider for chat:${NC}"
+  echo ""
+  prompt_choice "Which AI provider do you want to use?" \
+    "OpenAI    - GPT-5.4, GPT-5, GPT-4.1, O3" \
+    "Gemini    - Gemini 3.1 Pro, 3 Flash, 2.5 Pro" \
+    "Claude    - Opus 4.6, Sonnet 4.6, Haiku 4.5"
+
+  local providers=("openai" "gemini" "claude")
+  AI_PROVIDER="${providers[$MENU_RESULT]}"
+  ok "AI provider: ${BOLD}$AI_PROVIDER${NC}"
+  echo ""
+
+  # ── Choose Embedding Provider ──
+  if [[ "$AI_PROVIDER" == "claude" ]]; then
+    echo -e "  ${YELLOW}Note:${NC} Claude does not provide an embeddings API."
+    echo -e "  You need either ${BOLD}OpenAI${NC} or ${BOLD}Gemini${NC} for embeddings."
+    echo ""
+  fi
+
+  prompt_choice "Which provider for embeddings?" \
+    "OpenAI  - text-embedding-3-small/large" \
+    "Gemini  - gemini-embedding-001/002"
+
+  local embed_providers=("openai" "gemini")
+  EMBEDDING_PROVIDER="${embed_providers[$MENU_RESULT]}"
+  ok "Embedding provider: ${BOLD}$EMBEDDING_PROVIDER${NC}"
+  echo ""
+
+  # ── Determine which keys we need ──
+  local need_openai=false
+  local need_anthropic=false
+  local need_gemini=false
+
+  [[ "$AI_PROVIDER" == "openai" || "$EMBEDDING_PROVIDER" == "openai" ]] && need_openai=true
+  [[ "$AI_PROVIDER" == "claude" ]] && need_anthropic=true
+  [[ "$AI_PROVIDER" == "gemini" || "$EMBEDDING_PROVIDER" == "gemini" ]] && need_gemini=true
+
+  # ── Collect required API keys ──
+  if [[ "$need_openai" == true ]]; then
+    show_guide "How to get an OpenAI API key:" \
+      "1. Go to: ${CYAN}https://platform.openai.com/api-keys${NC}" \
+      "2. Sign up or log in" \
+      "3. Click ${BOLD}Create new secret key${NC}" \
+      "4. Name it (e.g., agentbuddy)" \
+      "5. Copy the key (starts with ${BOLD}sk-...${NC})"
+
+    prompt_api_key "OpenAI" "^sk-" "Key should start with sk-" OPENAI_KEY
+    echo ""
+  fi
+
+  if [[ "$need_anthropic" == true ]]; then
+    show_guide "How to get an Anthropic API key:" \
+      "1. Go to: ${CYAN}https://console.anthropic.com${NC}" \
+      "2. Sign up or log in" \
+      "3. Navigate to ${BOLD}API Keys${NC} in the sidebar" \
+      "4. Click ${BOLD}Create Key${NC}" \
+      "5. Copy the key (starts with ${BOLD}sk-ant-...${NC})"
+
+    prompt_api_key "Anthropic" "^sk-ant-" "Key should start with sk-ant-" ANTHROPIC_KEY
+    echo ""
+  fi
+
+  if [[ "$need_gemini" == true ]]; then
+    show_guide "How to get a Google Gemini API key:" \
+      "1. Go to: ${CYAN}https://aistudio.google.com${NC}" \
+      "2. Sign in with your Google account" \
+      "3. Click ${BOLD}Get API key${NC} in the sidebar" \
+      "4. Click ${BOLD}Create API key${NC}" \
+      "5. Copy the key (starts with ${BOLD}AIza...${NC})"
+
+    prompt_api_key "Gemini" "^AIza" "Key should start with AIza" GEMINI_KEY
+    echo ""
+  fi
+
+  # ── Validate we have at least the embedding key ──
+  local has_embedding_key=false
+  if [[ "$EMBEDDING_PROVIDER" == "openai" && -n "$OPENAI_KEY" ]]; then
+    has_embedding_key=true
+  elif [[ "$EMBEDDING_PROVIDER" == "gemini" && -n "$GEMINI_KEY" ]]; then
+    has_embedding_key=true
+  fi
+
+  if [[ "$has_embedding_key" == false ]]; then
+    warn "You skipped the API key for your embedding provider ($EMBEDDING_PROVIDER)."
+    warn "Embeddings are required for document search to work."
+    warn "You can add the key later by editing the .env file."
+  fi
+
+  # ── Optional: Google OAuth ──
+  echo ""
+  echo -e "  ${BOLD}Optional: Google Workspace Integration${NC}"
+  echo -e "  ${DIM}Enables Gmail, Calendar, and Drive access for the AI agent.${NC}"
+  echo ""
+
+  if prompt_yes_no "Set up Google Workspace integration?" "n"; then
+    echo ""
+    show_guide "Google OAuth Setup:" \
+      "1. Go to: ${CYAN}https://console.cloud.google.com${NC}" \
+      "2. Create a new project (e.g., 'AgentBuddy')" \
+      "3. Go to ${BOLD}APIs & Services > Library${NC} and enable:" \
+      "   - Gmail API" \
+      "   - Google Calendar API" \
+      "   - Google Drive API" \
+      "4. Go to ${BOLD}APIs & Services > OAuth consent screen${NC}" \
+      "   - Select External, fill in app name and emails" \
+      "   - Add scopes: mail, calendar, drive, userinfo.email" \
+      "   - Add your email as a test user" \
+      "5. Go to ${BOLD}APIs & Services > Credentials${NC}" \
+      "   - Create Credentials > OAuth client ID" \
+      "   - Type: Web application" \
+      "   - Redirect URI: http://localhost:4321/api/oauth/google/callback" \
+      "6. Copy the ${BOLD}Client ID${NC} and ${BOLD}Client Secret${NC}"
+
+    echo ""
+    read_input "Paste your Google Client ID:" GOOGLE_CLIENT_ID
+    if [[ -n "$GOOGLE_CLIENT_ID" ]]; then
+      read_input "Paste your Google Client Secret:" GOOGLE_CLIENT_SECRET
+      ok "Google OAuth configured"
+
+      echo ""
+      echo -e "  ${DIM}If AgentBuddy will NOT run on localhost:4321, enter your URL below.${NC}"
+      echo -e "  ${DIM}Otherwise just press Enter to skip.${NC}"
+      read_input "App URL (e.g., https://your-domain.com):" APP_URL
+    fi
+  fi
+}
+
+# ── Step 4: Generate .env ────────────────────────────
+
+step_generate_env() {
+  step_header 4 "Generate Configuration"
+
+  if [[ "$SKIP_API_SETUP" == true ]]; then
+    # Just ensure ENCRYPTION_SECRET is set
+    if grep -q "change-me-to-a-random-secret" .env 2>/dev/null; then
+      local secret
+      secret=$(openssl rand -base64 32)
+      set_env_var "ENCRYPTION_SECRET" "$secret"
+      ok "Generated ENCRYPTION_SECRET"
+    fi
+    ok "Using existing .env configuration"
+    return
+  fi
+
+  # Start from .env.example
+  if [[ -f .env.example ]]; then
+    cp .env.example .env
+  else
+    fail ".env.example not found. Cannot generate configuration."
+  fi
+
+  # Set AI providers
+  set_env_var "AI_PROVIDER" "$AI_PROVIDER"
+  set_env_var "EMBEDDING_PROVIDER" "$EMBEDDING_PROVIDER"
+
+  # Set API keys
+  [[ -n "$OPENAI_KEY" ]]       && set_env_var "OPENAI_API_KEY" "$OPENAI_KEY"
+  [[ -n "$ANTHROPIC_KEY" ]]    && set_env_var "ANTHROPIC_API_KEY" "$ANTHROPIC_KEY"
+  [[ -n "$GEMINI_KEY" ]]       && set_env_var "GEMINI_API_KEY" "$GEMINI_KEY"
+  [[ -n "$GOOGLE_CLIENT_ID" ]] && set_env_var "GOOGLE_CLIENT_ID" "$GOOGLE_CLIENT_ID"
+  [[ -n "$GOOGLE_CLIENT_SECRET" ]] && set_env_var "GOOGLE_CLIENT_SECRET" "$GOOGLE_CLIENT_SECRET"
+  [[ -n "$APP_URL" ]]          && set_env_var "APP_URL" "$APP_URL"
+
+  # Generate ENCRYPTION_SECRET
+  local secret
+  secret=$(openssl rand -base64 32)
+  set_env_var "ENCRYPTION_SECRET" "$secret"
+
+  ok "Configuration saved to .env"
+  echo ""
+
+  # Summary
+  echo -e "  ${BOLD}Configuration Summary:${NC}"
+  echo -e "    AI Provider:        ${CYAN}$AI_PROVIDER${NC}"
+  echo -e "    Embedding Provider: ${CYAN}$EMBEDDING_PROVIDER${NC}"
+  [[ -n "$OPENAI_KEY" ]]       && echo -e "    OpenAI Key:         ${GREEN}set${NC}"
+  [[ -n "$ANTHROPIC_KEY" ]]    && echo -e "    Anthropic Key:      ${GREEN}set${NC}"
+  [[ -n "$GEMINI_KEY" ]]       && echo -e "    Gemini Key:         ${GREEN}set${NC}"
+  [[ -n "$GOOGLE_CLIENT_ID" ]] && echo -e "    Google OAuth:       ${GREEN}configured${NC}"
+  [[ -n "$APP_URL" ]]          && echo -e "    App URL:            ${CYAN}$APP_URL${NC}"
+  echo ""
+}
+
+# ── Step 5: Start Services ───────────────────────────
+
+step_start_services() {
+  step_header 5 "Start Services"
+
+  info "Starting all services..."
+  docker compose up -d
+  echo ""
+
+  info "Waiting for API to become healthy..."
+  local timeout=120
+  local elapsed=0
+
+  while [[ $elapsed -lt $timeout ]]; do
+    local status
+    status=$(docker compose ps api --format json 2>/dev/null | grep -o '"Health":"[^"]*"' | head -1 || true)
+    if [[ "$status" == *"healthy"* ]]; then
+      break
+    fi
+    sleep 5
+    elapsed=$((elapsed + 5))
+    echo -ne "\r  Waiting... ${elapsed}s / ${timeout}s"
+  done
+  echo -ne "\r                              \r"
+
+  if [[ $elapsed -ge $timeout ]]; then
+    warn "API did not become healthy within ${timeout}s."
+    echo ""
+    echo -e "  This might just need more time. You can check with:"
+    echo -e "    ${CYAN}docker compose ps${NC}      - see service status"
+    echo -e "    ${CYAN}docker compose logs api${NC} - see API logs"
+    echo ""
+  else
+    ok "All services are healthy"
+  fi
+
+  # Success banner
+  echo ""
+  echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+  echo -e "${GREEN}${BOLD}  AgentBuddy is running!${NC}"
+  echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+  echo ""
+  echo -e "  ${BOLD}Open in your browser:${NC}"
+  echo -e "    ${CYAN}http://localhost:4321${NC}"
+  echo ""
+  echo -e "  ${BOLD}Useful commands:${NC}"
+  echo -e "    ${DIM}View logs:${NC}    docker compose logs -f"
+  echo -e "    ${DIM}Stop:${NC}         docker compose down"
+  echo -e "    ${DIM}Restart:${NC}      docker compose restart"
+  echo -e "    ${DIM}Update:${NC}       bash bootstrap.sh --update"
+  echo ""
+  echo -e "  ${BOLD}Other services:${NC}"
+  echo -e "    API:            ${CYAN}http://localhost:4000${NC}"
+  echo -e "    MinIO Console:  ${CYAN}http://localhost:9001${NC}"
+  echo ""
+}
+
+# ── Update Function ──────────────────────────────────
+
+do_update() {
+  echo ""
+  echo -e "${BOLD}${CYAN}━━━ AgentBuddy Update ━━━${NC}"
+  echo ""
+
+  # Find installation
+  if [[ -f "docker-compose.yml" ]]; then
+    : # we're in the right directory
+  elif [[ -f "AgentBuddy/docker-compose.yml" ]]; then
+    cd AgentBuddy
+  else
+    fail "No AgentBuddy installation found. Run this script without --update to install."
+  fi
+
+  # Backup current compose file
+  cp docker-compose.yml docker-compose.yml.bak
+  ok "Backed up docker-compose.yml"
+
+  # Download latest compose file
+  info "Downloading latest docker-compose.yml..."
+  curl -fsSL "$RAW_BASE/docker-compose.yml" -o docker-compose.yml || {
+    warn "Could not download latest docker-compose.yml. Restoring backup."
+    mv docker-compose.yml.bak docker-compose.yml
+    fail "Update failed. Check your internet connection."
+  }
+  ok "docker-compose.yml updated"
+
+  # Pull latest images
+  info "Pulling latest images..."
+  echo ""
+  docker compose pull
+  echo ""
+  ok "Images updated"
+
+  # Restart services
+  info "Restarting services..."
+  docker compose up -d
+  echo ""
+
+  # Wait for health
+  info "Waiting for API to become healthy..."
+  local timeout=120
+  local elapsed=0
+
+  while [[ $elapsed -lt $timeout ]]; do
+    local status
+    status=$(docker compose ps api --format json 2>/dev/null | grep -o '"Health":"[^"]*"' | head -1 || true)
+    if [[ "$status" == *"healthy"* ]]; then
+      break
+    fi
+    sleep 5
+    elapsed=$((elapsed + 5))
+    echo -ne "\r  Waiting... ${elapsed}s / ${timeout}s"
+  done
+  echo -ne "\r                              \r"
+
+  if [[ $elapsed -ge $timeout ]]; then
+    warn "API did not become healthy within ${timeout}s."
+    echo -e "  Check logs: ${CYAN}docker compose logs api${NC}"
+  else
+    ok "API is healthy"
+  fi
+
+  # Check for migration script
+  info "Checking for migration scripts..."
+  local update_script
+  update_script=$(curl -fsSL "$RAW_BASE/scripts/update.sh" 2>/dev/null || true)
+  if [[ -n "$update_script" ]]; then
+    info "Running migration script..."
+    bash <(echo "$update_script")
+    ok "Migrations complete"
+  else
+    ok "No migrations needed"
+  fi
+
+  # Done
+  echo ""
+  echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+  echo -e "${GREEN}${BOLD}  AgentBuddy has been updated!${NC}"
+  echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+  echo ""
+  echo -e "  ${BOLD}Open in your browser:${NC}"
+  echo -e "    ${CYAN}http://localhost:4321${NC}"
+  echo ""
+}
+
+# ── Main ─────────────────────────────────────────────
+
+main() {
+  # Parse arguments
+  case "${1:-}" in
+    --update|-u)
+      do_update
+      exit 0
+      ;;
+    --help|-h)
+      echo "Usage: bootstrap.sh [OPTIONS]"
+      echo ""
+      echo "Options:"
+      echo "  --update, -u    Update an existing AgentBuddy installation"
+      echo "  --help, -h      Show this help message"
+      echo ""
+      echo "Run without arguments for first-time setup."
+      exit 0
+      ;;
+  esac
+
+  show_banner
+
+  step_docker_check
+  step_pull_images
+  step_api_keys
+  step_generate_env
+  step_start_services
+}
+
+main "$@"
