@@ -602,6 +602,7 @@ app.post('/complete', async (c) => {
     'agent-memory',
     'cron-management',
     'python',
+    'web-fetch',
     'sub-agent-delegation',
   ]
 

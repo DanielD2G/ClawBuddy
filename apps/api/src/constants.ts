@@ -95,6 +95,7 @@ export const ALWAYS_ON_CAPABILITY_SLUGS = [
   'agent-memory',
   'bash',
   'python',
+  'web-fetch',
   'sub-agent-delegation',
 ]
 
@@ -109,12 +110,13 @@ export const DELEGATION_ONLY_TOOLS = new Set(['run_browser_script'])
 // ── Always-allowed tools (no approval needed) ───
 export const ALWAYS_ALLOWED_TOOLS = new Set([
   'search_documents', 'save_document', 'generate_file',
-  'create_cron', 'list_crons', 'delete_cron', 'web_search',
+  'create_cron', 'list_crons', 'delete_cron', 'web_search', 'web_fetch',
 ])
 
 // ── Parallel tool execution ─────────────────────
 export const PARALLEL_SAFE_TOOLS = new Set([
   'web_search',
+  'web_fetch',
   'search_documents',
   'discover_tools',
   'list_crons',

@@ -21,6 +21,8 @@ import { SUB_AGENT_ROLES } from './sub-agent-roles.js'
 import type { SubAgentRole } from './sub-agent.types.js'
 import { stripNullBytes, stripNullBytesOrNull } from '../lib/sanitize.js'
 import { extractScreenshotBase64 } from '../lib/screenshot.js'
+import { htmlToMarkdown, htmlToText } from '../lib/html-to-markdown.js'
+import { isPrivateHost } from '../lib/url-safety.js'
 import type { SecretInventory } from './secret-redaction.service.js'
 import { secretRedactionService } from './secret-redaction.service.js'
 
@@ -148,6 +150,100 @@ async function executeDocumentSearch(
   }
 
   return { output, durationMs: Date.now() - startTime, sources }
+}
+
+/**
+ * Fetch a URL and return its content, converting HTML to Markdown.
+ */
+async function executeWebFetch(toolCall: ToolCall): Promise<ExecutionResult> {
+  const startTime = Date.now()
+  const fail = (error: string): ExecutionResult => ({ output: '', error, durationMs: Date.now() - startTime })
+
+  const args = toolCall.arguments as Record<string, unknown>
+  const url = String(args.url ?? '')
+  const formatRaw = String(args.format ?? 'markdown').toLowerCase()
+  if (!['markdown', 'text', 'html'].includes(formatRaw)) {
+    return fail(`Invalid format "${formatRaw}" — must be markdown, text, or html`)
+  }
+  const format = formatRaw as 'markdown' | 'text' | 'html'
+  const method = String(args.method ?? 'GET').toUpperCase()
+  const customHeaders = (args.headers as Record<string, string>) ?? {}
+  const body = args.body as string | undefined
+  const maxBytes = Math.min((Number(args.maxKb) || 100) * 1024, 5 * 1024 * 1024)
+
+  // Validate URL
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return fail('Invalid URL')
+  }
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    return fail('Only http/https URLs are supported')
+  }
+
+  // SSRF protection
+  if (isPrivateHost(parsed.hostname)) {
+    return fail('Requests to private/internal addresses are blocked')
+  }
+
+  try {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 30_000)
+
+    const res = await fetch(url, {
+      method,
+      headers: { 'User-Agent': 'AgentBuddy/1.0', Accept: 'text/html,application/xhtml+xml,*/*', ...customHeaders },
+      body: ['POST', 'PUT', 'PATCH'].includes(method) ? body : undefined,
+      signal: controller.signal,
+      redirect: 'follow',
+    })
+    clearTimeout(timer)
+
+    // Read body up to maxBytes (streaming)
+    const reader = res.body?.getReader()
+    const chunks: Uint8Array[] = []
+    let bytesRead = 0
+    let truncated = false
+    if (reader) {
+      while (bytesRead < maxBytes) {
+        const { done, value } = await reader.read()
+        if (done) break
+        chunks.push(value)
+        bytesRead += value.byteLength
+      }
+      if (bytesRead >= maxBytes) truncated = true
+      reader.cancel()
+    }
+    const rawText = new TextDecoder().decode(Buffer.concat(chunks))
+
+    // Convert based on content-type and requested format
+    const contentType = res.headers.get('content-type') ?? ''
+    const isHtml = contentType.includes('text/html') || contentType.includes('application/xhtml')
+    let content: string
+
+    if (isHtml && format === 'markdown') {
+      content = htmlToMarkdown(rawText)
+    } else if (isHtml && format === 'text') {
+      content = htmlToText(rawText)
+    } else {
+      content = rawText
+    }
+
+    if (truncated) content += `\n\n[... truncated at ${Math.round(maxBytes / 1024)} KB]`
+
+    const output = JSON.stringify({
+      status: res.status,
+      statusText: res.statusText,
+      contentType,
+      body: content,
+    })
+
+    return { output, durationMs: Date.now() - startTime }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return fail(`Fetch failed: ${msg}`)
+  }
 }
 
 /**
@@ -790,6 +886,7 @@ const toolHandlerRegistry = new Map<string, ToolHandler>([
   ['list_crons', (_toolCall, _context) => executeListCrons()],
   ['delete_cron', (toolCall, _context) => executeDeleteCron(toolCall)],
   ['web_search', (toolCall, _context) => executeWebSearch(toolCall)],
+  ['web_fetch', (toolCall, _context) => executeWebFetch(toolCall)],
   ['run_browser_script', executeBrowserScript],
   ['discover_tools', executeDiscoverTools],
   ['delegate_task', executeDelegateTask],

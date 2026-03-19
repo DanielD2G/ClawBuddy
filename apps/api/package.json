@@ -32,6 +32,7 @@
     "openai": "^4",
     "playwright-core": "^1.50",
     "tar-stream": "^3.1.8",
+    "turndown": "^7.2.2",
     "ws": "^8.19.0",
     "zod": "^3"
   },
@@ -39,6 +40,7 @@
     "@agentbuddy/tsconfig": "workspace:*",
     "@types/bun": "^1.2.0",
     "@types/dockerode": "^4.0.1",
+    "@types/turndown": "^5.0.6",
     "prisma": "^6",
     "typescript": "^5"
   }
