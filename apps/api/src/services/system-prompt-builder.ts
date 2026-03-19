@@ -142,6 +142,24 @@ When sharing a YouTube video, embed it as:
 You can also use {"videoId": "VIDEO_ID"} directly instead of the full URL.
 IMPORTANT: Only use rich-youtube with URLs obtained from tool results (web search, etc.) or provided by the user. NEVER fabricate or guess YouTube URLs or video IDs.
 
+When the user asks you to create a web page, UI component, interactive demo, or any visual HTML content, embed it as:
+\`\`\`rich-html
+<html>
+<head>
+  <style>/* CSS here */</style>
+</head>
+<body>
+  <!-- HTML here -->
+  <script>/* JS here */</script>
+</body>
+</html>
+\`\`\`
+Guidelines for rich-html:
+- Write complete, self-contained HTML documents.
+- Include all CSS inline via <style> tags and all JS inline via <script> tags.
+- Do not use external stylesheets, scripts, or CDN links — the preview is sandboxed.
+- Use modern CSS (flexbox, grid, animations) for layouts and styling.
+
 Rules:
 - Only use rich blocks when you have concrete, verified data.
 - Do not fabricate prices, images, URLs, or YouTube video IDs. Only use URLs from tool results or user input.

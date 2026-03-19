@@ -25,7 +25,12 @@ export interface RichYoutubeBlock {
   title?: string
 }
 
-export type RichBlock = RichMapBlock | RichProductBlock | RichImageBlock | RichYoutubeBlock
+export interface RichHtmlBlock {
+  type: 'rich-html'
+  html: string
+}
+
+export type RichBlock = RichMapBlock | RichProductBlock | RichImageBlock | RichYoutubeBlock | RichHtmlBlock
 
 export type ParsedSegment = { type: 'text'; text: string } | RichBlock
 
@@ -39,6 +44,12 @@ function extractYoutubeId(url: string): string | undefined {
 }
 
 function parseBlockData(blockType: string, raw: string): RichBlock | null {
+  // HTML block: raw content, no JSON parsing
+  if (blockType === 'html') {
+    const trimmed = raw.trim()
+    return trimmed ? { type: 'rich-html', html: trimmed } : null
+  }
+
   try {
     const data = JSON.parse(raw.trim())
 
