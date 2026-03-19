@@ -10,6 +10,11 @@ import type {
 } from './llm.interface.js'
 import { getTextContent } from './llm.interface.js'
 
+/** Models that only accept max_completion_tokens (not max_tokens). */
+function usesMaxCompletionTokens(model: string): boolean {
+  return /^(o[134]|gpt-4\.1|gpt-4o|gpt-5)/.test(model)
+}
+
 export class OpenAILLMProvider implements LLMProvider {
   private client: OpenAI
   private model: string
@@ -20,6 +25,13 @@ export class OpenAILLMProvider implements LLMProvider {
     this.client = new OpenAI({ apiKey })
     this.model = model
     this.modelId = model
+  }
+
+  private tokenLimit(maxTokens: number | undefined): Record<string, number | undefined> {
+    if (maxTokens == null) return {}
+    return usesMaxCompletionTokens(this.model)
+      ? { max_completion_tokens: maxTokens }
+      : { max_tokens: maxTokens }
   }
 
   async chat(messages: ChatMessage[], options?: LLMOptions): Promise<string> {
@@ -103,7 +115,7 @@ export class OpenAILLMProvider implements LLMProvider {
       model: this.model,
       messages: openaiMessages as unknown as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
       temperature: options?.temperature ?? 0.7,
-      max_tokens: options?.maxTokens,
+      ...this.tokenLimit(options?.maxTokens),
       ...(tools?.length ? { tools } : {}),
     })
 
@@ -144,7 +156,7 @@ export class OpenAILLMProvider implements LLMProvider {
       model: this.model,
       messages: openaiMessages,
       temperature: options?.temperature ?? 0.7,
-      max_tokens: options?.maxTokens,
+      ...this.tokenLimit(options?.maxTokens),
       stream: true,
     })
     for await (const chunk of response) {

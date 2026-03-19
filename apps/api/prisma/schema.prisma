@@ -141,10 +141,14 @@ model AppSettings {
   id                String   @id @default("singleton")
   aiProvider        String   @default("openai")
   aiModel           String?
+  mediumModel       String?
   lightModel        String?
+  exploreModel      String?
+  executeModel      String?
   titleModel        String?
   compactModel      String?
   useLightModel     Boolean  @default(true)
+  advancedModelConfig Boolean @default(false)
   embeddingProvider String   @default("openai")
   embeddingModel    String?
   openaiApiKey        String?  @db.Text
@@ -156,9 +160,12 @@ model AppSettings {
   browserGridApiKey  String?  @db.Text
   browserGridBrowser String?
   browserModel       String?
-  maxAgentIterations Int      @default(50)
-  timezone           String?
-  updatedAt         DateTime @updatedAt
+  maxAgentIterations            Int      @default(50)
+  subAgentExploreMaxIterations  Int      @default(50)
+  subAgentAnalyzeMaxIterations  Int      @default(25)
+  subAgentExecuteMaxIterations  Int      @default(50)
+  timezone                      String?
+  updatedAt                    DateTime @updatedAt
 }
 
 // ── Capabilities System ─────────────────────────────────────

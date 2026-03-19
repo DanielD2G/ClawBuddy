@@ -4,6 +4,7 @@ import { storageService } from '../services/storage.service.js'
 import { ingestionService } from '../services/ingestion.service.js'
 import { createDocumentSchema } from '@agentbuddy/shared'
 import { sanitizeFileName } from '../lib/sanitize.js'
+import { validateBody } from '../lib/validate.js'
 
 const app = new Hono()
 
@@ -77,18 +78,15 @@ app.post('/workspaces/:workspaceId/documents', async (c) => {
 
   // JSON body — create document with inline content
   const body = await c.req.json()
-  const parsed = createDocumentSchema.safeParse(body)
-  if (!parsed.success) {
-    return c.json({ success: false, error: parsed.error.issues[0]?.message ?? 'Invalid input' }, 400)
-  }
+  const data = validateBody(createDocumentSchema, body)
   const document = await prisma.document.create({
     data: {
-      title: parsed.data.title,
+      title: data.title,
       workspaceId,
-      type: parsed.data.type ?? 'TXT',
+      type: data.type ?? 'TXT',
       status: 'READY',
-      content: parsed.data.content ?? null,
-      folderId: parsed.data.folderId ?? null,
+      content: data.content ?? null,
+      folderId: data.folderId ?? null,
     },
   })
 

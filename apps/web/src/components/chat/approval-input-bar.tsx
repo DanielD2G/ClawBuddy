@@ -1,14 +1,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import { ShieldAlert, ChevronUp, ChevronDown as ChevronDownIcon, CornerDownLeft } from 'lucide-react'
 import type { PendingApproval } from '@/hooks/use-chat'
-import { CODE_APPROVAL_PREVIEW_LEN } from '@/constants'
-
-function formatCapabilityName(slug?: string): string {
-  if (!slug) return 'Tool'
-  return slug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
-}
+import { CODE_APPROVAL_PREVIEW_LEN, formatToolDisplayName } from '@/constants'
 
 function getApprovalPreview(approval: PendingApproval): string {
+  if (approval.toolName === 'delegate_task' && approval.subAgentRole) {
+    const task = String(approval.input.task ?? '')
+    const truncated = task.length > CODE_APPROVAL_PREVIEW_LEN ? task.slice(0, CODE_APPROVAL_PREVIEW_LEN) + '...' : task
+    return truncated
+  }
   const args = approval.input
   if (args.command) return String(args.command)
   if (args.code) return String(args.code).slice(0, CODE_APPROVAL_PREVIEW_LEN) + (String(args.code).length > CODE_APPROVAL_PREVIEW_LEN ? '...' : '')
@@ -49,6 +49,8 @@ function computeAllowRule(approval: PendingApproval): string {
       return 'Read(*)'
     case 'write_file':
       return 'Write(*)'
+    case 'delegate_task':
+      return `delegate_task(*)`
     default:
       return `${approval.toolName}(*)`
   }
@@ -97,8 +99,10 @@ export function ApprovalInputBar({ approvals, onDecision }: ApprovalInputBarProp
     return () => window.removeEventListener('keydown', handler)
   }, [handleSubmit, approvals, onDecision])
 
-  const preview = approvals.length === 1 ? getApprovalPreview(approvals[0]) : ''
-  const rulePreview = approvals.length === 1 ? computeAllowRule(approvals[0]) : null
+  const firstApproval = approvals[0]
+  const isSubAgent = approvals.length === 1 && firstApproval.toolName === 'delegate_task' && firstApproval.subAgentToolNames
+  const preview = approvals.length === 1 ? getApprovalPreview(firstApproval) : ''
+  const rulePreview = approvals.length === 1 ? computeAllowRule(firstApproval) : null
 
   return (
     <div className="rounded-2xl border border-amber-500/30 bg-muted/60 px-5 py-4 space-y-3">
@@ -106,17 +110,38 @@ export function ApprovalInputBar({ approvals, onDecision }: ApprovalInputBarProp
       <div className="flex items-center gap-2">
         <ShieldAlert className="size-4 text-amber-500 shrink-0" />
         <span className="text-sm text-foreground">
-          {approvals.length === 1
-            ? `Allow ${formatCapabilityName(approvals[0].capabilitySlug)} to run?`
-            : `Allow ${approvals.length} actions to run?`
+          {isSubAgent
+            ? `Allow sub-agent (${firstApproval.subAgentRole}) to run with ${firstApproval.subAgentToolNames!.length} tools?`
+            : approvals.length === 1
+              ? `Allow ${formatToolDisplayName(firstApproval.capabilitySlug ?? 'Tool')} to run?`
+              : `Allow ${approvals.length} actions to run?`
           }
         </span>
       </div>
 
-      {/* Command preview */}
+      {/* Command / task preview */}
       {preview && (
         <div className="rounded-lg bg-muted px-3 py-2">
           <code className="text-xs text-muted-foreground break-all">{preview}</code>
+        </div>
+      )}
+
+      {/* Sub-agent tool list */}
+      {isSubAgent && (
+        <div className="rounded-lg bg-muted px-3 py-2 space-y-1.5">
+          <span className="text-xs font-medium text-muted-foreground">
+            Tools this sub-agent can use
+          </span>
+          <div className="flex flex-wrap gap-1.5">
+            {firstApproval.subAgentToolNames!.map((tool) => (
+              <span
+                key={tool}
+                className="rounded-full bg-background px-2 py-0.5 text-xs font-medium text-foreground/80"
+              >
+                {formatToolDisplayName(tool)}
+              </span>
+            ))}
+          </div>
         </div>
       )}
 

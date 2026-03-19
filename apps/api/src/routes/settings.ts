@@ -24,16 +24,40 @@ app.get('/settings/providers', async (c) => {
 
 // Model configuration
 app.get('/settings/models', async (c) => {
-  const [provider, primary, light, title, compact, embeddingModel, useLightModel, contextLimitTokens, maxAgentIterations, available, timezone] = await Promise.all([
+  const [
+    provider,
+    primary,
+    medium,
+    light,
+    explore,
+    execute,
+    title,
+    compact,
+    embeddingModel,
+    advancedModelConfig,
+    contextLimitTokens,
+    maxAgentIterations,
+    subAgentExploreMaxIterations,
+    subAgentAnalyzeMaxIterations,
+    subAgentExecuteMaxIterations,
+    available,
+    timezone,
+  ] = await Promise.all([
     settingsService.getAIProvider(),
     settingsService.getAIModel(),
+    settingsService.getMediumModel(),
     settingsService.getLightModel(),
+    settingsService.getExploreModel(),
+    settingsService.getExecuteModel(),
     settingsService.getTitleModel(),
     settingsService.getCompactModel(),
     settingsService.getEmbeddingModel(),
-    settingsService.getUseLightModel(),
+    settingsService.getAdvancedModelConfig(),
     settingsService.getContextLimitTokens(),
     settingsService.getMaxAgentIterations(),
+    settingsService.getSubAgentExploreMaxIterations(),
+    settingsService.getSubAgentAnalyzeMaxIterations(),
+    settingsService.getSubAgentExecuteMaxIterations(),
     settingsService.getAvailableProviders(),
     settingsService.getTimezone(),
   ])
@@ -48,11 +72,14 @@ app.get('/settings/models', async (c) => {
     success: true,
     data: {
       provider,
-      models: { primary, light, title, compact },
+      models: { primary, medium, light, explore, execute, title, compact },
       embeddingModel,
-      useLightModel,
+      advancedModelConfig,
       contextLimitTokens,
       maxAgentIterations,
+      subAgentExploreMaxIterations,
+      subAgentAnalyzeMaxIterations,
+      subAgentExecuteMaxIterations,
       availableProviders: available.llm,
       catalogs,
       timezone,
@@ -65,12 +92,19 @@ app.patch('/settings/models', async (c) => {
   const updateData: Record<string, unknown> = {}
 
   if (body.primary !== undefined) updateData.aiModel = body.primary
+  if (body.medium !== undefined) updateData.mediumModel = body.medium
   if (body.light !== undefined) updateData.lightModel = body.light
+  if (body.explore !== undefined) updateData.exploreModel = body.explore
+  if (body.execute !== undefined) updateData.executeModel = body.execute
   if (body.title !== undefined) updateData.titleModel = body.title
   if (body.compact !== undefined) updateData.compactModel = body.compact
-  if (body.useLightModel !== undefined) updateData.useLightModel = body.useLightModel
+  if (body.advancedModelConfig !== undefined)
+    updateData.advancedModelConfig = body.advancedModelConfig
   if (body.contextLimitTokens !== undefined) updateData.contextLimitTokens = body.contextLimitTokens
   if (body.maxAgentIterations !== undefined) updateData.maxAgentIterations = body.maxAgentIterations
+  if (body.subAgentExploreMaxIterations !== undefined) updateData.subAgentExploreMaxIterations = body.subAgentExploreMaxIterations
+  if (body.subAgentAnalyzeMaxIterations !== undefined) updateData.subAgentAnalyzeMaxIterations = body.subAgentAnalyzeMaxIterations
+  if (body.subAgentExecuteMaxIterations !== undefined) updateData.subAgentExecuteMaxIterations = body.subAgentExecuteMaxIterations
   if (body.timezone !== undefined) updateData.timezone = body.timezone
 
   await settingsService.update(updateData as Parameters<typeof settingsService.update>[0])

@@ -1,4 +1,5 @@
 import type { ToolCall } from '../providers/llm.interface.js'
+import { ALWAYS_ALLOWED_TOOLS } from '../constants.js'
 
 interface ParsedRule {
   type: string
@@ -70,8 +71,7 @@ export const permissionService = {
    */
   isToolAllowed(toolCall: ToolCall, allowRules: string[]): boolean {
     // Non-destructive tools are always allowed (no approval needed)
-    const alwaysAllowed = ['search_documents', 'save_document', 'generate_file', 'create_cron', 'list_crons', 'delete_cron', 'web_search']
-    if (alwaysAllowed.includes(toolCall.name)) return true
+    if (ALWAYS_ALLOWED_TOOLS.has(toolCall.name)) return true
 
     const normalized = normalizeToolCall(toolCall)
 

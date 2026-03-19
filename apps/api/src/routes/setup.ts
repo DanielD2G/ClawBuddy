@@ -54,6 +54,13 @@ app.get('/settings', async (c) => {
         active: {
           llm: settings.aiProvider,
           llmModel: settings.aiModel,
+          mediumModel: settings.mediumModel,
+          lightModel: settings.lightModel,
+          exploreModel: settings.exploreModel,
+          executeModel: settings.executeModel,
+          titleModel: settings.titleModel,
+          compactModel: settings.compactModel,
+          advancedModelConfig: settings.advancedModelConfig,
           embedding: settings.embeddingProvider,
           embeddingModel: settings.embeddingModel,
         },
@@ -74,8 +81,15 @@ app.patch('/settings', async (c) => {
   const settings = await settingsService.update({
     aiProvider: body.llm,
     aiModel: body.llmModel,
+    mediumModel: body.mediumModel,
+    lightModel: body.lightModel,
     embeddingProvider: body.embedding,
     embeddingModel: body.embeddingModel,
+    advancedModelConfig: body.advancedModelConfig,
+    exploreModel: body.exploreModel,
+    executeModel: body.executeModel,
+    titleModel: body.titleModel,
+    compactModel: body.compactModel,
   })
   return c.json({
     success: true,
@@ -183,7 +197,9 @@ app.post('/google-oauth/test', async (c) => {
   })
   if (!connectedWc?.config) return c.json({ success: true, data: result })
 
-  const schema = gwsCap.configSchema as import('../capabilities/types.js').ConfigFieldDefinition[] | null
+  const schema = gwsCap.configSchema as
+    | import('../capabilities/types.js').ConfigFieldDefinition[]
+    | null
   const decrypted = decryptConfigFields(schema ?? [], connectedWc.config as Record<string, unknown>)
 
   if (!decrypted.gwsCredentialsFile) return c.json({ success: true, data: result })
@@ -204,7 +220,11 @@ app.post('/google-oauth/test', async (c) => {
         grant_type: 'refresh_token',
       }),
     })
-    const tokenData = (await tokenRes.json()) as { access_token?: string; error?: string; error_description?: string }
+    const tokenData = (await tokenRes.json()) as {
+      access_token?: string
+      error?: string
+      error_description?: string
+    }
     if (!tokenData.access_token) {
       result.message = `Token refresh failed: ${tokenData.error_description || tokenData.error}`
       result.valid = false
@@ -231,7 +251,7 @@ app.post('/google-oauth/test', async (c) => {
       } catch {
         apis[name] = false
       }
-    })
+    }),
   )
   result.apis = apis as { gmail: boolean; calendar: boolean; drive: boolean }
 
@@ -258,7 +278,7 @@ function overallStatus(): { status: string; sandbox: ImageTaskState } {
 app.post('/pull-images', async (c) => {
   // ── Sandbox base build ──
   if (imageState.sandbox.status !== 'pulling') {
-    (async () => {
+    ;(async () => {
       imageState.sandbox = { status: 'pulling', progress: 'Checking base image...' }
       try {
         await imageBuilderService.ensureBaseImage((line) => {
@@ -319,26 +339,39 @@ app.post('/preflight', async (c) => {
       const result = await fn()
       checks.push({ name, ...result, durationMs: Date.now() - start })
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.error(`[Preflight] ${name} failed (${Date.now() - start}ms):`, message)
       checks.push({
         name,
         status: 'fail',
-        message: err instanceof Error ? err.message : String(err),
+        message,
         durationMs: Date.now() - start,
       })
     }
   }
 
-  // 1. AI Provider API Key — make a lightweight LLM call
-  await runCheck('AI Provider API Key', async () => {
-    const provider = settings.aiProvider
-    const apiKey = await settingsService.getApiKey(provider)
-    if (!apiKey) return { status: 'fail', message: `No API key for ${provider}` }
+  // 1. AI Provider API Keys — test each configured LLM provider
+  const { createLLMForModel } = await import('../providers/index.js')
+  const { DEFAULT_LLM_MODELS } = await import('../config.js')
+  const available = await settingsService.getAvailableProviders()
 
-    const { createLLMProvider } = await import('../providers/index.js')
-    const llm = await createLLMProvider()
-    await llm.chat([{ role: 'user', content: 'Say ok' }], { maxTokens: 5, temperature: 0 })
-    return { status: 'pass', message: `${provider} key is valid` }
-  })
+  const PROVIDER_NAMES: Record<string, string> = {
+    openai: 'OpenAI',
+    gemini: 'Google Gemini',
+    claude: 'Anthropic Claude',
+  }
+
+  for (const provider of available.llm) {
+    const label = PROVIDER_NAMES[provider] ?? provider
+    await runCheck(`${label} API Key`, async () => {
+      const model = DEFAULT_LLM_MODELS[provider]
+      if (!model) return { status: 'fail', message: `No default model for ${provider}` }
+
+      const llm = await createLLMForModel(model)
+      await llm.chat([{ role: 'user', content: 'Say ok' }], { maxTokens: 5, temperature: 0 })
+      return { status: 'pass', message: `${label} key is valid (${model})` }
+    })
+  }
 
   // 2. Embedding Provider API Key — generate a test embedding
   await runCheck('Embedding Provider', async () => {
@@ -355,7 +388,10 @@ app.post('/preflight', async (c) => {
         message: `Dimension mismatch: model ${embeddingModel} returned ${vector.length}d, expected ${expectedDimensions}d`,
       }
     }
-    return { status: 'pass', message: `${provider} (${embeddingModel}) — ${vector.length}d vectors` }
+    return {
+      status: 'pass',
+      message: `${provider} (${embeddingModel}) — ${vector.length}d vectors`,
+    }
   })
 
   // 3. Qdrant connectivity
@@ -423,7 +459,10 @@ app.post('/preflight', async (c) => {
   await runCheck('Docker', async () => {
     const docker = new Docker()
     const info = await docker.info()
-    return { status: 'pass', message: `Docker ${info.ServerVersion} — ${info.Containers} containers` }
+    return {
+      status: 'pass',
+      message: `Docker ${info.ServerVersion} — ${info.Containers} containers`,
+    }
   })
 
   // 8. Sandbox image — verify base image exists
@@ -493,7 +532,10 @@ app.post('/preflight', async (c) => {
         }
         return { status: 'pass', message: `${points} capabilities indexed (${size}d vectors)` }
       } catch {
-        return { status: 'fail', message: `Collection "${TOOL_DISCOVERY_COLLECTION}" not found — restart the API to create it` }
+        return {
+          status: 'fail',
+          message: `Collection "${TOOL_DISCOVERY_COLLECTION}" not found — restart the API to create it`,
+        }
       }
     },
     settings.onboardingComplete,
@@ -512,7 +554,15 @@ app.post('/complete', async (c) => {
   if (blocked) return blocked
 
   const body = await c.req.json()
-  const { capabilities, capabilityConfigs, workspaceName, workspaceColor, telegramBotToken, telegramTokenTested, timezone } = body
+  const {
+    capabilities,
+    capabilityConfigs,
+    workspaceName,
+    workspaceColor,
+    telegramBotToken,
+    telegramTokenTested,
+    timezone,
+  } = body
 
   const settings = await settingsService.get()
 
@@ -520,24 +570,31 @@ app.post('/complete', async (c) => {
   const embeddingProvider = settings.embeddingProvider
   const embeddingKey = await settingsService.getApiKey(embeddingProvider)
   if (!embeddingKey) {
-    return c.json({
-      success: false,
-      error: `No API key configured for embedding provider: ${embeddingProvider}`,
-    }, 400)
+    return c.json(
+      {
+        success: false,
+        error: `No API key configured for embedding provider: ${embeddingProvider}`,
+      },
+      400,
+    )
   }
 
   // Validate AI provider has an API key
   const aiProvider = settings.aiProvider
   const aiKey = await settingsService.getApiKey(aiProvider)
   if (!aiKey) {
-    return c.json({
-      success: false,
-      error: `No API key configured for AI provider: ${aiProvider}`,
-    }, 400)
+    return c.json(
+      {
+        success: false,
+        error: `No API key configured for AI provider: ${aiProvider}`,
+      },
+      400,
+    )
   }
 
   // Create Qdrant collection with correct dimensions
-  const embeddingModel = settings.embeddingModel ??
+  const embeddingModel =
+    settings.embeddingModel ??
     (embeddingProvider === 'openai' ? 'text-embedding-3-small' : 'gemini-embedding-001')
   const dimensions = EMBEDDING_DIMENSIONS[embeddingModel] ?? 1536
   await searchService.ensureCollection(dimensions)
@@ -559,7 +616,15 @@ app.post('/complete', async (c) => {
   await settingsService.completeOnboarding()
 
   // Enable base capabilities on the workspace
-  const baseSlugs = ['document-search', 'bash', 'agent-memory', 'cron-management', 'python', 'web-fetch']
+  const baseSlugs = [
+    'document-search',
+    'bash',
+    'agent-memory',
+    'cron-management',
+    'python',
+    'web-fetch',
+    'sub-agent-delegation',
+  ]
 
   // Auto-enable capabilities whose required API key is available
   for (const [slug, provider] of Object.entries(capabilityService.REQUIRES_API_KEY)) {
@@ -602,7 +667,11 @@ app.post('/complete', async (c) => {
     if (telegramTokenTested) {
       try {
         const { telegramBotManager } = await import('../channels/telegram/telegram-bot-manager.js')
-        const botUsername = await telegramBotManager.startBot(channel.id, telegramBotToken, workspace.id)
+        const botUsername = await telegramBotManager.startBot(
+          channel.id,
+          telegramBotToken,
+          workspace.id,
+        )
         await channelService.update(channel.id, { config: { botUsername } })
         await channelService.enable(channel.id)
       } catch (err) {

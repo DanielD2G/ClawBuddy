@@ -1,45 +1,68 @@
 import { env } from './env.js'
 
+export interface ModelEntry {
+  id: string
+  supportsVision?: boolean
+}
+
+const v = (id: string): ModelEntry => ({ id, supportsVision: true })
+const m = (id: string): ModelEntry => ({ id })
+
 export const MODEL_CATALOG = {
   llm: {
     openai: [
-      'gpt-5.4',
-      'gpt-5.4-pro',
-      'gpt-5-mini',
-      'gpt-5-nano',
-      'gpt-5',
-      'o4-mini',
-      'o3',
-      'o3-mini',
-      'o3-pro',
-      'gpt-4.1',
-      'gpt-4.1-mini',
-      'gpt-4.1-nano',
-      'gpt-4o',
-      'gpt-4o-mini',
+      v('gpt-5.4'),
+      v('gpt-5.4-pro'),
+      v('gpt-5-mini'),
+      v('gpt-5-nano'),
+      v('gpt-5'),
+      m('o4-mini'),
+      m('o3'),
+      m('o3-mini'),
+      m('o3-pro'),
+      v('gpt-4.1'),
+      v('gpt-4.1-mini'),
+      v('gpt-4.1-nano'),
+      v('gpt-4o'),
+      v('gpt-4o-mini'),
+      v('gpt-4-turbo'),
     ],
     gemini: [
-      'gemini-3.1-pro-preview',
-      'gemini-3-flash-preview',
-      'gemini-3.1-flash-lite-preview',
-      'gemini-2.5-flash',
-      'gemini-2.5-flash-lite',
-      'gemini-2.5-pro',
+      v('gemini-3.1-pro-preview'),
+      v('gemini-3-flash-preview'),
+      v('gemini-3.1-flash-lite-preview'),
+      v('gemini-2.5-flash'),
+      v('gemini-2.5-flash-lite'),
+      v('gemini-2.5-pro'),
     ],
     claude: [
-      'claude-opus-4-6',
-      'claude-sonnet-4-6',
-      'claude-haiku-4-5-20251001',
-      'claude-sonnet-4-5-20250929',
-      'claude-opus-4-5-20251101',
-      'claude-sonnet-4-20250514',
+      v('claude-opus-4-6'),
+      v('claude-sonnet-4-6'),
+      v('claude-haiku-4-5-20251001'),
+      v('claude-sonnet-4-5-20250929'),
+      v('claude-opus-4-5-20251101'),
+      v('claude-sonnet-4-20250514'),
+      v('claude-opus-4-0-20250514'),
     ],
-  } as Record<string, string[]>,
+  } as Record<string, ModelEntry[]>,
   embedding: {
     openai: ['text-embedding-3-small', 'text-embedding-3-large'],
     gemini: ['gemini-embedding-2-preview', 'gemini-embedding-001'],
   } as Record<string, string[]>,
 }
+
+/** Helper to extract plain model ID strings from an LLM catalog entry. */
+export function catalogModelIds(provider: string): string[] {
+  return (MODEL_CATALOG.llm[provider] ?? []).map((e) => e.id)
+}
+
+/** Models known to support vision/multimodal input, derived from the catalog. */
+export const VISION_MODELS = new Set(
+  Object.values(MODEL_CATALOG.llm)
+    .flatMap((models) => models)
+    .filter((e) => e.supportsVision)
+    .map((e) => e.id),
+)
 
 export const DEFAULT_LLM_MODELS: Record<string, string> = {
   openai: 'gpt-5.4',
@@ -52,8 +75,14 @@ export const DEFAULT_EMBEDDING_MODELS: Record<string, string> = {
   gemini: 'gemini-embedding-001',
 }
 
-export const DEFAULT_LIGHT_MODELS: Record<string, string> = {
+export const DEFAULT_MEDIUM_MODELS: Record<string, string> = {
   openai: 'gpt-5-mini',
+  gemini: 'gemini-2.5-flash',
+  claude: 'claude-sonnet-4-6',
+}
+
+export const DEFAULT_LIGHT_MODELS: Record<string, string> = {
+  openai: 'gpt-5-nano',
   gemini: 'gemini-2.5-flash-lite',
   claude: 'claude-haiku-4-5-20251001',
 }
@@ -72,7 +101,13 @@ export const DEFAULT_COMPACT_MODELS: Record<string, string> = {
 
 /** Infer the provider from a model ID based on naming conventions. */
 export function inferProviderFromModel(modelId: string): string | null {
-  if (modelId.startsWith('gpt-') || modelId.startsWith('o1') || modelId.startsWith('o3') || modelId.startsWith('o4')) return 'openai'
+  if (
+    modelId.startsWith('gpt-') ||
+    modelId.startsWith('o1') ||
+    modelId.startsWith('o3') ||
+    modelId.startsWith('o4')
+  )
+    return 'openai'
   if (modelId.startsWith('gemini-')) return 'gemini'
   if (modelId.startsWith('claude-')) return 'claude'
   return null

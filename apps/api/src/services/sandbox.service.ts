@@ -15,6 +15,8 @@ import {
   EXEC_OUTPUT_MAX_BYTES,
   SANDBOX_TIMEOUT_EXIT_CODE,
   SANDBOX_STOP_TIMEOUT_S,
+  SANDBOX_BASE_IMAGE,
+  SANDBOX_FALLBACK_IMAGE,
 } from '../constants.js'
 import { stripNullBytes } from '../lib/sanitize.js'
 
@@ -29,13 +31,13 @@ async function resolveImage(workspaceId: string): Promise<string> {
   try {
     image = await imageBuilderService.getOrBuildImage(workspaceId)
   } catch {
-    image = 'agentbuddy-sandbox-base'
+    image = SANDBOX_BASE_IMAGE
   }
 
   try {
     await docker.getImage(image).inspect()
   } catch {
-    image = 'ubuntu:22.04'
+    image = SANDBOX_FALLBACK_IMAGE
     try {
       await docker.getImage(image).inspect()
     } catch {
@@ -257,7 +259,6 @@ export const sandboxService = {
       if (msg.includes('no such container') || msg.includes('is not running')) {
         console.warn(`[Sandbox] Workspace container gone for ${workspaceId}, recreating...`)
         await this.getOrCreateWorkspaceContainer(workspaceId, { networkAccess: true })
-        await this.ensureConversationUser(workspaceId, '') // users will be recreated on next exec
         const ws = await prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId } })
         return this._execInContainerDirect(ws.containerId!, command, username, options)
       }
@@ -418,6 +419,24 @@ export const sandboxService = {
       where: { id: sandboxSessionId },
       data: { status: 'stopped', stoppedAt: new Date() },
     })
+  },
+
+  /**
+   * Start a workspace container with capability env vars already merged.
+   */
+  async startWorkspaceContainerWithCapabilities(workspaceId: string): Promise<string> {
+    const { capabilityService } = await import('./capability.service.js')
+    const configEnvVars = await capabilityService.getDecryptedCapabilityConfigsForWorkspace(workspaceId)
+    if (!configEnvVars.size) {
+      return this.getOrCreateWorkspaceContainer(workspaceId, { networkAccess: true })
+    }
+
+    const mergedEnvVars: Record<string, string> = {}
+    for (const envMap of configEnvVars.values()) {
+      Object.assign(mergedEnvVars, envMap)
+    }
+
+    return this.getOrCreateWorkspaceContainer(workspaceId, { networkAccess: true }, mergedEnvVars)
   },
 
   /**
