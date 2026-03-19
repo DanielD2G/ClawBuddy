@@ -1,4 +1,4 @@
-const MENTION_REGEX = /\/([a-z0-9-]+)/g
+const MENTION_REGEX = /(?<=^|\s)\/([a-z0-9-]+)/g
 
 interface ParseResult {
   cleanedContent: string

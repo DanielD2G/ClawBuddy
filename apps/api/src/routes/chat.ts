@@ -43,9 +43,15 @@ app.post('/chat', async (c) => {
     redactedEmit('session', { sessionId: currentSessionId })
     await chatService.sendMessage(
       currentSessionId,
-      cleanedContent || validated.content,
+      validated.content,
       redactedEmit,
-      { documentIds: validated.documentIds ?? undefined, mentionedSlugs, attachments, inventory },
+      {
+        documentIds: validated.documentIds ?? undefined,
+        mentionedSlugs,
+        attachments,
+        inventory,
+        llmContent: cleanedContent || undefined,
+      },
     )
   })
 })

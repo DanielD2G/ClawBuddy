@@ -227,15 +227,19 @@ export const chatService = {
       mentionedSlugs?: string[]
       attachments?: { name: string; size: number; type: string; storageKey: string; url: string }[]
       inventory?: SecretInventory
+      llmContent?: string
     },
   ) {
-    const { documentIds, mentionedSlugs, attachments, inventory } = options ?? {}
+    const { documentIds, mentionedSlugs, attachments, inventory, llmContent } = options ?? {}
     const session = await prisma.chatSession.findUniqueOrThrow({
       where: { id: sessionId },
     })
     const secretInventory =
       inventory ?? (await secretRedactionService.buildSecretInventory(session.workspaceId))
     const safeContent = secretRedactionService.redactForPublicStorage(content, secretInventory)
+    const safeLlmContent = llmContent
+      ? secretRedactionService.redactForPublicStorage(llmContent, secretInventory)
+      : safeContent
 
     // Store user message (with attachments if any) and bump lastMessageAt for sidebar ordering
     await Promise.all([
@@ -275,7 +279,7 @@ export const chatService = {
       return this._sendWithAgentLoop(
         session,
         sessionId,
-        safeContent,
+        safeLlmContent,
         emit,
         secretInventory,
         mentionedSlugs,
@@ -283,7 +287,7 @@ export const chatService = {
     }
 
     // Use classic RAG flow for document-search-only workspaces
-    return this._sendWithRAG(session, sessionId, safeContent, emit, secretInventory, documentIds)
+    return this._sendWithRAG(session, sessionId, safeLlmContent, emit, secretInventory, documentIds)
   },
 
   /**
