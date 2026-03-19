@@ -1,0 +1,33 @@
+{
+  "name": "YouTube Search",
+  "slug": "yt-search",
+  "description": "Search for videos on YouTube and get titles, links, channels, durations, and thumbnails.",
+  "version": "1.0.0",
+  "icon": "Youtube",
+  "category": "search",
+  "type": "python",
+  "networkAccess": true,
+  "instructions": "You can search for videos on YouTube using the yt_search tool. Pass a search query (e.g. 'python tutorial', 'lofi hip hop'). Use this when the user asks to find, search, or look up YouTube videos. When presenting results, embed each video using:\n\n```rich-youtube\n{\"url\": \"https://www.youtube.com/watch?v=VIDEO_ID\", \"title\": \"Video Title\"}\n```\n\nInclude the channel name and duration as text context around each embed. Only use URLs returned by the tool — never fabricate video IDs.",
+  "installation": "pip3 install yt-dlp",
+  "tools": [
+    {
+      "name": "yt_search",
+      "description": "Search for videos on YouTube. Returns a list of videos with title, URL, channel, duration, view count, and thumbnail.",
+      "script": "import sys, json\nimport yt_dlp\n\ntry:\n    query = sys.argv[1] if len(sys.argv) > 1 else ''\n    max_results = int(sys.argv[2]) if len(sys.argv) > 2 else 5\n    max_results = max(1, min(max_results, 10))\n\n    ydl_opts = {\n        'quiet': True,\n        'no_warnings': True,\n        'extract_flat': True,\n        'skip_download': True,\n    }\n\n    with yt_dlp.YoutubeDL(ydl_opts) as ydl:\n        result = ydl.extract_info(f'ytsearch{max_results}:{query}', download=False)\n\n    entries = result.get('entries', []) if result else []\n    if not entries:\n        print(f'No videos found for \"{query}\"')\n        sys.exit(0)\n\n    videos = []\n    for e in entries:\n        vid_id = e.get('id', '')\n        title = e.get('title', 'Unknown')\n        channel = e.get('channel') or e.get('uploader') or 'Unknown'\n        duration = e.get('duration')\n        view_count = e.get('view_count')\n        thumbnail = e.get('thumbnails', [{}])[-1].get('url') if e.get('thumbnails') else None\n        if not thumbnail:\n            thumbnail = e.get('thumbnail')\n\n        dur_str = ''\n        if duration:\n            mins, secs = divmod(int(duration), 60)\n            hours, mins = divmod(mins, 60)\n            dur_str = f'{hours}:{mins:02d}:{secs:02d}' if hours else f'{mins}:{secs:02d}'\n\n        views_str = ''\n        if view_count:\n            if view_count >= 1_000_000:\n                views_str = f'{view_count/1_000_000:.1f}M views'\n            elif view_count >= 1_000:\n                views_str = f'{view_count/1_000:.1f}K views'\n            else:\n                views_str = f'{view_count} views'\n\n        videos.append({\n            'title': title,\n            'videoId': vid_id,\n            'url': f'https://www.youtube.com/watch?v={vid_id}',\n            'channel': channel,\n            'duration': dur_str,\n            'views': views_str,\n            'thumbnail': thumbnail,\n        })\n\n    lines = [f'Found {len(videos)} videos for \"{query}\":', '']\n    for v in videos:\n        meta = ' | '.join(filter(None, [v['channel'], v['duration'], v['views']]))\n        lines.append(f\"- {v['title']}\")\n        lines.append(f\"  {meta}\")\n        lines.append(f\"  URL: {v['url']}\")\n        if v['thumbnail']:\n            lines.append(f\"  Thumbnail: {v['thumbnail']}\")\n        lines.append('')\n    print('\\n'.join(lines))\n\nexcept Exception as e:\n    print(json.dumps({'error': str(e)}))\n    sys.exit(1)",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "The YouTube search query, e.g. 'python tutorial', 'lofi hip hop', 'react hooks explained'"
+          },
+          "max_results": {
+            "type": "number",
+            "description": "Number of results to return (1-10, default 5)"
+          }
+        },
+        "required": ["query"]
+      }
+    }
+  ]
+}

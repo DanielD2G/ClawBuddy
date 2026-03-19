@@ -127,7 +127,7 @@ If the failure needs user action or is permission-related, stop and tell the use
 
 When describing products with known details, embed them as:
 \`\`\`rich-product
-{"name": "Product Name", "price": 29.99, "image": "https://...", "currency": "USD"}
+{"name": "Product Name", "price": 29.99, "image": "https://...", "currency": "USD", "url": "https://..."}
 \`\`\`
 
 When displaying an inline image, use:
