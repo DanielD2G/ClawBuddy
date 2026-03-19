@@ -40,22 +40,6 @@ Every piece of code must justify its existence. If the simplest solution works, 
 
 Dead code, unused imports, orphaned functions, commented-out blocks — delete them immediately. The repo is not a museum. Git has history; the code doesn't need to remember what it used to be. If something isn't called, it doesn't exist. No `// TODO: maybe use this later`, no `_unusedVar` renames. Delete it.
 
-### 3. If it needs comments, rewrite it
-
-Comments are a symptom, not a cure. If a block of code requires a comment to be understood, the code is too complex. Rewrite it until the intent is obvious from the names, structure, and flow. The only acceptable comments are legal headers, `TODO` with a linked issue, or genuinely unavoidable "why" notes for external constraints.
-
-### 4. Never mix refactors with fixes
-
-A commit does one thing. A PR does one thing. If you're fixing a bug, fix the bug — don't clean up formatting, rename variables, or reorganize imports in the same change. If you see something that needs refactoring while fixing a bug, note it and do it in a separate commit. Mixing intent makes review impossible and reverts dangerous.
-
-### 5. If you can't explain it quickly, it's wrong
-
-If you can't describe what a function, module, or PR does in one short sentence, the design is wrong. Complexity that can't be summarized is complexity that can't be maintained. Simplify until a one-liner explanation is natural, not forced.
-
-### 6. Make it work first, optimize later
-
-Make it work, then make it right, then make it fast — in that order, never reversed. No premature optimization. No speculative performance work. Write the obvious implementation first, measure, and only optimize with evidence. Unproven "performance improvements" that add complexity are net negatives.
-
 ## Reference Repos
 
 - OpenCode : https://github.com/anomalyco/opencode
