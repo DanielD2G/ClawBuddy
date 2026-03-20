@@ -1,8 +1,24 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
 
+export interface ProviderMetadata {
+  label: string
+  connectionType: 'apiKey' | 'baseUrl'
+  supports: {
+    llm: boolean
+    embedding: boolean
+  }
+}
+
+export interface ProviderConnectionInfo {
+  source: 'env' | 'db' | null
+  value: string | null
+}
+
 export interface SettingsData {
   providers: {
+    metadata: Record<string, ProviderMetadata>
+    connections: Record<string, ProviderConnectionInfo>
     active: {
       llm: string
       llmModel: string | null
@@ -13,8 +29,10 @@ export interface SettingsData {
       titleModel: string | null
       compactModel: string | null
       advancedModelConfig: boolean
+      roleProviders: Record<string, string>
       embedding: string
       embeddingModel: string | null
+      localBaseUrl: string | null
     }
     available: { llm: string[]; embedding: string[] }
     models: {
@@ -22,9 +40,13 @@ export interface SettingsData {
       embedding: Record<string, string[]>
     }
   }
-  apiKeys: Record<string, { source: 'env' | 'db' | null; masked: string | null }>
   onboardingComplete?: boolean
   browserGridFromEnv?: boolean
+}
+
+export interface ProviderConnectionsMutationResponse {
+  connections: Record<string, ProviderConnectionInfo>
+  providers?: SettingsData['providers']
 }
 
 interface SettingsHookOptions {
@@ -45,25 +67,62 @@ export function createSettingsHook(options: SettingsHookOptions) {
     const updateProviders = useMutation({
       mutationFn: (data: {
         llm?: string
-        llmModel?: string
+        llmModel?: string | null
+        mediumModel?: string | null
+        lightModel?: string | null
+        exploreModel?: string | null
+        executeModel?: string | null
+        titleModel?: string | null
+        compactModel?: string | null
         embedding?: string
-        embeddingModel?: string
+        embeddingModel?: string | null
+        advancedModelConfig?: boolean
+        roleProviders?: Record<string, string>
       }) => apiClient.patch(`${options.basePath}/settings`, data),
       onSuccess: () => queryClient.invalidateQueries({ queryKey }),
     })
 
-    const setApiKey = useMutation({
-      mutationFn: ({ provider, key }: { provider: string; key: string }) =>
-        apiClient.put(`${options.basePath}/api-keys/${provider}`, { key }),
-      onSuccess: () => queryClient.invalidateQueries({ queryKey }),
+    const setProviderConnection = useMutation({
+      mutationFn: ({ provider, value }: { provider: string; value: string }) =>
+        apiClient.put<ProviderConnectionsMutationResponse>(
+          `${options.basePath}/provider-connections/${provider}`,
+          { value },
+        ),
+      onSuccess: (data) => {
+        queryClient.setQueryData<SettingsData | undefined>(queryKey, (current) =>
+          current
+            ? {
+                ...current,
+                ...(data.providers ? { providers: data.providers } : {}),
+              }
+            : current,
+        )
+        queryClient.invalidateQueries({ queryKey })
+        queryClient.invalidateQueries({ queryKey: ['model-config'] })
+        queryClient.invalidateQueries({ queryKey: ['providers'] })
+      },
     })
 
-    const removeApiKey = useMutation({
+    const removeProviderConnection = useMutation({
       mutationFn: (provider: string) =>
-        apiClient.delete(`${options.basePath}/api-keys/${provider}`),
-      onSuccess: () => queryClient.invalidateQueries({ queryKey }),
+        apiClient.delete<ProviderConnectionsMutationResponse>(
+          `${options.basePath}/provider-connections/${provider}`,
+        ),
+      onSuccess: (data) => {
+        queryClient.setQueryData<SettingsData | undefined>(queryKey, (current) =>
+          current
+            ? {
+                ...current,
+                ...(data.providers ? { providers: data.providers } : {}),
+              }
+            : current,
+        )
+        queryClient.invalidateQueries({ queryKey })
+        queryClient.invalidateQueries({ queryKey: ['model-config'] })
+        queryClient.invalidateQueries({ queryKey: ['providers'] })
+      },
     })
 
-    return { query, updateProviders, setApiKey, removeApiKey }
+    return { query, updateProviders, setProviderConnection, removeProviderConnection }
   }
 }

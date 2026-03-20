@@ -37,7 +37,7 @@ export function StepWelcome({ onNext, onImport, isImporting }: StepWelcomeProps)
         <div className="text-sm text-muted-foreground space-y-2">
           <p>We&apos;ll set up:</p>
           <ul className="list-disc list-inside space-y-1">
-            <li>API keys for your AI providers</li>
+            <li>Provider connections for your AI backends</li>
             <li>Embedding model for document search</li>
             <li>Chat model for conversations</li>
             <li>Agent capabilities</li>
@@ -52,11 +52,7 @@ export function StepWelcome({ onNext, onImport, isImporting }: StepWelcomeProps)
               onChange={handleFile}
               className="hidden"
             />
-            <Button
-              variant="ghost"
-              onClick={() => fileRef.current?.click()}
-              disabled={isImporting}
-            >
+            <Button variant="ghost" onClick={() => fileRef.current?.click()} disabled={isImporting}>
               {isImporting ? (
                 <Spinner data-icon="inline-start" />
               ) : (
@@ -65,7 +61,10 @@ export function StepWelcome({ onNext, onImport, isImporting }: StepWelcomeProps)
               {isImporting ? 'Importing...' : 'Import from file'}
             </Button>
           </div>
-          <Button onClick={onNext} className="bg-brand text-brand-foreground hover:bg-brand/90 h-11 px-8 text-base">
+          <Button
+            onClick={onNext}
+            className="bg-brand text-brand-foreground hover:bg-brand/90 h-11 px-8 text-base"
+          >
             Get started
             <ChevronRight className="size-4 ml-1" />
           </Button>

@@ -1,16 +1,19 @@
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { ChevronRight, ChevronLeft } from 'lucide-react'
+import { ChevronRight, ChevronLeft, Sun, Moon, Monitor } from 'lucide-react'
 import { WORKSPACE_COLORS } from '@/constants'
 import { TimezoneSelect } from '@/components/timezone-select'
+import type { Theme } from '@/providers/theme-provider'
 
 interface StepWorkspaceProps {
   name: string
   color: string
   timezone: string
+  theme: Theme
   onNameChange: (name: string) => void
   onColorChange: (color: string) => void
   onTimezoneChange: (tz: string) => void
+  onThemeChange: (theme: Theme) => void
   onBack: () => void
   onNext: () => void
 }
@@ -19,9 +22,11 @@ export function StepWorkspace({
   name,
   color,
   timezone,
+  theme,
   onNameChange,
   onColorChange,
   onTimezoneChange,
+  onThemeChange,
   onBack,
   onNext,
 }: StepWorkspaceProps) {
@@ -58,6 +63,38 @@ export function StepWorkspace({
               />
             ))}
           </div>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium">Theme</label>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant={theme === 'light' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => onThemeChange('light')}
+            >
+              <Sun data-icon="inline-start" />
+              Light
+            </Button>
+            <Button
+              variant={theme === 'dark' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => onThemeChange('dark')}
+            >
+              <Moon data-icon="inline-start" />
+              Dark
+            </Button>
+            <Button
+              variant={theme === 'system' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => onThemeChange('system')}
+            >
+              <Monitor data-icon="inline-start" />
+              System
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Choose whether ClawBuddy starts in system, dark, or light mode.
+          </p>
         </div>
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-medium">Timezone</label>

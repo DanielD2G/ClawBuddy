@@ -16,6 +16,7 @@ export const workspaceExportChannelSchema = z.object({
 export const workspaceExportModelConfigSchema = z.object({
   aiProvider: z.string(),
   aiModel: z.string().nullable(),
+  roleProviders: z.record(z.string()).optional(),
   mediumModel: z.string().nullable().optional(),
   lightModel: z.string().nullable().optional(),
   exploreModel: z.string().nullable().optional(),
@@ -25,6 +26,7 @@ export const workspaceExportModelConfigSchema = z.object({
   advancedModelConfig: z.boolean().optional(),
   embeddingProvider: z.string(),
   embeddingModel: z.string().nullable(),
+  localBaseUrl: z.string().nullable().optional(),
   contextLimitTokens: z.number().optional(),
   maxAgentIterations: z.number().optional(),
   subAgentExploreMaxIterations: z.number().optional(),

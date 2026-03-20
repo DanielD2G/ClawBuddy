@@ -22,7 +22,11 @@ export function useChatSessions() {
     refetchInterval: (query) => {
       const sessions = query.state.data
       // Poll every 3s if any session has no title yet or has active agent activity
-      if (sessions?.some((s) => !s.title || s.agentStatus === 'running' || s.agentStatus === 'awaiting_approval'))
+      if (
+        sessions?.some(
+          (s) => !s.title || s.agentStatus === 'running' || s.agentStatus === 'awaiting_approval',
+        )
+      )
         return POLL_SESSIONS_FAST_MS
       return POLL_SESSIONS_NORMAL_MS
     },

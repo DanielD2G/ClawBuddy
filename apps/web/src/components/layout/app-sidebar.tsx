@@ -216,8 +216,12 @@ export function AppSidebar() {
                   </span>
                   {session.agentStatus === 'running' && pathname !== `/chat/${session.id}` ? (
                     <Spinner className="ml-auto size-3.5 shrink-0" />
-                  ) : session.agentStatus === 'awaiting_approval' && pathname !== `/chat/${session.id}` ? (
-                    <span className="ml-auto size-2.5 shrink-0 rounded-full bg-amber-500 animate-pulse" title="Awaiting approval" />
+                  ) : session.agentStatus === 'awaiting_approval' &&
+                    pathname !== `/chat/${session.id}` ? (
+                    <span
+                      className="ml-auto size-2.5 shrink-0 rounded-full bg-amber-500 animate-pulse"
+                      title="Awaiting approval"
+                    />
                   ) : session.unreadCount > 0 && pathname !== `/chat/${session.id}` ? (
                     <span className="ml-auto size-2 shrink-0 rounded-full bg-brand/70" />
                   ) : null}

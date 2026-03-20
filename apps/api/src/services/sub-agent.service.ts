@@ -103,7 +103,6 @@ type SubAgentEmit = (event: SSEEvent['event'], data: Record<string, unknown>) =>
 export interface SubAgentContext {
   workspaceId: string
   sessionId: string
-  linuxUser: string
   secretInventory: SecretInventory
   emit?: SubAgentEmit
   subAgentId?: string
@@ -226,7 +225,9 @@ export const subAgentService = {
         totalUsage.outputTokens += response.usage.outputTokens
         totalUsage.totalTokens += response.usage.totalTokens
       }
-      await recordTokenUsage(response.usage, parentContext.sessionId, llm.providerId, llm.modelId)
+      await recordTokenUsage(response.usage, parentContext.sessionId, llm.providerId, llm.modelId, {
+        updateSessionContext: false,
+      })
 
       // No tool calls — done
       if (response.finishReason === 'stop' || !response.toolCalls?.length) {
@@ -377,7 +378,6 @@ export const subAgentService = {
     const result = await toolExecutorService.execute(toolCall, capabilitySlug, {
       workspaceId: parentContext.workspaceId,
       chatSessionId: parentContext.sessionId,
-      linuxUser: parentContext.linuxUser,
       secretInventory: parentContext.secretInventory,
       browserSessionId: parentContext.browserSessionId,
       capability: matched

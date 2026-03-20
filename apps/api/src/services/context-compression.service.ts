@@ -169,7 +169,9 @@ export async function compressContext(
     )
 
     if (sessionId) {
-      recordTokenUsage(response.usage, sessionId, llm.providerId, llm.modelId)
+      recordTokenUsage(response.usage, sessionId, llm.providerId, llm.modelId, {
+        updateSessionContext: false,
+      })
     }
 
     const summary = response.content?.trim() || existingSummary

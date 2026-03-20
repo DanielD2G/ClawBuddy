@@ -713,12 +713,7 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
 
           try {
             streamingRef.current = true
-            await processSSEStream(
-              res,
-              assistantId,
-              undefined,
-              controller.signal,
-            )
+            await processSSEStream(res, assistantId, undefined, controller.signal)
           } finally {
             streamingRef.current = false
             // Always fetch the final snapshot to ensure consistent state,
@@ -794,7 +789,11 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
           const mapped = mapPendingApprovals(data.pendingApprovals)
           setPendingApprovals((prev) => {
             // Only update if the approvals actually changed
-            if (prev.length === mapped.length && prev.every((p, i) => p.approvalId === mapped[i]?.approvalId)) return prev
+            if (
+              prev.length === mapped.length &&
+              prev.every((p, i) => p.approvalId === mapped[i]?.approvalId)
+            )
+              return prev
             return mapped
           })
           if (isPending) {

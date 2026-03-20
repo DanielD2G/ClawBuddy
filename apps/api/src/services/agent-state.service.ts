@@ -34,7 +34,6 @@ export interface AgentState {
   iteration: number
   pendingToolCalls: ToolCall[]
   completedToolResults: Array<{ toolCallId: string; content: string }>
-  linuxUser?: string
   toolExecutionLog: AgentResult['toolExecutions']
   workspaceId: string
   sessionId: string
@@ -65,7 +64,6 @@ export function deserializeAgentState(session: {
 export function buildPublicAgentState(state: AgentState, inventory: SecretInventory) {
   return {
     iteration: state.iteration,
-    linuxUser: state.linuxUser ?? null,
     workspaceId: state.workspaceId,
     sessionId: state.sessionId,
     pendingToolCalls: state.pendingToolCalls.map((toolCall) => ({
