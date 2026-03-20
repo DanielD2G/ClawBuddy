@@ -6,6 +6,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Search,
+  ChevronsUpDown,
+  Check,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -13,12 +15,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
   Table,
   TableBody,
@@ -214,24 +215,32 @@ function DocumentsSection() {
             className="pl-9"
           />
         </div>
-        <Select
-          value={status}
-          onValueChange={(v) => {
-            setStatus(v === 'all' ? '' : v)
-            setPage(1)
-          }}
-        >
-          <SelectTrigger className="w-[140px]">
-            <SelectValue placeholder="All statuses" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All statuses</SelectItem>
-            <SelectItem value="READY">Ready</SelectItem>
-            <SelectItem value="PENDING">Pending</SelectItem>
-            <SelectItem value="PROCESSING">Processing</SelectItem>
-            <SelectItem value="FAILED">Failed</SelectItem>
-          </SelectContent>
-        </Select>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="flex w-[140px] items-center justify-between rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm hover:bg-muted/70 dark:bg-muted/20 dark:hover:bg-muted/40">
+              <span>{status === '' ? 'All statuses' : status === 'READY' ? 'Ready' : status === 'PENDING' ? 'Pending' : status === 'PROCESSING' ? 'Processing' : 'Failed'}</span>
+              <ChevronsUpDown className="size-4 text-muted-foreground" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            {[
+              { value: '', label: 'All statuses' },
+              { value: 'READY', label: 'Ready' },
+              { value: 'PENDING', label: 'Pending' },
+              { value: 'PROCESSING', label: 'Processing' },
+              { value: 'FAILED', label: 'Failed' },
+            ].map((opt) => (
+              <DropdownMenuItem
+                key={opt.value || 'all'}
+                onClick={() => { setStatus(opt.value); setPage(1) }}
+                className="gap-2"
+              >
+                <span className="flex-1">{opt.label}</span>
+                {status === opt.value && <Check className="size-3.5" />}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       <div className="rounded-md border">

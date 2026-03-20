@@ -28,13 +28,12 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { Plus, Play, Trash2, CheckCircle, XCircle, Clock } from 'lucide-react'
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Plus, Play, Trash2, CheckCircle, XCircle, Clock, ChevronsUpDown, Check } from 'lucide-react'
 
 export function CronSettingsPage() {
   const [createOpen, setCreateOpen] = useState(false)
@@ -257,14 +256,20 @@ function CreateCronDialog({
 
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Type</label>
-            <Select value={type} onValueChange={setType}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="agent">Agent</SelectItem>
-              </SelectContent>
-            </Select>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="flex w-full items-center justify-between rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm hover:bg-muted/70 dark:bg-muted/20 dark:hover:bg-muted/40">
+                  <span>Agent</span>
+                  <ChevronsUpDown className="size-4 text-muted-foreground" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem onClick={() => setType('agent')} className="gap-2">
+                  <span className="flex-1">Agent</span>
+                  {type === 'agent' && <Check className="size-3.5" />}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
           {type === 'agent' && (

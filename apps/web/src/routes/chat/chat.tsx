@@ -207,7 +207,7 @@ export function ChatPage() {
   }
 
   return (
-    <div className="relative flex h-full flex-col">
+    <div className="absolute inset-0 flex flex-col">
       {/* Top fade */}
       <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-col">
         <div className="h-2 w-full bg-background" />
@@ -216,17 +216,6 @@ export function ChatPage() {
       {/* Messages */}
       <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-4 pt-16 pb-36">
-          {messages.length === 0 && !isPending && (
-            <div className="flex flex-col items-center justify-center py-32">
-              <p className="text-lg font-medium text-foreground">
-                Ask anything about your documents
-              </p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Your questions will be answered using your workspace knowledge base.
-              </p>
-            </div>
-          )}
-
           <div className="flex flex-col">
             {messages.map((msg, idx) => {
               const prevMsg = idx > 0 ? messages[idx - 1] : null

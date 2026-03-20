@@ -3,15 +3,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuSearchable,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
-import { Brain, Loader2 } from 'lucide-react'
+import { Brain, Check, ChevronsUpDown, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   DEFAULT_CONTEXT_LIMIT_TOKENS,
@@ -220,36 +220,46 @@ export function ModelConfigCard() {
                       <p className="text-xs text-muted-foreground">{role.description}</p>
                     </div>
                     <div className="flex gap-2">
-                      <Select
-                        value={currentProvider}
-                        onValueChange={(value) => handleProviderChange(role.key, value)}
-                      >
-                        <SelectTrigger className="w-[140px] shrink-0">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button className="flex w-[140px] shrink-0 items-center justify-between rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm hover:bg-muted/70 dark:bg-muted/20 dark:hover:bg-muted/40">
+                            <span className="truncate">{PROVIDER_LABELS[currentProvider] ?? currentProvider}</span>
+                            <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent>
                           {data.availableProviders.map((p) => (
-                            <SelectItem key={p} value={p}>
-                              {PROVIDER_LABELS[p] ?? p}
-                            </SelectItem>
+                            <DropdownMenuItem
+                              key={p}
+                              onClick={() => handleProviderChange(role.key, p)}
+                              className="gap-2"
+                            >
+                              <span className="flex-1">{PROVIDER_LABELS[p] ?? p}</span>
+                              {currentProvider === p && <Check className="size-3.5" />}
+                            </DropdownMenuItem>
                           ))}
-                        </SelectContent>
-                      </Select>
-                      <Select
-                        value={models[role.key] ?? ''}
-                        onValueChange={(value) => handleModelChange(role.key, value)}
-                      >
-                        <SelectTrigger className="w-full font-mono text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button className="flex w-full items-center justify-between rounded-lg border border-border/50 bg-transparent px-3 py-2 font-mono text-xs hover:bg-accent">
+                            <span className="truncate">{models[role.key] || 'Select model'}</span>
+                            <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuSearchable placeholder="Search models...">
                           {providerModels.map((m) => (
-                            <SelectItem key={m} value={m}>
-                              {m}
-                            </SelectItem>
+                            <DropdownMenuItem
+                              key={m}
+                              onClick={() => handleModelChange(role.key, m)}
+                              className="gap-2 font-mono text-xs"
+                            >
+                              <span className="flex-1 truncate">{m}</span>
+                              {models[role.key] === m && <Check className="size-3.5" />}
+                            </DropdownMenuItem>
                           ))}
-                        </SelectContent>
-                      </Select>
+                        </DropdownMenuSearchable>
+                      </DropdownMenu>
                     </div>
                   </div>
                 )
