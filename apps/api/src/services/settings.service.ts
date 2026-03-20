@@ -3,11 +3,8 @@ import { prisma } from '../lib/prisma.js'
 import { env } from '../env.js'
 import { encrypt, decrypt } from './crypto.service.js'
 import {
-  MODEL_CATALOG,
-  DEFAULT_LLM_MODELS,
-  DEFAULT_EMBEDDING_MODELS,
-  DEFAULT_MEDIUM_MODELS,
-  DEFAULT_LIGHT_MODELS,
+  LLM_PROVIDERS,
+  EMBEDDING_PROVIDERS,
   ENV_KEYS,
   DB_KEY_FIELDS,
   inferProviderFromModel,
@@ -67,23 +64,23 @@ export const settingsService = {
 
   async getAIModel(): Promise<string> {
     const s = await this.get()
-    return s.aiModel ?? DEFAULT_LLM_MODELS[s.aiProvider] ?? DEFAULT_LLM_MODELS.openai
+    return s.aiModel!
   },
 
   async getLightModel(): Promise<string> {
-    return this._resolveModel('lightModel', null, DEFAULT_LIGHT_MODELS)
+    return this._resolveModel('lightModel', null)
   },
 
   async getTitleModel(): Promise<string> {
-    return this._resolveModel('titleModel', 'lightModel', DEFAULT_LIGHT_MODELS)
+    return this._resolveModel('titleModel', 'lightModel')
   },
 
   async getCompactModel(): Promise<string> {
-    return this._resolveModel('compactModel', 'mediumModel', DEFAULT_MEDIUM_MODELS)
+    return this._resolveModel('compactModel', 'mediumModel')
   },
 
   async getMediumModel(): Promise<string> {
-    return this._resolveModel('mediumModel', null, DEFAULT_MEDIUM_MODELS)
+    return this._resolveModel('mediumModel', null)
   },
 
   async getAdvancedModelConfig(): Promise<boolean> {
@@ -91,22 +88,20 @@ export const settingsService = {
   },
 
   async getExploreModel(): Promise<string> {
-    return this._resolveModel('exploreModel', 'lightModel', DEFAULT_LIGHT_MODELS)
+    return this._resolveModel('exploreModel', 'lightModel')
   },
 
   async getExecuteModel(): Promise<string> {
-    return this._resolveModel('executeModel', 'mediumModel', DEFAULT_MEDIUM_MODELS)
+    return this._resolveModel('executeModel', 'mediumModel')
   },
 
   /**
    * Resolve a model by key with optional advanced-mode override and tier fallback.
-   * - If advancedModelConfig is on and the model key has a value, use it directly.
-   * - Otherwise, fall back to the tier's model → provider default → openai default.
+   * Falls back to the main AI model if the specific tier model is not set.
    */
   async _resolveModel(
     modelKey: string,
     fallbackTierKey: string | null,
-    defaults: Record<string, string>,
   ): Promise<string> {
     const s = await this.get()
     const settings = s as Record<string, unknown>
@@ -115,16 +110,12 @@ export const settingsService = {
     }
     const tierKey = fallbackTierKey ?? modelKey
     const tierValue = settings[tierKey] as string | null | undefined
-    return tierValue ?? defaults[s.aiProvider] ?? defaults.openai
+    return tierValue ?? s.aiModel!
   },
 
   async getEmbeddingModel(): Promise<string> {
     const s = await this.get()
-    return (
-      s.embeddingModel ??
-      DEFAULT_EMBEDDING_MODELS[s.embeddingProvider] ??
-      DEFAULT_EMBEDDING_MODELS.openai
-    )
+    return s.embeddingModel!
   },
 
   async getContextLimitTokens(): Promise<number> {
@@ -235,8 +226,8 @@ export const settingsService = {
       return field ? !!s[field] : false
     }
     return {
-      llm: Object.keys(MODEL_CATALOG.llm).filter(checkKey),
-      embedding: Object.keys(MODEL_CATALOG.embedding).filter(checkKey),
+      llm: LLM_PROVIDERS.filter(checkKey),
+      embedding: EMBEDDING_PROVIDERS.filter(checkKey),
     }
   },
 

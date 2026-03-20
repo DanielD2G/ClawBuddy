@@ -354,7 +354,7 @@ app.post('/preflight', async (c) => {
 
   // 1. AI Provider API Keys — test each configured LLM provider
   const { createLLMForModel } = await import('../providers/index.js')
-  const { DEFAULT_LLM_MODELS } = await import('../config.js')
+  const { discoverLLMModels } = await import('../services/model-discovery.service.js')
   const available = await settingsService.getAvailableProviders()
 
   const PROVIDER_NAMES: Record<string, string> = {
@@ -366,8 +366,9 @@ app.post('/preflight', async (c) => {
   for (const provider of available.llm) {
     const label = PROVIDER_NAMES[provider] ?? provider
     await runCheck(`${label} API Key`, async () => {
-      const model = DEFAULT_LLM_MODELS[provider]
-      if (!model) return { status: 'fail', message: `No default model for ${provider}` }
+      const models = await discoverLLMModels(provider)
+      const model = models[0]
+      if (!model) return { status: 'fail', message: `No models discovered for ${provider}` }
 
       const llm = await createLLMForModel(model)
       await llm.chat([{ role: 'user', content: 'Say ok' }], { maxTokens: 5, temperature: 0 })
