@@ -134,7 +134,7 @@ export function ApprovalInputBar({ approvals, onDecision }: ApprovalInputBarProp
   const rulePreview = approvals.length === 1 ? computeAllowRule(firstApproval) : null
 
   return (
-    <div className="rounded-2xl border border-amber-500/30 bg-muted/60 px-5 py-4 space-y-3">
+    <div className="rounded-lg border border-amber-500/30 bg-muted/60 px-5 py-4 space-y-3">
       {/* Header: what needs approval */}
       <div className="flex items-center gap-2">
         <ShieldAlert className="size-4 text-amber-500 shrink-0" />

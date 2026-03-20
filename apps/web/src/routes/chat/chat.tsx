@@ -250,7 +250,7 @@ export function ChatPage() {
                   ) : msg.role === 'user' ? (
                     <div className="flex justify-end">
                       <div className="max-w-[85%]">
-                        <div className="rounded-3xl bg-muted/80 px-5 py-3 text-[15px] text-foreground">
+                        <div className="rounded-xl bg-muted/80 px-5 py-3 text-[15px] text-foreground">
                           {msg.content}
                         </div>
                         {msg.attachments && msg.attachments.length > 0 && (
@@ -470,7 +470,7 @@ export function ChatPage() {
               >
                 <div
                   className={`
-                    flex flex-col rounded-[1.4rem] border border-border/40 bg-background px-5 py-3 shadow-2xl
+                    flex flex-col rounded-3xl border border-border/40 bg-background px-5 py-3 shadow-2xl
                     transition-all duration-200
                     ${focused ? 'shadow-[0_-8px_40px_rgba(0,0,0,0.25)]' : ''}
                   `}

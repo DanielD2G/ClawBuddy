@@ -291,7 +291,7 @@ export function MentionInput({
       {showPopover && filteredCount > 0 && (
         <div
           ref={popoverRef}
-          className="absolute bottom-full left-0 mb-2 w-72 max-h-64 overflow-y-auto rounded-2xl border bg-popover p-1 shadow-lg"
+          className="absolute bottom-full left-0 mb-2 w-72 max-h-64 overflow-y-auto rounded-lg border bg-popover p-1 shadow-lg"
         >
           {mentionType === 'tool' &&
             filteredTools.map((cap, i) => (

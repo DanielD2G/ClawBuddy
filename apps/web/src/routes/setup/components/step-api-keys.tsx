@@ -76,7 +76,7 @@ function ApiKeyInput({
 
   if (isSet) {
     return (
-      <div className="flex items-center justify-between rounded-lg border p-3">
+      <div className="flex items-center justify-between rounded-md border p-3">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium">{label}</span>
           <Badge variant="secondary" className="text-xs">
@@ -89,7 +89,7 @@ function ApiKeyInput({
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border p-3">
+    <div className="flex flex-col gap-2 rounded-md border p-3">
       <span className="text-sm font-medium">{label}</span>
       <div className="flex gap-2">
         <Input

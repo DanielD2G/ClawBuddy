@@ -126,7 +126,7 @@ export function StepChatModel({
       </div>
       <div className="flex flex-col gap-4">
         {/* Advanced toggle */}
-        <div className="flex items-center justify-between gap-3 rounded-xl border bg-muted/30 px-3 py-2">
+        <div className="flex items-center justify-between gap-3 rounded-md border bg-muted/30 px-3 py-2">
           <div>
             <div className="text-sm font-medium">Advanced</div>
             <div className="text-xs text-muted-foreground">Customize model per task</div>
@@ -165,7 +165,7 @@ export function StepChatModel({
                 <div className="flex gap-2">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <button disabled={isUpdating} className="flex w-[140px] shrink-0 items-center justify-between rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm hover:bg-muted/70 dark:bg-muted/20 dark:hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-50">
+                      <button disabled={isUpdating} className="flex h-(--control) w-[140px] shrink-0 items-center justify-between rounded-md border border-border bg-muted/40 px-3 text-sm hover:bg-muted/70 dark:bg-muted/20 dark:hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-50">
                         <span className="truncate">{PROVIDER_LABELS[currentProvider] ?? currentProvider}</span>
                         <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" />
                       </button>
@@ -185,7 +185,7 @@ export function StepChatModel({
                   </DropdownMenu>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <button disabled={isUpdating} className="flex w-full items-center justify-between rounded-lg border border-border/50 bg-transparent px-3 py-2 font-mono text-xs hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50">
+                      <button disabled={isUpdating} className="flex h-(--control) w-full items-center justify-between rounded-md border border-border/50 bg-transparent px-3 font-mono text-xs hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50">
                         <span className="truncate">{currentModel || 'Default'}</span>
                         <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" />
                       </button>

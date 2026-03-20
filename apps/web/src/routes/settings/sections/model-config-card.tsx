@@ -181,7 +181,7 @@ export function ModelConfigCard() {
         {data && (
           <div className="space-y-5">
             {/* Advanced mode toggle */}
-            <div className="flex items-center justify-between gap-3 rounded-2xl border bg-muted/30 px-4 py-3">
+            <div className="flex items-center justify-between gap-3 rounded-lg border bg-muted/30 px-4 py-3">
               <div>
                 <div className="text-sm font-medium">Advanced model configuration</div>
                 <div className="text-xs text-muted-foreground">
@@ -267,7 +267,7 @@ export function ModelConfigCard() {
             </div>
 
             {/* Context limit */}
-            <div className="flex flex-col gap-2 rounded-2xl border bg-muted/30 px-4 py-3">
+            <div className="flex flex-col gap-2 rounded-lg border bg-muted/30 px-4 py-3">
               <div>
                 <div className="text-sm font-medium">Context limit</div>
                 <div className="text-xs text-muted-foreground">
@@ -292,7 +292,7 @@ export function ModelConfigCard() {
             </div>
 
             {/* Max agent iterations */}
-            <div className="flex flex-col gap-2 rounded-2xl border bg-muted/30 px-4 py-3">
+            <div className="flex flex-col gap-2 rounded-lg border bg-muted/30 px-4 py-3">
               <div>
                 <div className="text-sm font-medium">Max tool iterations</div>
                 <div className="text-xs text-muted-foreground">
@@ -314,7 +314,7 @@ export function ModelConfigCard() {
             </div>
 
             {/* Sub-agent iterations */}
-            <div className="flex flex-col gap-3 rounded-2xl border bg-muted/30 px-4 py-3">
+            <div className="flex flex-col gap-3 rounded-lg border bg-muted/30 px-4 py-3">
               <div>
                 <div className="text-sm font-medium">Sub-agent iterations</div>
                 <div className="text-xs text-muted-foreground">

@@ -19,7 +19,7 @@ function ImageRow({ label, state }: { label: string; state: ImageTaskState }) {
   const isError = state.status === 'error'
 
   return (
-    <div className="rounded-lg border p-4 space-y-3">
+    <div className="rounded-md border p-4 space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Container className="size-4" />

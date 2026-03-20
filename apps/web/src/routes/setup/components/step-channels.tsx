@@ -47,7 +47,7 @@ export function StepChannels({
       </div>
       <div className="flex flex-col gap-4">
         {/* Telegram Card */}
-        <div className="rounded-lg border p-4 space-y-3">
+        <div className="rounded-md border p-4 space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Send className="size-5 text-muted-foreground" />

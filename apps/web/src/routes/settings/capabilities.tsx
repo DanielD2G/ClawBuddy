@@ -28,8 +28,6 @@ import {
   Puzzle,
   Trash2,
   Settings,
-  ChevronDown,
-  ChevronRight,
   ShieldCheck,
   Plus,
   X,
@@ -424,36 +422,52 @@ function CapabilityCard({
   return (
     <>
       <Card
-        className={`${capability.enabled ? 'ring-1 ring-brand/30' : ''} ${isOAuthBlocked ? 'opacity-60' : ''}`}
+        className={`flex flex-col ${capability.enabled ? 'ring-1 ring-brand/30' : ''} ${isOAuthBlocked ? 'opacity-60' : ''}`}
       >
-        <CardHeader className="pb-3">
+        <CardHeader className="pb-2">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-2">
               <div
-                className={`flex size-8 items-center justify-center rounded-md ${capability.enabled ? 'bg-brand/10' : 'bg-muted'}`}
+                className={`flex size-8 items-center justify-center rounded-md shrink-0 ${capability.enabled ? 'bg-brand/10' : 'bg-muted'}`}
               >
                 <Icon className="size-4" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <CardTitle className="text-sm">{capability.name}</CardTitle>
                 <code className="text-xs text-muted-foreground">@{capability.slug}</code>
               </div>
             </div>
-            {!isOAuth && (
-              <Switch
-                checked={capability.alwaysOn || capability.enabled}
-                onCheckedChange={handleToggle}
-                disabled={capability.alwaysOn || toggleMutation.isPending}
-              />
-            )}
+            <div className="flex items-center gap-1.5 shrink-0">
+              {capability.networkAccess && (
+                <Badge variant="outline" className="text-[10px]">
+                  Network
+                </Badge>
+              )}
+              {!isOAuth && (
+                <div className="relative group">
+                  <Switch
+                    checked={capability.alwaysOn || capability.enabled}
+                    onCheckedChange={handleToggle}
+                    disabled={capability.alwaysOn || toggleMutation.isPending}
+                  />
+                  {capability.alwaysOn && (
+                    <span className="absolute -bottom-6 right-0 text-[10px] text-muted-foreground bg-popover border rounded px-1.5 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
+                      Always on
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </CardHeader>
-        <CardContent className="pt-0 space-y-2">
-          <CardDescription className="text-xs">{capability.description}</CardDescription>
+        <CardContent className="pt-0 flex flex-col flex-1">
+          <CardDescription className="text-xs line-clamp-2 mb-auto">
+            {capability.description}
+          </CardDescription>
 
           {/* Blocked OAuth message */}
           {isOAuthBlocked && (
-            <div className="flex items-start gap-2 rounded-md border border-muted bg-muted/30 p-2">
+            <div className="flex items-start gap-2 rounded-md border border-muted bg-muted/30 p-2 mt-3">
               <Info className="size-3.5 text-muted-foreground mt-0.5 shrink-0" />
               <p className="text-[11px] text-muted-foreground">
                 Add <code className="bg-muted px-1 rounded">GOOGLE_CLIENT_ID</code> and{' '}
@@ -464,49 +478,32 @@ function CapabilityCard({
           )}
 
           {!isOAuthBlocked && (
-            <>
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <div className="flex items-center gap-1.5">
-                  {capability.alwaysOn ? (
-                    <Badge variant="secondary" className="text-[10px]">
-                      Always on
-                    </Badge>
-                  ) : (
-                    capability.enabled && (
-                      <Badge variant="default" className="text-[10px] bg-brand">
-                        Enabled
-                      </Badge>
-                    )
-                  )}
-                  {oauthEmail && (
-                    <Badge variant="secondary" className="text-[10px]">
-                      {oauthEmail}
-                    </Badge>
-                  )}
-                  {!isOAuth && hasConfig && isConfigured && (
-                    <Badge variant="secondary" className="text-[10px]">
-                      Configured
-                    </Badge>
-                  )}
-                  {!isOAuth && hasConfig && capability.enabled && !isConfigured && (
+            <div className="mt-3 space-y-2">
+              {/* Status badges */}
+              <div className="flex items-center flex-wrap gap-1.5 text-xs">
+                {capability.enabled && (
+                  !isOAuth && hasConfig && !isConfigured ? (
                     <Badge variant="destructive" className="text-[10px]">
                       Config required
                     </Badge>
-                  )}
-                </div>
-                <div className="flex items-center gap-1.5">
-                  {capability.networkAccess && (
-                    <Badge variant="outline" className="text-[10px]">
-                      Network
+                  ) : (
+                    <Badge variant="default" className="text-[10px] bg-brand">
+                      Enabled
                     </Badge>
-                  )}
-                </div>
+                  )
+                )}
+                {oauthEmail && (
+                  <Badge variant="secondary" className="text-[10px]">
+                    {oauthEmail}
+                  </Badge>
+                )}
               </div>
 
-              {/* OAuth connect/disconnect buttons */}
-              {isOAuth && (
-                <div className="flex items-center gap-2">
-                  {oauthEmail ? (
+              {/* Actions row */}
+              <div className="flex items-center gap-2 pt-1">
+                {/* OAuth connect/disconnect */}
+                {isOAuth && (
+                  oauthEmail ? (
                     <Button
                       variant="outline"
                       size="sm"
@@ -528,11 +525,8 @@ function CapabilityCard({
                       <LogIn className="size-3 mr-1" />
                       Connect Google Account
                     </Button>
-                  )}
-                </div>
-              )}
-
-              <div className="flex items-center gap-2">
+                  )
+                )}
                 {!isOAuth && hasConfig && capability.enabled && (
                   <Button
                     variant="outline"
@@ -546,47 +540,59 @@ function CapabilityCard({
                 )}
                 <button
                   type="button"
-                  onClick={() => setExpanded(!expanded)}
-                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={() => setExpanded(true)}
+                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors ml-auto"
                 >
-                  {expanded ? (
-                    <ChevronDown className="size-3" />
-                  ) : (
-                    <ChevronRight className="size-3" />
-                  )}
+                  <Info className="size-3" />
                   Details
                 </button>
               </div>
-
-              {expanded && (
-                <div className="space-y-2 pt-2 border-t text-xs">
-                  <div>
-                    <span className="font-medium">Tools:</span>
-                    <div className="mt-1 space-y-1">
-                      {(
-                        capability.toolDefinitions as Array<{ name: string; description: string }>
-                      ).map((t) => (
-                        <div key={t.name} className="flex items-center gap-1">
-                          <code className="bg-muted px-1 rounded">{t.name}</code>
-                          <span className="text-muted-foreground truncate">{t.description}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  {capability.packages.length > 0 && (
-                    <div>
-                      <span className="font-medium">Packages: </span>
-                      <span className="text-muted-foreground">
-                        {capability.packages.join(', ')}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              )}
-            </>
+            </div>
           )}
         </CardContent>
       </Card>
+
+      {/* Details dialog */}
+      <Dialog open={expanded} onOpenChange={setExpanded}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <div
+                className={`flex size-6 items-center justify-center rounded-md ${capability.enabled ? 'bg-brand/10' : 'bg-muted'}`}
+              >
+                <Icon className="size-3.5" />
+              </div>
+              {capability.name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 text-sm">
+            <p className="text-muted-foreground">{capability.description}</p>
+            <div>
+              <span className="font-medium text-xs uppercase tracking-wide text-muted-foreground">Tools</span>
+              <div className="mt-2 space-y-1.5">
+                {(
+                  capability.toolDefinitions as Array<{ name: string; description: string }>
+                ).map((t) => (
+                  <div key={t.name} className="flex items-start gap-2">
+                    <code className="bg-muted px-1.5 py-0.5 rounded text-xs shrink-0">{t.name}</code>
+                    <span className="text-xs text-muted-foreground">{t.description}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {capability.packages.length > 0 && (
+              <div>
+                <span className="font-medium text-xs uppercase tracking-wide text-muted-foreground">Packages</span>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {capability.packages.map((pkg) => (
+                    <code key={pkg} className="bg-muted px-1.5 py-0.5 rounded text-xs">{pkg}</code>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {hasConfig && !isOAuth && (
         <CapabilityConfigDialog
@@ -682,7 +688,7 @@ function GlobalPermissions() {
               onChange={(e) => setNewRule(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && addRule()}
               placeholder="e.g. Bash(aws s3 ls *)"
-              className="flex-1 rounded-md border bg-background px-3 py-1.5 text-sm font-mono placeholder:text-muted-foreground/50"
+              className="flex-1 h-(--control-sm) rounded-md border bg-background px-3 text-sm font-mono placeholder:text-muted-foreground/50"
             />
             <Button variant="outline" size="sm" onClick={addRule} disabled={!newRule.trim()}>
               <Plus className="size-4" />

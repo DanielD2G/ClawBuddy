@@ -101,7 +101,7 @@ export function StepPreflight({
         )}
 
         {error && !result && (
-          <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
+          <div className="rounded-md border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
             {error}
           </div>
         )}
@@ -112,7 +112,7 @@ export function StepPreflight({
               {result.checks.map((check) => (
                 <div
                   key={check.name}
-                  className={`flex items-start gap-3 rounded-lg border p-3 ${statusBg[check.status]}`}
+                  className={`flex items-start gap-3 rounded-md border p-3 ${statusBg[check.status]}`}
                 >
                   <div className="mt-0.5">{statusIcon[check.status]}</div>
                   <div className="flex-1 min-w-0">

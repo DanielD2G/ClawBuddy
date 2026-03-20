@@ -90,7 +90,7 @@ export function StepCapabilities({
           return (
             <TooltipProvider key={cap.slug}>
               <div
-                className={`flex items-center gap-3 rounded-lg border p-3 transition-colors ${
+                className={`flex items-center gap-3 rounded-md border p-3 transition-colors ${
                   isOAuthBlocked
                     ? 'opacity-50 cursor-not-allowed'
                     : isActive

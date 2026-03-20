@@ -41,7 +41,7 @@ export function StepEmbedding({
             <label className="text-sm font-medium">Provider</label>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button disabled={isUpdating} className="flex w-full items-center justify-between rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm hover:bg-muted/70 dark:bg-muted/20 dark:hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-50">
+                <button disabled={isUpdating} className="flex h-(--control) w-full items-center justify-between rounded-md border border-border bg-muted/40 px-3 text-sm hover:bg-muted/70 dark:bg-muted/20 dark:hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-50">
                   <span>{PROVIDER_LABELS[providers.active.embedding] ?? providers.active.embedding}</span>
                   <ChevronsUpDown className="size-4 text-muted-foreground" />
                 </button>
@@ -67,7 +67,7 @@ export function StepEmbedding({
             <label className="text-sm font-medium">Model</label>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button disabled={isUpdating} className="flex w-full items-center justify-between rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm hover:bg-muted/70 dark:bg-muted/20 dark:hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-50">
+                <button disabled={isUpdating} className="flex h-(--control) w-full items-center justify-between rounded-md border border-border bg-muted/40 px-3 text-sm hover:bg-muted/70 dark:bg-muted/20 dark:hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-50">
                   <span>{providers.active.embeddingModel || 'Default'}</span>
                   <ChevronsUpDown className="size-4 text-muted-foreground" />
                 </button>

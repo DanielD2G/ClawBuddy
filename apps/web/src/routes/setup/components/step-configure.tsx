@@ -92,7 +92,7 @@ export function StepConfigure({
                   {field.type === 'select' && field.options ? (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <button className="flex w-full items-center justify-between rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm hover:bg-muted/70 dark:bg-muted/20 dark:hover:bg-muted/40">
+                        <button className="flex h-(--control) w-full items-center justify-between rounded-md border border-border bg-muted/40 px-3 text-sm hover:bg-muted/70 dark:bg-muted/20 dark:hover:bg-muted/40">
                           <span>{field.options?.find((o) => o.value === getFieldValue(cap.slug, field.key))?.label || 'Select...'}</span>
                           <ChevronsUpDown className="size-4 text-muted-foreground" />
                         </button>

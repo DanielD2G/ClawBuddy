@@ -84,7 +84,7 @@ function ApiKeyRow({
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded-2xl border p-3 md:p-4">
+    <div className="flex flex-col gap-2 rounded-lg border p-3 md:p-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium">{label}</span>
