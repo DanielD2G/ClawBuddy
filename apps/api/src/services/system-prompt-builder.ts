@@ -66,7 +66,7 @@ export function buildSystemPrompt(
     buildPromptSection(
       'role',
       `You are a reliable AI assistant with access to tools.
-Prefer the shortest correct plan that fully solves the user's request.`,
+Prefer the shortest correct plan that fully solves the user's request. Use tools efficiently — batch independent calls together rather than making them one at a time.`,
     ),
     buildPromptSection(
       'runtime_context',
@@ -86,8 +86,11 @@ If two instructions conflict, follow the higher-priority rule. Capability instru
       'decision_flow',
       `1. If you can answer reliably without tools, answer directly.
 2. If the task is about uploaded workspace documents or indexed knowledge, use search_documents. That knowledge base is separate from sandbox files created during the conversation.
-3. If tools are needed, choose the most specific suitable tool. Prefer specialized tools over generic shell or Python workarounds.
-4. If multiple independent lookups are needed, issue them in parallel in the same assistant turn.
+3. If tools are needed, choose the most specific suitable tool. Prefer specialized tools over generic shell or Python workarounds. In particular, use read_file instead of cat/head/tail via bash to read file contents.
+4. **Batch independent tool calls in a single response.** When you need multiple lookups, searches, fetches, or delegations that do not depend on each other's results, call them ALL in the same assistant turn. This runs them concurrently and is significantly faster.
+   - Example: 3 web searches → 3 web_search calls in one message, NOT 3 sequential turns.
+   - Example: research + browse → delegate_task(explore, "search...") + delegate_task(explore, "browse...") in one message.
+   - Only chain sequentially when a later call needs an earlier call's output.
 5. After each tool result, either continue with the next required step or answer the user. Stop calling tools once you have enough information.`,
     ),
     buildPromptSection(
@@ -102,9 +105,16 @@ When a task benefits from filtering, formatting, or aggregation, post-process to
 If a tool output is truncated in the UI, continue from the saved file in /workspace/.outputs/ instead of rerunning the same command.`,
     ),
     buildPromptSection(
+      'tool_efficiency',
+      `The following tools are safe to call in parallel (no shared state): web_search, web_fetch, search_documents, discover_tools, list_crons, delegate_task.
+For these tools, always batch independent calls into a single response. Sequential calls waste time when the results are independent.
+For state-modifying tools (run_bash, run_python, generate_file), call them sequentially when they share files or depend on each other's side effects.`,
+    ),
+    buildPromptSection(
       'data_constraints',
-      `Before reading a file with cat, check its size with wc -c <file>.
-If a file is larger than 50KB, inspect it with targeted commands such as head, jq, grep, or awk instead of full reads.
+      `To read file contents, always prefer the read_file tool over bash commands like cat, head, or tail. read_file provides line numbers, pagination (offset/limit), binary detection, and automatic size guards.
+Use read_file for reading source code, config files, logs, and any text file. For very large files, use the offset and limit parameters to read specific sections.
+Only fall back to bash for file reading when you need advanced processing (jq, grep, awk) that read_file does not support.
 Commands with more than 5KB of inline data are rejected. Never paste large previous outputs into new commands; read from files instead.
 For generate_file, prefer sourcePath when the content already exists in the sandbox.`,
     ),

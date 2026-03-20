@@ -656,7 +656,25 @@ collect_gemini_key() {
   echo ""
 }
 
-# ── Step 3: API Keys ────────────────────────────────
+collect_local_base_url() {
+  echo -e "  ${BOLD}Configure your local OpenAI-compatible endpoint:${NC}"
+  echo -e "  ${DIM}Examples:${NC}"
+  echo -e "    LM Studio: ${CYAN}http://127.0.0.1:1234/v1${NC}"
+  echo -e "    Ollama:    ${CYAN}http://127.0.0.1:11434/v1${NC}"
+  echo ""
+
+  while true; do
+    read_input "Local provider base URL:" LOCAL_PROVIDER_BASE_URL
+    if [[ "$LOCAL_PROVIDER_BASE_URL" =~ ^https?://.+/v1/?$ ]]; then
+      ok "Local provider base URL set"
+      echo ""
+      return
+    fi
+    echo -e "  ${RED}Please enter a full OpenAI-compatible base URL ending in /v1${NC}"
+  done
+}
+
+# ── Step 3: Provider Connections ────────────────────
 
 step_api_keys() {
   step_header 3 "AI Provider Configuration"
@@ -679,9 +697,10 @@ step_api_keys() {
   prompt_choice "Which AI provider do you want to use?" \
     "OpenAI    - GPT-5.4, GPT-5, GPT-4.1, O3" \
     "Gemini    - Gemini 3.1 Pro, 3 Flash, 2.5 Pro" \
-    "Claude    - Opus 4.6, Sonnet 4.6, Haiku 4.5"
+    "Claude    - Opus 4.6, Sonnet 4.6, Haiku 4.5" \
+    "Local     - LM Studio or Ollama via OpenAI-compatible /v1"
 
-  local providers=("openai" "gemini" "claude")
+  local providers=("openai" "gemini" "claude" "local")
   AI_PROVIDER="${providers[$MENU_RESULT]}"
   ok "AI provider: ${BOLD}$AI_PROVIDER${NC}"
   echo ""
@@ -695,23 +714,26 @@ step_api_keys() {
 
   prompt_choice "Which provider for embeddings?" \
     "OpenAI  - text-embedding-3-small/large" \
-    "Gemini  - gemini-embedding-001/002"
+    "Gemini  - gemini-embedding-001/002" \
+    "Local   - Local OpenAI-compatible embeddings endpoint"
 
-  local embed_providers=("openai" "gemini")
+  local embed_providers=("openai" "gemini" "local")
   EMBEDDING_PROVIDER="${embed_providers[$MENU_RESULT]}"
   ok "Embedding provider: ${BOLD}$EMBEDDING_PROVIDER${NC}"
   echo ""
 
-  # ── Determine which keys we need ──
+  # ── Determine which connections we need ──
   local need_openai=false
   local need_anthropic=false
   local need_gemini=false
+  local need_local=false
 
   [[ "$AI_PROVIDER" == "openai" || "$EMBEDDING_PROVIDER" == "openai" ]] && need_openai=true
   [[ "$AI_PROVIDER" == "claude" ]] && need_anthropic=true
   [[ "$AI_PROVIDER" == "gemini" || "$EMBEDDING_PROVIDER" == "gemini" ]] && need_gemini=true
+  [[ "$AI_PROVIDER" == "local" || "$EMBEDDING_PROVIDER" == "local" ]] && need_local=true
 
-  # ── Collect required API keys ──
+  # ── Collect required connections ──
   if [[ "$need_openai" == true ]]; then
     collect_openai_key
   fi
@@ -722,6 +744,10 @@ step_api_keys() {
 
   if [[ "$need_gemini" == true ]]; then
     collect_gemini_key
+  fi
+
+  if [[ "$need_local" == true ]]; then
+    collect_local_base_url
   fi
 
   # ── Optional: Additional provider keys ──
@@ -747,18 +773,20 @@ step_api_keys() {
     fi
   fi
 
-  # ── Validate we have at least the embedding key ──
+  # ── Validate we have at least the embedding connection ──
   local has_embedding_key=false
   if [[ "$EMBEDDING_PROVIDER" == "openai" && -n "$OPENAI_KEY" ]]; then
     has_embedding_key=true
   elif [[ "$EMBEDDING_PROVIDER" == "gemini" && -n "$GEMINI_KEY" ]]; then
     has_embedding_key=true
+  elif [[ "$EMBEDDING_PROVIDER" == "local" && -n "$LOCAL_PROVIDER_BASE_URL" ]]; then
+    has_embedding_key=true
   fi
 
   if [[ "$has_embedding_key" == false ]]; then
-    warn "You skipped the API key for your embedding provider ($EMBEDDING_PROVIDER)."
+    warn "You skipped the connection details for your embedding provider ($EMBEDDING_PROVIDER)."
     warn "Embeddings are required for document search to work."
-    warn "You can add the key later by editing the .env file."
+    warn "You can add the connection later by editing the .env file."
   fi
 
   # ── Optional: Google OAuth ──
@@ -836,6 +864,7 @@ step_generate_env() {
   [[ -n "$OPENAI_KEY" ]]       && set_env_var "OPENAI_API_KEY" "$OPENAI_KEY"
   [[ -n "$ANTHROPIC_KEY" ]]    && set_env_var "ANTHROPIC_API_KEY" "$ANTHROPIC_KEY"
   [[ -n "$GEMINI_KEY" ]]       && set_env_var "GEMINI_API_KEY" "$GEMINI_KEY"
+  [[ -n "$LOCAL_PROVIDER_BASE_URL" ]] && set_env_var "LOCAL_PROVIDER_BASE_URL" "$LOCAL_PROVIDER_BASE_URL"
   [[ -n "$GOOGLE_CLIENT_ID" ]] && set_env_var "GOOGLE_CLIENT_ID" "$GOOGLE_CLIENT_ID"
   [[ -n "$GOOGLE_CLIENT_SECRET" ]] && set_env_var "GOOGLE_CLIENT_SECRET" "$GOOGLE_CLIENT_SECRET"
   [[ -n "$APP_URL" ]]          && set_env_var "APP_URL" "$APP_URL"
@@ -857,6 +886,7 @@ step_generate_env() {
   [[ -n "$OPENAI_KEY" ]]       && echo -e "    OpenAI Key:         ${GREEN}set${NC}"
   [[ -n "$ANTHROPIC_KEY" ]]    && echo -e "    Anthropic Key:      ${GREEN}set${NC}"
   [[ -n "$GEMINI_KEY" ]]       && echo -e "    Gemini Key:         ${GREEN}set${NC}"
+  [[ -n "$LOCAL_PROVIDER_BASE_URL" ]] && echo -e "    Local Base URL:     ${CYAN}$LOCAL_PROVIDER_BASE_URL${NC}"
   [[ -n "$GOOGLE_CLIENT_ID" ]] && echo -e "    Google OAuth:       ${GREEN}configured${NC}"
   [[ -n "$APP_URL" ]]          && echo -e "    App URL:            ${CYAN}$APP_URL${NC}"
   echo ""

@@ -481,8 +481,8 @@ function CapabilityCard({
             <div className="mt-3 space-y-2">
               {/* Status badges */}
               <div className="flex items-center flex-wrap gap-1.5 text-xs">
-                {capability.enabled && (
-                  !isOAuth && hasConfig && !isConfigured ? (
+                {capability.enabled &&
+                  (!isOAuth && hasConfig && !isConfigured ? (
                     <Badge variant="destructive" className="text-[10px]">
                       Config required
                     </Badge>
@@ -490,8 +490,7 @@ function CapabilityCard({
                     <Badge variant="default" className="text-[10px] bg-brand">
                       Enabled
                     </Badge>
-                  )
-                )}
+                  ))}
                 {oauthEmail && (
                   <Badge variant="secondary" className="text-[10px]">
                     {oauthEmail}
@@ -502,8 +501,8 @@ function CapabilityCard({
               {/* Actions row */}
               <div className="flex items-center gap-2 pt-1">
                 {/* OAuth connect/disconnect */}
-                {isOAuth && (
-                  oauthEmail ? (
+                {isOAuth &&
+                  (oauthEmail ? (
                     <Button
                       variant="outline"
                       size="sm"
@@ -525,8 +524,7 @@ function CapabilityCard({
                       <LogIn className="size-3 mr-1" />
                       Connect Google Account
                     </Button>
-                  )
-                )}
+                  ))}
                 {!isOAuth && hasConfig && capability.enabled && (
                   <Button
                     variant="outline"
@@ -568,24 +566,32 @@ function CapabilityCard({
           <div className="space-y-4 text-sm">
             <p className="text-muted-foreground">{capability.description}</p>
             <div>
-              <span className="font-medium text-xs uppercase tracking-wide text-muted-foreground">Tools</span>
+              <span className="font-medium text-xs uppercase tracking-wide text-muted-foreground">
+                Tools
+              </span>
               <div className="mt-2 space-y-1.5">
-                {(
-                  capability.toolDefinitions as Array<{ name: string; description: string }>
-                ).map((t) => (
-                  <div key={t.name} className="flex items-start gap-2">
-                    <code className="bg-muted px-1.5 py-0.5 rounded text-xs shrink-0">{t.name}</code>
-                    <span className="text-xs text-muted-foreground">{t.description}</span>
-                  </div>
-                ))}
+                {(capability.toolDefinitions as Array<{ name: string; description: string }>).map(
+                  (t) => (
+                    <div key={t.name} className="flex items-start gap-2">
+                      <code className="bg-muted px-1.5 py-0.5 rounded text-xs shrink-0">
+                        {t.name}
+                      </code>
+                      <span className="text-xs text-muted-foreground">{t.description}</span>
+                    </div>
+                  ),
+                )}
               </div>
             </div>
             {capability.packages.length > 0 && (
               <div>
-                <span className="font-medium text-xs uppercase tracking-wide text-muted-foreground">Packages</span>
+                <span className="font-medium text-xs uppercase tracking-wide text-muted-foreground">
+                  Packages
+                </span>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {capability.packages.map((pkg) => (
-                    <code key={pkg} className="bg-muted px-1.5 py-0.5 rounded text-xs">{pkg}</code>
+                    <code key={pkg} className="bg-muted px-1.5 py-0.5 rounded text-xs">
+                      {pkg}
+                    </code>
                   ))}
                 </div>
               </div>

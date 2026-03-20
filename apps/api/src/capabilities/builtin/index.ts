@@ -8,6 +8,7 @@ import { browserAutomation } from './browser-automation.js'
 import { toolDiscovery } from './tool-discovery.js'
 import { subAgentDelegation } from './sub-agent-delegation.js'
 import { webFetch } from './web-fetch.js'
+import { readFile } from './read-file.js'
 
 // Only capabilities with custom (non-sandbox) execution logic remain as builtins.
 // bash, python, aws-cli, kubectl, docker have been migrated to .skill files.
@@ -17,6 +18,7 @@ export const BUILTIN_CAPABILITIES: CapabilityDefinition[] = [
   cronManagement,
   webSearch,
   webFetch,
+  readFile,
   googleWorkspace,
   browserAutomation,
   toolDiscovery,

@@ -1,9 +1,11 @@
 import { Hono } from 'hono'
 import { settingsService } from '../services/settings.service.js'
-import { buildModelCatalogs, invalidateModelCache } from '../services/model-discovery.service.js'
+import { invalidateModelCache } from '../services/model-discovery.service.js'
 import { prisma } from '../lib/prisma.js'
 import { parsePagination } from '../lib/pagination.js'
 import { ok, fail } from '../lib/responses.js'
+import { buildProviderState } from '../services/provider-state.service.js'
+import { handleProviderConnectionTest } from './provider-connection-test.js'
 
 const app = new Hono()
 
@@ -111,23 +113,9 @@ app.get('/admin/conversations', async (c) => {
 
 app.get('/admin/settings', async (c) => {
   const settings = await settingsService.get()
-  const available = await settingsService.getAvailableProviders()
-  const apiKeys = await settingsService.getMaskedKeys()
-
-  const models = await buildModelCatalogs(available)
 
   return ok(c, {
-    providers: {
-      active: {
-        llm: settings.aiProvider,
-        llmModel: settings.aiModel,
-        embedding: settings.embeddingProvider,
-        embeddingModel: settings.embeddingModel,
-      },
-      available,
-      models,
-    },
-    apiKeys,
+    providers: await buildProviderState(),
     onboardingComplete: settings.onboardingComplete,
   })
 })
@@ -139,36 +127,44 @@ app.patch('/admin/settings', async (c) => {
     aiModel: body.llmModel,
     embeddingProvider: body.embedding,
     embeddingModel: body.embeddingModel,
+    roleProviders: body.roleProviders,
   })
   return ok(c, {
     active: {
       llm: settings.aiProvider,
       llmModel: settings.aiModel,
+      roleProviders: await settingsService.getResolvedRoleProviders(),
       embedding: settings.embeddingProvider,
       embeddingModel: settings.embeddingModel,
     },
   })
 })
 
-app.put('/admin/api-keys/:provider', async (c) => {
+app.put('/admin/provider-connections/:provider', async (c) => {
   const { provider } = c.req.param()
-  const { key } = await c.req.json()
-  if (!key || typeof key !== 'string') {
-    return fail(c, 'key is required')
+  const { value } = await c.req.json()
+  if (!value || typeof value !== 'string') {
+    return fail(c, 'value is required')
   }
-  await settingsService.setApiKey(provider, key)
+  await settingsService.setProviderConnection(provider, value)
   invalidateModelCache(provider)
-  const apiKeys = await settingsService.getMaskedKeys()
-  return ok(c, { apiKeys })
+  return ok(c, {
+    connections: await settingsService.getProviderConnections(),
+    providers: await buildProviderState(),
+  })
 })
 
-app.delete('/admin/api-keys/:provider', async (c) => {
+app.delete('/admin/provider-connections/:provider', async (c) => {
   const { provider } = c.req.param()
-  await settingsService.removeApiKey(provider)
+  await settingsService.removeProviderConnection(provider)
   invalidateModelCache(provider)
-  const apiKeys = await settingsService.getMaskedKeys()
-  return ok(c, { apiKeys })
+  return ok(c, {
+    connections: await settingsService.getProviderConnections(),
+    providers: await buildProviderState(),
+  })
 })
+
+app.post('/admin/provider-connections/:provider/test', handleProviderConnectionTest)
 
 // ── Permissions (Global Auto-Approve Rules) ─────────────
 

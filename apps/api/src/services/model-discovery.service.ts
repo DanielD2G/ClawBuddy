@@ -1,13 +1,20 @@
-import OpenAI from 'openai'
 import Anthropic from '@anthropic-ai/sdk'
-import { MODEL_CATALOG, catalogModelIds } from '../config.js'
 import { settingsService } from './settings.service.js'
+import { listOpenAICompatibleModels } from '../providers/openai-compatible.js'
 
 const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
 
 interface CacheEntry {
   models: string[]
   fetchedAt: number
+}
+
+export interface ProviderConnectionTestResult {
+  valid: boolean
+  reachable: boolean
+  llmModels: string[]
+  embeddingModels: string[]
+  message?: string
 }
 
 const llmCache = new Map<string, CacheEntry>()
@@ -22,8 +29,6 @@ function getCached(cache: Map<string, CacheEntry>, key: string): string[] | null
   }
   return entry.models
 }
-
-// ── OpenAI ───────────────────────────────────────────
 
 const OPENAI_CHAT_PREFIXES = ['gpt-', 'o1', 'o3', 'o4']
 const OPENAI_CHAT_EXCLUDES = [
@@ -44,19 +49,18 @@ const OPENAI_CHAT_EXCLUDES = [
 const OPENAI_EMBEDDING_PREFIXES = ['text-embedding-']
 
 async function fetchOpenAIModels(apiKey: string): Promise<{ llm: string[]; embedding: string[] }> {
-  const client = new OpenAI({ apiKey })
-  const list = await client.models.list()
-  const all: string[] = []
-  for await (const model of list) {
-    all.push(model.id)
-  }
+  const all = await listOpenAICompatibleModels({ apiKey })
   return {
     llm: all
       .filter((id) => OPENAI_CHAT_PREFIXES.some((p) => id.startsWith(p)))
-      .filter((id) => !OPENAI_CHAT_EXCLUDES.some((ex) => id.includes(ex)))
-      .sort(),
-    embedding: all.filter((id) => OPENAI_EMBEDDING_PREFIXES.some((p) => id.startsWith(p))).sort(),
+      .filter((id) => !OPENAI_CHAT_EXCLUDES.some((ex) => id.includes(ex))),
+    embedding: all.filter((id) => OPENAI_EMBEDDING_PREFIXES.some((p) => id.startsWith(p))),
   }
+}
+
+async function fetchLocalModels(baseURL: string): Promise<{ llm: string[]; embedding: string[] }> {
+  const all = await listOpenAICompatibleModels({ baseURL })
+  return { llm: all, embedding: all }
 }
 
 // ── Anthropic ────────────────────────────────────────
@@ -126,19 +130,58 @@ async function fetchGeminiModels(apiKey: string): Promise<{ llm: string[]; embed
 
 // ── Public API ───────────────────────────────────────
 
-async function fetchAndCache(
+async function fetchProviderModels(
   provider: string,
-  apiKey: string,
+  connectionValue: string,
 ): Promise<{ llm: string[]; embedding: string[] }> {
   switch (provider) {
     case 'openai':
-      return fetchOpenAIModels(apiKey)
+      return fetchOpenAIModels(connectionValue)
     case 'claude':
-      return { ...(await fetchAnthropicModels(apiKey)), embedding: [] }
+      return { ...(await fetchAnthropicModels(connectionValue)), embedding: [] }
     case 'gemini':
-      return fetchGeminiModels(apiKey)
+      return fetchGeminiModels(connectionValue)
+    case 'local':
+      return fetchLocalModels(connectionValue)
     default:
       return { llm: [], embedding: [] }
+  }
+}
+
+export async function testProviderConnection(
+  provider: string,
+  connectionValue: string,
+): Promise<ProviderConnectionTestResult> {
+  const trimmed = connectionValue.trim()
+  if (!trimmed) {
+    return {
+      valid: false,
+      reachable: false,
+      llmModels: [],
+      embeddingModels: [],
+      message: 'Connection value is required',
+    }
+  }
+
+  try {
+    const result = await fetchProviderModels(provider, trimmed)
+    const hasModels = result.llm.length > 0 || result.embedding.length > 0
+
+    return {
+      valid: hasModels,
+      reachable: true,
+      llmModels: result.llm,
+      embeddingModels: result.embedding,
+      ...(hasModels ? {} : { message: 'Connection succeeded but no models were returned' }),
+    }
+  } catch (err) {
+    return {
+      valid: false,
+      reachable: false,
+      llmModels: [],
+      embeddingModels: [],
+      message: err instanceof Error ? err.message : 'Failed to reach provider',
+    }
   }
 }
 
@@ -147,10 +190,10 @@ export async function discoverLLMModels(provider: string): Promise<string[]> {
   if (cached) return cached
 
   try {
-    const apiKey = await settingsService.getApiKey(provider)
-    if (!apiKey) return catalogModelIds(provider)
+    const connectionValue = await settingsService.getProviderConnectionValue(provider)
+    if (!connectionValue) return []
 
-    const result = await fetchAndCache(provider, apiKey)
+    const result = await fetchProviderModels(provider, connectionValue)
 
     // Cache both
     llmCache.set(provider, { models: result.llm, fetchedAt: Date.now() })
@@ -158,13 +201,13 @@ export async function discoverLLMModels(provider: string): Promise<string[]> {
       embeddingCache.set(provider, { models: result.embedding, fetchedAt: Date.now() })
     }
 
-    return result.llm.length ? result.llm : catalogModelIds(provider)
+    return result.llm
   } catch (err) {
     console.warn(
       `[model-discovery] Failed to fetch models for ${provider}:`,
       err instanceof Error ? err.message : err,
     )
-    return catalogModelIds(provider)
+    return []
   }
 }
 
@@ -173,10 +216,10 @@ export async function discoverEmbeddingModels(provider: string): Promise<string[
   if (cached) return cached
 
   try {
-    const apiKey = await settingsService.getApiKey(provider)
-    if (!apiKey) return MODEL_CATALOG.embedding[provider] ?? []
+    const connectionValue = await settingsService.getProviderConnectionValue(provider)
+    if (!connectionValue) return []
 
-    const result = await fetchAndCache(provider, apiKey)
+    const result = await fetchProviderModels(provider, connectionValue)
 
     // Cache both
     if (result.llm.length) {
@@ -184,13 +227,13 @@ export async function discoverEmbeddingModels(provider: string): Promise<string[
     }
     embeddingCache.set(provider, { models: result.embedding, fetchedAt: Date.now() })
 
-    return result.embedding.length ? result.embedding : (MODEL_CATALOG.embedding[provider] ?? [])
+    return result.embedding
   } catch (err) {
     console.warn(
       `[model-discovery] Failed to fetch embedding models for ${provider}:`,
       err instanceof Error ? err.message : err,
     )
-    return MODEL_CATALOG.embedding[provider] ?? []
+    return []
   }
 }
 

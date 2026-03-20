@@ -26,11 +26,12 @@ import { htmlToMarkdown, htmlToText } from '../lib/html-to-markdown.js'
 import { isPrivateHost } from '../lib/url-safety.js'
 import type { SecretInventory } from './secret-redaction.service.js'
 import { secretRedactionService } from './secret-redaction.service.js'
+import path from 'node:path'
+import { randomUUID } from 'node:crypto'
 
 interface ExecutionContext {
   workspaceId: string
   chatSessionId: string
-  linuxUser: string
   secretInventory?: SecretInventory
   /** Override browser session key for sub-agent isolation (defaults to chatSessionId) */
   browserSessionId?: string
@@ -315,61 +316,30 @@ async function executeGenerateFile(
   const filename = String(args.filename ?? 'file.txt')
   const sourcePath = args.sourcePath as string | undefined
 
-  let content: string
-  if (sourcePath) {
-    // Read file content from sandbox
-    if (!context.linuxUser) {
-      return {
-        output: '',
-        error: 'sourcePath requires an active sandbox. Use content parameter instead.',
-        durationMs: Date.now() - startTime,
-      }
-    }
-    const userHome = `/workspace/users/${context.linuxUser}`
-    // Resolve relative paths to user's home directory
-    const resolvedPath = sourcePath.startsWith('/') ? sourcePath : `${userHome}/${sourcePath}`
-    let readResult = await sandboxService.execInWorkspace(
-      context.workspaceId,
-      `cat ${JSON.stringify(resolvedPath)}`,
-      context.linuxUser,
-      { timeout: 10 },
-    )
-    // Fallback: if absolute path failed, try the basename in user's home dir
-    if (
-      readResult.exitCode !== 0 &&
-      resolvedPath !== `${userHome}/${sourcePath.split('/').pop()}`
-    ) {
-      const fallbackPath = `${userHome}/${sourcePath.split('/').pop()}`
-      const fallbackResult = await sandboxService.execInWorkspace(
-        context.workspaceId,
-        `cat ${JSON.stringify(fallbackPath)}`,
-        context.linuxUser,
-        { timeout: 10 },
-      )
-      if (fallbackResult.exitCode === 0) {
-        readResult = fallbackResult
-      }
-    }
-    if (readResult.exitCode !== 0) {
-      return {
-        output: '',
-        error: `Failed to read ${sourcePath}: ${readResult.stderr}. Your working directory is ${userHome}/ — use absolute paths or relative paths from there.`,
-        durationMs: Date.now() - startTime,
-      }
-    }
-    content = readResult.stdout
-  } else if (args.content) {
-    content = String(args.content)
-  } else {
-    return {
-      output: '',
-      error: 'Either content or sourcePath must be provided',
-      durationMs: Date.now() - startTime,
-    }
-  }
-
-  const key = `generated/${Date.now()}-${filename}`
   const ext = filename.split('.').pop()?.toLowerCase() ?? 'txt'
+  const BINARY_EXTENSIONS = new Set([
+    'jpg',
+    'jpeg',
+    'png',
+    'gif',
+    'webp',
+    'bmp',
+    'ico',
+    'pdf',
+    'zip',
+    'tar',
+    'gz',
+    'mp3',
+    'mp4',
+    'wav',
+    'ogg',
+    'woff',
+    'woff2',
+    'ttf',
+    'otf',
+  ])
+  const isBinary = BINARY_EXTENSIONS.has(ext)
+
   const mimeTypes: Record<string, string> = {
     csv: 'text/csv',
     md: 'text/markdown',
@@ -379,8 +349,97 @@ async function executeGenerateFile(
     xml: 'application/xml',
     yaml: 'text/yaml',
     yml: 'text/yaml',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    png: 'image/png',
+    gif: 'image/gif',
+    webp: 'image/webp',
+    pdf: 'application/pdf',
+    zip: 'application/zip',
   }
-  await storageService.upload(key, Buffer.from(content, 'utf-8'), mimeTypes[ext] ?? 'text/plain')
+
+  let buffer: Buffer
+  if (sourcePath) {
+    // Read file content from sandbox
+    if (!context.workspaceId) {
+      return {
+        output: '',
+        error: 'sourcePath requires an active sandbox. Use content parameter instead.',
+        durationMs: Date.now() - startTime,
+      }
+    }
+    const userHome = '/workspace'
+    // Resolve relative paths to workspace directory
+    const resolvedPath = sourcePath.startsWith('/') ? sourcePath : `${userHome}/${sourcePath}`
+
+    if (isBinary) {
+      // For binary files, use Docker getArchive to bypass stdout size limits
+      try {
+        buffer = await sandboxService.readFileFromContainer(context.workspaceId, resolvedPath)
+      } catch {
+        // Fallback: try basename in workspace dir
+        if (resolvedPath !== `${userHome}/${sourcePath.split('/').pop()}`) {
+          try {
+            const fallbackPath = `${userHome}/${sourcePath.split('/').pop()}`
+            buffer = await sandboxService.readFileFromContainer(context.workspaceId, fallbackPath)
+          } catch (fallbackErr) {
+            return {
+              output: '',
+              error: `Failed to read ${sourcePath}: ${fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)}. Your working directory is ${userHome}/ — use absolute paths or relative paths from there.`,
+              durationMs: Date.now() - startTime,
+            }
+          }
+        } else {
+          return {
+            output: '',
+            error: `Failed to read ${sourcePath}. Your working directory is ${userHome}/ — use absolute paths or relative paths from there.`,
+            durationMs: Date.now() - startTime,
+          }
+        }
+      }
+    } else {
+      // For text files, read normally
+      let readResult = await sandboxService.execInWorkspace(
+        context.workspaceId,
+        `cat ${JSON.stringify(resolvedPath)}`,
+        { timeout: 10 },
+      )
+      // Fallback: try basename in workspace dir
+      if (
+        readResult.exitCode !== 0 &&
+        resolvedPath !== `${userHome}/${sourcePath.split('/').pop()}`
+      ) {
+        const fallbackPath = `${userHome}/${sourcePath.split('/').pop()}`
+        const fallbackResult = await sandboxService.execInWorkspace(
+          context.workspaceId,
+          `cat ${JSON.stringify(fallbackPath)}`,
+          { timeout: 10 },
+        )
+        if (fallbackResult.exitCode === 0) {
+          readResult = fallbackResult
+        }
+      }
+      if (readResult.exitCode !== 0) {
+        return {
+          output: '',
+          error: `Failed to read ${sourcePath}: ${readResult.stderr}. Your working directory is ${userHome}/ — use absolute paths or relative paths from there.`,
+          durationMs: Date.now() - startTime,
+        }
+      }
+      buffer = Buffer.from(readResult.stdout, 'utf-8')
+    }
+  } else if (args.content) {
+    buffer = Buffer.from(String(args.content), 'utf-8')
+  } else {
+    return {
+      output: '',
+      error: 'Either content or sourcePath must be provided',
+      durationMs: Date.now() - startTime,
+    }
+  }
+
+  const key = `generated/${Date.now()}-${filename}`
+  await storageService.upload(key, buffer, mimeTypes[ext] ?? 'application/octet-stream')
 
   const downloadUrl = `/api/files/${key}`
 
@@ -483,7 +542,7 @@ async function executeSandboxCommand(
 ): Promise<ExecutionResult> {
   const startTime = Date.now()
 
-  if (!context.workspaceId || !context.linuxUser) {
+  if (!context.workspaceId) {
     return {
       output: '',
       error: 'No workspace context available. Sandbox capabilities require a workspace.',
@@ -525,7 +584,7 @@ async function executeSandboxCommand(
     }
   }
 
-  const userHome = context.linuxUser ? `/workspace/users/${context.linuxUser}` : '/workspace'
+  const userHome = '/workspace'
   const execOptions = {
     timeout: (args.timeout as number) ?? 30,
     workingDir: (args.workingDir as string) ?? userHome,
@@ -534,7 +593,6 @@ async function executeSandboxCommand(
   const result = await sandboxService.execInWorkspace(
     context.workspaceId,
     command,
-    context.linuxUser,
     execOptions,
   )
 
@@ -713,8 +771,63 @@ async function executeBrowserScript(
   const result = await browserService.executeScript(sessionKey, script, timeout)
 
   if (result.success) {
+    let output = result.result ?? 'Script completed.'
+    try {
+      const parsed = JSON.parse(output) as Record<string, unknown>
+      if (parsed.__saveScreenshot === true) {
+        if (!context.workspaceId) {
+          return {
+            output: '',
+            error: 'saveScreenshot() requires an active sandbox session.',
+            durationMs: Date.now() - startTime,
+          }
+        }
+
+        const screenshotB64 =
+          typeof parsed.screenshot === 'string'
+            ? parsed.screenshot
+            : extractScreenshotBase64(output).screenshotB64
+        if (!screenshotB64) {
+          return {
+            output: '',
+            error: 'saveScreenshot() did not produce screenshot data.',
+            durationMs: Date.now() - startTime,
+          }
+        }
+
+        const suggestedName =
+          typeof parsed.filename === 'string' && parsed.filename.trim()
+            ? path.posix.basename(parsed.filename.trim())
+            : `browser-screenshot-${randomUUID()}.jpg`
+        const baseName = suggestedName.replace(/\.[^.]+$/i, '')
+        const resolvedPath = `/workspace/screenshots/${baseName}-${randomUUID()}.jpg`
+        try {
+          const imageBuffer = Buffer.from(screenshotB64, 'base64')
+          await sandboxService.writeFileToContainer(
+            context.workspaceId,
+            resolvedPath,
+            imageBuffer,
+          )
+        } catch (writeErr) {
+          return {
+            output: '',
+            error: `Failed to save screenshot to ${resolvedPath}: ${writeErr instanceof Error ? writeErr.message : String(writeErr)}`,
+            durationMs: Date.now() - startTime,
+          }
+        }
+
+        delete parsed.__saveScreenshot
+        delete parsed.screenshot
+        delete parsed.filename
+        parsed.savedPath = resolvedPath
+        output = JSON.stringify(parsed, null, 2)
+      }
+    } catch {
+      // Non-JSON browser output is returned as-is.
+    }
+
     return {
-      output: result.result ?? 'Script completed.',
+      output,
       durationMs: Date.now() - startTime,
     }
   }
@@ -856,7 +969,6 @@ async function executeDelegateTask(
     {
       workspaceId: context.workspaceId,
       sessionId: context.chatSessionId,
-      linuxUser: context.linuxUser,
       secretInventory: inventory,
       emit: context.emit,
       capabilities: context.capabilities,
@@ -914,6 +1026,142 @@ async function executeDelegateTask(
 }
 
 // ---------------------------------------------------------------------------
+// Read File — optimised file reader with line numbers, pagination & guards
+// ---------------------------------------------------------------------------
+
+async function executeReadFile(
+  toolCall: ToolCall,
+  context: ExecutionContext,
+): Promise<ExecutionResult> {
+  const startTime = Date.now()
+  const fail = (error: string): ExecutionResult => ({
+    output: '',
+    error,
+    durationMs: Date.now() - startTime,
+  })
+
+  // 1. Extract & validate parameters
+  const args = toolCall.arguments as Record<string, unknown>
+  const filePath = String(args.file_path ?? '').trim()
+  if (!filePath) return fail('file_path is required.')
+
+  const offset = Math.max(1, Math.floor(Number(args.offset) || 1))
+  const limit = Math.min(2000, Math.max(1, Math.floor(Number(args.limit) || 2000)))
+  const endLine = offset + limit - 1
+
+  // 2. Require active sandbox
+  if (!context.workspaceId) {
+    return fail('read_file requires an active sandbox session.')
+  }
+
+  const userHome = '/workspace'
+  const resolvedPath = filePath.startsWith('/') ? filePath : `${userHome}/${filePath}`
+
+  // 3. Build shell script that runs inside the sandbox
+  //    Uses sentinel prefixes so we can parse the result deterministically.
+  const script = [
+    'set -e',
+    `FILE=${JSON.stringify(resolvedPath)}`,
+    // existence check
+    'if [ ! -e "$FILE" ]; then echo "@@NOT_FOUND@@"; exit 0; fi',
+    // directory check
+    'if [ -d "$FILE" ]; then echo "@@IS_DIRECTORY@@"; exit 0; fi',
+    // binary check (file --mime-encoding returns "binary" for non-text)
+    'ENCODING=$(file --mime-encoding -b "$FILE" 2>/dev/null || echo "unknown")',
+    'if echo "$ENCODING" | grep -qi "binary"; then echo "@@BINARY@@"; exit 0; fi',
+    // empty check
+    'if [ ! -s "$FILE" ]; then echo "@@EMPTY@@"; exit 0; fi',
+    // total line count
+    'TOTAL=$(wc -l < "$FILE")',
+    'echo "@@TOTAL:$TOTAL@@"',
+    // read with awk: line numbers (1-based), range, truncation at 2000 chars
+    `awk 'NR >= ${offset} && NR <= ${endLine} {`,
+    '  line = $0',
+    '  if (length(line) > 2000) line = substr(line, 1, 2000) "... [truncated]"',
+    '  printf "%6d\\t%s\\n", NR, line',
+    `}' "$FILE"`,
+  ].join('\n')
+
+  // 4. Execute inside the sandbox
+  let result = await sandboxService.execInWorkspace(
+    context.workspaceId,
+    script,
+    { timeout: 15 },
+  )
+
+  // 5. Fallback: try basename in workspace dir (same pattern as executeGenerateFile)
+  if (
+    result.exitCode !== 0 &&
+    resolvedPath !== `${userHome}/${filePath.split('/').pop()}`
+  ) {
+    const fallbackPath = `${userHome}/${filePath.split('/').pop()}`
+    const fallbackScript = script.replace(
+      `FILE=${JSON.stringify(resolvedPath)}`,
+      `FILE=${JSON.stringify(fallbackPath)}`,
+    )
+    const fallbackResult = await sandboxService.execInWorkspace(
+      context.workspaceId,
+      fallbackScript,
+      { timeout: 15 },
+    )
+    if (fallbackResult.exitCode === 0) {
+      result = fallbackResult
+    }
+  }
+
+  if (result.exitCode !== 0) {
+    return fail(
+      `Failed to read file: ${result.stderr || 'unknown error'}. Your working directory is ${userHome}/ — use absolute paths or relative paths from there.`,
+    )
+  }
+
+  const stdout = result.stdout
+
+  // 6. Handle sentinel values
+  if (stdout.startsWith('@@NOT_FOUND@@')) {
+    return fail(`File not found: ${filePath}`)
+  }
+  if (stdout.startsWith('@@IS_DIRECTORY@@')) {
+    return fail(
+      `${filePath} is a directory, not a file. Use bash with \`ls\` to list directory contents.`,
+    )
+  }
+  if (stdout.startsWith('@@BINARY@@')) {
+    return fail(`${filePath} is a binary file and cannot be displayed as text.`)
+  }
+  if (stdout.startsWith('@@EMPTY@@')) {
+    return {
+      output: `${filePath} is empty (0 lines).`,
+      durationMs: Date.now() - startTime,
+    }
+  }
+
+  // 7. Parse total lines and content
+  const totalMatch = stdout.match(/^@@TOTAL:(\d+)@@$/m)
+  const totalLines = totalMatch ? parseInt(totalMatch[1], 10) : 0
+  const content = stdout.replace(/^@@TOTAL:\d+@@\n?/, '')
+
+  // 8. Size guard — cap at 20 KB to prevent context overflow
+  const MAX_OUTPUT_BYTES = 20_000
+  let finalContent = content
+  if (finalContent.length > MAX_OUTPUT_BYTES) {
+    finalContent = finalContent.slice(0, MAX_OUTPUT_BYTES) + '\n... [output truncated at 20 KB]'
+  }
+
+  // 9. Build informative header
+  const actualEnd = Math.min(endLine, totalLines)
+  let header = `[File: ${filePath}] [Lines: ${offset}-${actualEnd} of ${totalLines}]`
+  if (endLine < totalLines) {
+    header += ` (use offset=${endLine + 1} to see more)`
+  }
+
+  return {
+    output: `${header}\n${finalContent}`,
+    durationMs: Date.now() - startTime,
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Tool handler registry — maps tool names to their handler functions
 // ---------------------------------------------------------------------------
 
@@ -921,6 +1169,7 @@ const toolHandlerRegistry = new Map<string, ToolHandler>([
   ['search_documents', executeDocumentSearch],
   ['save_document', executeSaveDocument],
   ['generate_file', executeGenerateFile],
+  ['read_file', executeReadFile],
   ['create_cron', executeCreateCron],
   ['list_crons', (_toolCall, _context) => executeListCrons()],
   ['delete_cron', (toolCall, _context) => executeDeleteCron(toolCall)],

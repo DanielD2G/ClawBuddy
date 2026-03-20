@@ -31,7 +31,7 @@ export const agentMemory: CapabilityDefinition = {
     {
       name: 'generate_file',
       description:
-        'Generate a downloadable text file and send it to the user. For small content (<2KB), pass content directly. For large content, write it to a sandbox file first and pass sourcePath instead.',
+        'Generate a downloadable file and send it to the user. Supports both text files and binary files (images, PDFs, etc.). For small text content (<2KB), pass content directly. For large content or binary files (images, screenshots), write it to a sandbox file first and pass sourcePath instead.',
       parameters: {
         type: 'object',
         properties: {
@@ -54,7 +54,7 @@ export const agentMemory: CapabilityDefinition = {
     },
   ],
   systemPrompt:
-    'You have a persistent knowledge base. Use `save_document` to store important information, notes, or summaries that should be searchable in future conversations — this is your memory. Use `generate_file` to create downloadable files (.csv, .md, .txt, .json, etc.) when the user asks for exportable content. For temporary files or sandbox operations, use Bash instead.',
+    'You have a persistent knowledge base. Use `save_document` to store important information, notes, or summaries that should be searchable in future conversations — this is your memory. Use `generate_file` to create downloadable files (.csv, .md, .txt, .json, .jpg, .png, etc.) when the user asks for exportable content. It supports binary files like images — use sourcePath pointing to the sandbox file. IMPORTANT: browser screenshots are always JPEG format, so always use a `.jpg` extension for screenshot downloads, never `.png`. For temporary files or sandbox operations, use Bash instead.',
   sandbox: {
     networkAccess: false,
   },

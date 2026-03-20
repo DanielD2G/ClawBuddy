@@ -29,11 +29,7 @@ export function TimezoneSelect({ value, onChange }: TimezoneSelectProps) {
         {Object.entries(grouped).flatMap(([region, tzs]) => [
           <DropdownMenuLabel key={`label-${region}`}>{region}</DropdownMenuLabel>,
           ...tzs.map((tz) => (
-            <DropdownMenuItem
-              key={tz}
-              onClick={() => onChange(tz)}
-              className="gap-2"
-            >
+            <DropdownMenuItem key={tz} onClick={() => onChange(tz)} className="gap-2">
               <span className="flex-1 truncate">{formatTimezone(tz)}</span>
               {value === tz && <Check className="size-3.5" />}
             </DropdownMenuItem>

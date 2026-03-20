@@ -79,6 +79,7 @@ function buildSubAgentSystemPrompt(
     '',
     '## Guidelines',
     '- Stay focused on the task. Do not deviate.',
+    '- **Batch independent tool calls in a single response.** If you need multiple searches, fetches, or reads that do not depend on each other, call them all at once. This runs them concurrently.',
     '- When done, provide a structured summary of what you found or accomplished.',
     '- If a tool fails, report the error and move on. Do not retry indefinitely.',
   )
@@ -102,7 +103,6 @@ type SubAgentEmit = (event: SSEEvent['event'], data: Record<string, unknown>) =>
 export interface SubAgentContext {
   workspaceId: string
   sessionId: string
-  linuxUser: string
   secretInventory: SecretInventory
   emit?: SubAgentEmit
   subAgentId?: string
@@ -225,7 +225,9 @@ export const subAgentService = {
         totalUsage.outputTokens += response.usage.outputTokens
         totalUsage.totalTokens += response.usage.totalTokens
       }
-      await recordTokenUsage(response.usage, parentContext.sessionId, llm.providerId, llm.modelId)
+      await recordTokenUsage(response.usage, parentContext.sessionId, llm.providerId, llm.modelId, {
+        updateSessionContext: false,
+      })
 
       // No tool calls — done
       if (response.finishReason === 'stop' || !response.toolCalls?.length) {
@@ -376,7 +378,6 @@ export const subAgentService = {
     const result = await toolExecutorService.execute(toolCall, capabilitySlug, {
       workspaceId: parentContext.workspaceId,
       chatSessionId: parentContext.sessionId,
-      linuxUser: parentContext.linuxUser,
       secretInventory: parentContext.secretInventory,
       browserSessionId: parentContext.browserSessionId,
       capability: matched

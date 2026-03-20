@@ -71,6 +71,41 @@ function resolveSubAgentMeta(
   }
 }
 
+/**
+ * Measure how much of `newText` overlaps with `previousText` using 3-gram matching.
+ * Returns a ratio between 0 (no overlap) and 1 (fully overlapping).
+ * Used to detect when the LLM repeats itself across iterations.
+ */
+function contentOverlapRatio(previousText: string, newText: string): number {
+  const normalize = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/[^a-záéíóúñü0-9\s]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+  const prev = normalize(previousText)
+  const curr = normalize(newText)
+  if (!prev || !curr) return 0
+
+  const ngramSize = 3
+  const words = curr.split(' ')
+  if (words.length < ngramSize) return prev.includes(curr) ? 1 : 0
+
+  const prevSet = new Set<string>()
+  const prevWords = prev.split(' ')
+  for (let i = 0; i <= prevWords.length - ngramSize; i++) {
+    prevSet.add(prevWords.slice(i, i + ngramSize).join(' '))
+  }
+
+  let matches = 0
+  const totalNgrams = words.length - ngramSize + 1
+  for (let i = 0; i < totalNgrams; i++) {
+    if (prevSet.has(words.slice(i, i + ngramSize).join(' '))) matches++
+  }
+
+  return totalNgrams > 0 ? matches / totalNgrams : 0
+}
+
 /** Tools exempt from the argument size guard (they have proper alternatives like sourcePath) */
 const SIZE_GUARD_EXEMPT = new Set(['generate_file', 'save_document', 'search_documents'])
 
@@ -103,11 +138,14 @@ export async function recordTokenUsage(
   sessionId: string,
   provider: string,
   model: string,
+  options?: {
+    updateSessionContext?: boolean
+  },
 ) {
   if (!usage) return
   try {
     const date = new Date().toISOString().slice(0, 10)
-    await Promise.all([
+    const writes: Promise<unknown>[] = [
       prisma.tokenUsage.create({
         data: {
           provider,
@@ -119,11 +157,16 @@ export async function recordTokenUsage(
           date,
         },
       }),
-      prisma.chatSession.update({
-        where: { id: sessionId },
-        data: { lastInputTokens: usage.inputTokens },
-      }),
-    ])
+    ]
+    if (options?.updateSessionContext !== false) {
+      writes.push(
+        prisma.chatSession.update({
+          where: { id: sessionId },
+          data: { lastInputTokens: usage.inputTokens },
+        }),
+      )
+    }
+    await Promise.all(writes)
   } catch (err) {
     console.error('[Agent] Failed to record token usage:', err)
   }
@@ -376,7 +419,7 @@ You MUST use the tools from these capabilities to fulfill this request. Do NOT s
 
     log.debugLog('Sandbox check', { needsSandbox, allToolNames })
 
-    let linuxUser: string | undefined
+    let sandboxReady = false
 
     if (needsSandbox) {
       emit?.('thinking', { message: 'Starting sandbox environment...' })
@@ -396,7 +439,7 @@ You MUST use the tools from these capabilities to fulfill this request. Do NOT s
         { networkAccess: needsNetwork, dockerSocket: needsDockerSocket },
         Object.keys(mergedEnvVars).length ? mergedEnvVars : undefined,
       )
-      linuxUser = await sandboxService.ensureConversationUser(workspaceId, sessionId)
+      sandboxReady = true
       const secretEnvRefs = [
         ...new Set(
           inventory.references.filter((ref) => ref.transport === 'env').map((ref) => ref.alias),
@@ -406,11 +449,10 @@ You MUST use the tools from these capabilities to fulfill this request. Do NOT s
       // Inject sandbox context into system prompt so the LLM knows writable paths
       const sandboxContext = `\n\n${buildPromptSection(
         'sandbox_environment',
-        `Username: ${linuxUser}
-Working directory (cwd): /workspace/users/${linuxUser}/. All relative paths resolve here.
+        `Username: root
+Working directory (cwd): /workspace/. All relative paths resolve here.
 Shared outputs: /workspace/.outputs/ (writable)
-/workspace/ root: read-only. Do not write files there directly.
-When using sourcePath in generate_file, use the full path: /workspace/users/${linuxUser}/filename or /workspace/.outputs/filename` +
+When using sourcePath in generate_file, use the full path: /workspace/filename or /workspace/.outputs/filename` +
           (inventory.enabled && secretEnvRefs.length
             ? `\nAvailable secret env references (values hidden): ${secretEnvRefs.join(', ')}`
             : ''),
@@ -503,23 +545,43 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
           totalToolExecutions: toolExecutionLog.length,
           finalContentLength: safeResponseContent.length,
         })
-        emit?.('content', { text: safeResponseContent })
-        const finalContent = (accumulatedContent + safeResponseContent).trim()
 
-        // Save final assistant message to DB
-        try {
-          const finalMsg = await prisma.chatMessage.create({
-            data: {
-              sessionId,
-              role: 'assistant',
-              content: stripNullBytes(safeResponseContent),
-              ...(collectedSources.length ? { sources: collectedSources } : {}),
-            },
+        // Deduplicate: if the final response is substantially similar to already-emitted
+        // content (common when LLM repeats itself after a tool like generate_file), skip it
+        const isDuplicate =
+          accumulatedContent.trim().length > 0 &&
+          safeResponseContent.trim().length > 0 &&
+          contentOverlapRatio(accumulatedContent, safeResponseContent) > 0.5
+
+        if (isDuplicate) {
+          log.debugLog('Skipping duplicate final content', {
+            accumulatedLength: accumulatedContent.length,
+            finalLength: safeResponseContent.length,
           })
-          lastSavedMessageId = finalMsg.id
-          log.debugLog('Saved final message', { messageId: finalMsg.id })
-        } catch (saveErr) {
-          console.error('[Agent] Failed to save final message:', saveErr)
+        } else {
+          emit?.('content', { text: safeResponseContent })
+        }
+
+        const finalContent = isDuplicate
+          ? accumulatedContent.trim()
+          : (accumulatedContent + safeResponseContent).trim()
+
+        // Save final assistant message to DB (only if non-duplicate and non-empty)
+        if (!isDuplicate && safeResponseContent.trim()) {
+          try {
+            const finalMsg = await prisma.chatMessage.create({
+              data: {
+                sessionId,
+                role: 'assistant',
+                content: stripNullBytes(safeResponseContent),
+                ...(collectedSources.length ? { sources: collectedSources } : {}),
+              },
+            })
+            lastSavedMessageId = finalMsg.id
+            log.debugLog('Saved final message', { messageId: finalMsg.id })
+          } catch (saveErr) {
+            console.error('[Agent] Failed to save final message:', saveErr)
+          }
         }
 
         return {
@@ -623,7 +685,6 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
             iteration: i,
             pendingToolCalls: response.toolCalls ?? [],
             completedToolResults: [],
-            linuxUser,
             toolExecutionLog,
             workspaceId,
             sessionId,
@@ -705,7 +766,7 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
         const result = await toolExecutorService.execute(toolCall, capabilitySlug, {
           workspaceId,
           chatSessionId: sessionId,
-          linuxUser: linuxUser ?? '',
+
           secretInventory: inventory,
           capability: matchedCapability
             ? {
@@ -931,8 +992,8 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
                 : result.output
           const isSandboxTool = !NON_SANDBOX_TOOLS.has(toolCall.name)
           const toolContent =
-            linuxUser && isSandboxTool
-              ? await maybeTruncateOutput(rawContent, toolCall.id, workspaceId, linuxUser)
+            sandboxReady && isSandboxTool
+              ? await maybeTruncateOutput(rawContent, toolCall.id, workspaceId)
               : rawContent
           const messageContent: MessageContent =
             toolCall.name === 'run_browser_script'
@@ -1128,9 +1189,10 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
       data: { agentState: Prisma.DbNull, agentStateEncrypted: null, agentStatus: 'running' },
     })
 
-    const { messages, toolExecutionLog, workspaceId, linuxUser } = state
+    const { messages, toolExecutionLog, workspaceId } = state
     const collectedSourcesResume: NonNullable<AgentResult['sources']> = []
     let lastSavedMessageId: string | undefined
+    let resumeAccumulatedContent = ''
 
     // Check if any tool was denied — if so, stop immediately
     const hasDenied = state.pendingToolCalls.some((tc) => {
@@ -1213,7 +1275,6 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
       return toolExecutorService.execute(toolCall, capabilitySlug, {
         workspaceId,
         chatSessionId: sessionId,
-        linuxUser: linuxUser ?? '',
         secretInventory: inventory,
         capability: resumeMatchedCap
           ? {
@@ -1264,8 +1325,8 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
             : result.output
       const isSandboxTool = !NON_SANDBOX_TOOLS.has(toolCall.name)
       const toolContent =
-        linuxUser && isSandboxTool
-          ? await maybeTruncateOutput(rawContent, toolCall.id, workspaceId, linuxUser)
+        workspaceId && isSandboxTool
+          ? await maybeTruncateOutput(rawContent, toolCall.id, workspaceId)
           : rawContent
       messages.push({
         role: 'tool',
@@ -1372,7 +1433,10 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
 
     // Continue the agent loop from where we left off (reuse pre-loaded capabilities)
     const capabilities = resumeCapabilities
-    const tools = capabilityService.buildToolDefinitions(capabilities)
+    // Remove delegation-only tools from the main agent (must use delegate_task instead)
+    const tools = capabilityService
+      .buildToolDefinitions(capabilities)
+      .filter((t) => !DELEGATION_ONLY_TOOLS.has(t.name))
 
     // Load auto-approve rules (global + session-scoped) and workspace auto-execute flag
     const resumeSettings = await prisma.globalSettings.findUnique({ where: { id: 'singleton' } })
@@ -1445,21 +1509,36 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
       }
 
       if (response.finishReason === 'stop' || !response.toolCalls?.length) {
-        emit?.('content', { text: safeResponseContent })
+        // Deduplicate: skip if final response repeats already-emitted content
+        const isDuplicateResume =
+          resumeAccumulatedContent.trim().length > 0 &&
+          safeResponseContent.trim().length > 0 &&
+          contentOverlapRatio(resumeAccumulatedContent, safeResponseContent) > 0.5
 
-        // Save final message
-        try {
-          const finalMsg = await prisma.chatMessage.create({
-            data: {
-              sessionId,
-              role: 'assistant',
-              content: stripNullBytes(safeResponseContent),
-              ...(collectedSourcesResume.length ? { sources: collectedSourcesResume } : {}),
-            },
+        if (isDuplicateResume) {
+          log.debugLog('Skipping duplicate final content (resume)', {
+            accumulatedLength: resumeAccumulatedContent.length,
+            finalLength: safeResponseContent.length,
           })
-          lastSavedMessageId = finalMsg.id
-        } catch {
-          /* best effort */
+        } else {
+          emit?.('content', { text: safeResponseContent })
+        }
+
+        // Save final message (only if non-duplicate and non-empty)
+        if (!isDuplicateResume && safeResponseContent.trim()) {
+          try {
+            const finalMsg = await prisma.chatMessage.create({
+              data: {
+                sessionId,
+                role: 'assistant',
+                content: stripNullBytes(safeResponseContent),
+                ...(collectedSourcesResume.length ? { sources: collectedSourcesResume } : {}),
+              },
+            })
+            lastSavedMessageId = finalMsg.id
+          } catch {
+            /* best effort */
+          }
         }
 
         await prisma.chatSession.update({
@@ -1468,7 +1547,9 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
         })
 
         return {
-          content: safeResponseContent,
+          content: isDuplicateResume
+            ? resumeAccumulatedContent.trim()
+            : safeResponseContent,
           toolExecutions: toolExecutionLog,
           sources: collectedSourcesResume.length ? collectedSourcesResume : undefined,
           lastMessageId: lastSavedMessageId,
@@ -1478,6 +1559,7 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
       // Emit intermediate content so the user sees what the LLM is explaining between tool calls
       if (safeResponseContent.trim()) {
         emit?.('content', { text: safeResponseContent })
+        resumeAccumulatedContent += safeResponseContent + '\n\n'
       }
 
       messages.push({
@@ -1533,7 +1615,6 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
             iteration: i,
             pendingToolCalls: response.toolCalls,
             completedToolResults: [],
-            linuxUser,
             toolExecutionLog,
             workspaceId,
             sessionId,
@@ -1626,7 +1707,7 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
                   return toolExecutorService.execute(t.toolCall, t.capabilitySlug, {
                     workspaceId,
                     chatSessionId: sessionId,
-                    linuxUser: linuxUser ?? '',
+          
                     secretInventory: inventory,
                     capability: t.matchedCap
                       ? {
@@ -1669,7 +1750,7 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
               : await toolExecutorService.execute(toolCall, capabilitySlug, {
                   workspaceId,
                   chatSessionId: sessionId,
-                  linuxUser: linuxUser ?? '',
+        
                   secretInventory: inventory,
                   capability: matchedCap
                     ? {
@@ -1732,10 +1813,10 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
                 ? `Error: ${result.error}\n\n${result.output}`
                 : result.output
           const isSandboxTool = !NON_SANDBOX_TOOLS.has(toolCall.name)
-          const toolContent =
-            linuxUser && isSandboxTool
-              ? await maybeTruncateOutput(rawContent, toolCall.id, workspaceId, linuxUser)
-              : rawContent
+          // Sandbox is always ready when resuming (it was set up during the initial runAgentLoop)
+          const toolContent = isSandboxTool
+            ? await maybeTruncateOutput(rawContent, toolCall.id, workspaceId)
+            : rawContent
           const resumeMessageContent: MessageContent =
             toolCall.name === 'run_browser_script'
               ? buildToolResultContent(toolContent, llm.modelId)
