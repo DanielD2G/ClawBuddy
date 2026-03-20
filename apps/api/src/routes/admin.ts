@@ -5,6 +5,7 @@ import { prisma } from '../lib/prisma.js'
 import { parsePagination } from '../lib/pagination.js'
 import { ok, fail } from '../lib/responses.js'
 import { buildProviderState } from '../services/provider-state.service.js'
+import { handleProviderConnectionTest } from './provider-connection-test.js'
 
 const app = new Hono()
 
@@ -147,15 +148,23 @@ app.put('/admin/provider-connections/:provider', async (c) => {
   }
   await settingsService.setProviderConnection(provider, value)
   invalidateModelCache(provider)
-  return ok(c, { connections: await settingsService.getProviderConnections() })
+  return ok(c, {
+    connections: await settingsService.getProviderConnections(),
+    providers: await buildProviderState(),
+  })
 })
 
 app.delete('/admin/provider-connections/:provider', async (c) => {
   const { provider } = c.req.param()
   await settingsService.removeProviderConnection(provider)
   invalidateModelCache(provider)
-  return ok(c, { connections: await settingsService.getProviderConnections() })
+  return ok(c, {
+    connections: await settingsService.getProviderConnections(),
+    providers: await buildProviderState(),
+  })
 })
+
+app.post('/admin/provider-connections/:provider/test', handleProviderConnectionTest)
 
 // ── Permissions (Global Auto-Approve Rules) ─────────────
 

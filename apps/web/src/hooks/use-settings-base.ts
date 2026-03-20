@@ -44,6 +44,11 @@ export interface SettingsData {
   browserGridFromEnv?: boolean
 }
 
+export interface ProviderConnectionsMutationResponse {
+  connections: Record<string, ProviderConnectionInfo>
+  providers?: SettingsData['providers']
+}
+
 interface SettingsHookOptions {
   queryKey: string
   basePath: string
@@ -62,15 +67,15 @@ export function createSettingsHook(options: SettingsHookOptions) {
     const updateProviders = useMutation({
       mutationFn: (data: {
         llm?: string
-        llmModel?: string
-        mediumModel?: string
-        lightModel?: string
-        exploreModel?: string
-        executeModel?: string
-        titleModel?: string
-        compactModel?: string
+        llmModel?: string | null
+        mediumModel?: string | null
+        lightModel?: string | null
+        exploreModel?: string | null
+        executeModel?: string | null
+        titleModel?: string | null
+        compactModel?: string | null
         embedding?: string
-        embeddingModel?: string
+        embeddingModel?: string | null
         advancedModelConfig?: boolean
         roleProviders?: Record<string, string>
       }) => apiClient.patch(`${options.basePath}/settings`, data),
@@ -79,14 +84,43 @@ export function createSettingsHook(options: SettingsHookOptions) {
 
     const setProviderConnection = useMutation({
       mutationFn: ({ provider, value }: { provider: string; value: string }) =>
-        apiClient.put(`${options.basePath}/provider-connections/${provider}`, { value }),
-      onSuccess: () => queryClient.invalidateQueries({ queryKey }),
+        apiClient.put<ProviderConnectionsMutationResponse>(
+          `${options.basePath}/provider-connections/${provider}`,
+          { value },
+        ),
+      onSuccess: (data) => {
+        queryClient.setQueryData<SettingsData | undefined>(queryKey, (current) =>
+          current
+            ? {
+                ...current,
+                ...(data.providers ? { providers: data.providers } : {}),
+              }
+            : current,
+        )
+        queryClient.invalidateQueries({ queryKey })
+        queryClient.invalidateQueries({ queryKey: ['model-config'] })
+        queryClient.invalidateQueries({ queryKey: ['providers'] })
+      },
     })
 
     const removeProviderConnection = useMutation({
       mutationFn: (provider: string) =>
-        apiClient.delete(`${options.basePath}/provider-connections/${provider}`),
-      onSuccess: () => queryClient.invalidateQueries({ queryKey }),
+        apiClient.delete<ProviderConnectionsMutationResponse>(
+          `${options.basePath}/provider-connections/${provider}`,
+        ),
+      onSuccess: (data) => {
+        queryClient.setQueryData<SettingsData | undefined>(queryKey, (current) =>
+          current
+            ? {
+                ...current,
+                ...(data.providers ? { providers: data.providers } : {}),
+              }
+            : current,
+        )
+        queryClient.invalidateQueries({ queryKey })
+        queryClient.invalidateQueries({ queryKey: ['model-config'] })
+        queryClient.invalidateQueries({ queryKey: ['providers'] })
+      },
     })
 
     return { query, updateProviders, setProviderConnection, removeProviderConnection }

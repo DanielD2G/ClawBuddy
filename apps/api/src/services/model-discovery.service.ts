@@ -9,6 +9,14 @@ interface CacheEntry {
   fetchedAt: number
 }
 
+export interface ProviderConnectionTestResult {
+  valid: boolean
+  reachable: boolean
+  llmModels: string[]
+  embeddingModels: string[]
+  message?: string
+}
+
 const llmCache = new Map<string, CacheEntry>()
 const embeddingCache = new Map<string, CacheEntry>()
 
@@ -122,7 +130,7 @@ async function fetchGeminiModels(apiKey: string): Promise<{ llm: string[]; embed
 
 // ── Public API ───────────────────────────────────────
 
-async function fetchAndCache(
+async function fetchProviderModels(
   provider: string,
   connectionValue: string,
 ): Promise<{ llm: string[]; embedding: string[] }> {
@@ -140,6 +148,43 @@ async function fetchAndCache(
   }
 }
 
+export async function testProviderConnection(
+  provider: string,
+  connectionValue: string,
+): Promise<ProviderConnectionTestResult> {
+  const trimmed = connectionValue.trim()
+  if (!trimmed) {
+    return {
+      valid: false,
+      reachable: false,
+      llmModels: [],
+      embeddingModels: [],
+      message: 'Connection value is required',
+    }
+  }
+
+  try {
+    const result = await fetchProviderModels(provider, trimmed)
+    const hasModels = result.llm.length > 0 || result.embedding.length > 0
+
+    return {
+      valid: hasModels,
+      reachable: true,
+      llmModels: result.llm,
+      embeddingModels: result.embedding,
+      ...(hasModels ? {} : { message: 'Connection succeeded but no models were returned' }),
+    }
+  } catch (err) {
+    return {
+      valid: false,
+      reachable: false,
+      llmModels: [],
+      embeddingModels: [],
+      message: err instanceof Error ? err.message : 'Failed to reach provider',
+    }
+  }
+}
+
 export async function discoverLLMModels(provider: string): Promise<string[]> {
   const cached = getCached(llmCache, provider)
   if (cached) return cached
@@ -148,7 +193,7 @@ export async function discoverLLMModels(provider: string): Promise<string[]> {
     const connectionValue = await settingsService.getProviderConnectionValue(provider)
     if (!connectionValue) return []
 
-    const result = await fetchAndCache(provider, connectionValue)
+    const result = await fetchProviderModels(provider, connectionValue)
 
     // Cache both
     llmCache.set(provider, { models: result.llm, fetchedAt: Date.now() })
@@ -174,7 +219,7 @@ export async function discoverEmbeddingModels(provider: string): Promise<string[
     const connectionValue = await settingsService.getProviderConnectionValue(provider)
     if (!connectionValue) return []
 
-    const result = await fetchAndCache(provider, connectionValue)
+    const result = await fetchProviderModels(provider, connectionValue)
 
     // Cache both
     if (result.llm.length) {

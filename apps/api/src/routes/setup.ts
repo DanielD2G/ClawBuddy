@@ -12,12 +12,12 @@ import { qdrant } from '../lib/qdrant.js'
 import { s3 } from '../lib/s3.js'
 import { embeddingService } from '../services/embedding.service.js'
 import { env } from '../env.js'
-import { TOOL_DISCOVERY_COLLECTION } from '../constants.js'
 import { ListBucketsCommand } from '@aws-sdk/client-s3'
 import { Prisma } from '@prisma/client'
 import { validateBody } from '../lib/validate.js'
 import Docker from 'dockerode'
 import { buildProviderState } from '../services/provider-state.service.js'
+import { handleProviderConnectionTest } from './provider-connection-test.js'
 
 const app = new Hono()
 
@@ -119,7 +119,10 @@ app.put('/provider-connections/:provider', async (c) => {
   invalidateModelCache(provider)
   return c.json({
     success: true,
-    data: { connections: await settingsService.getProviderConnections() },
+    data: {
+      connections: await settingsService.getProviderConnections(),
+      providers: await buildProviderState(),
+    },
   })
 })
 
@@ -132,8 +135,18 @@ app.delete('/provider-connections/:provider', async (c) => {
   invalidateModelCache(provider)
   return c.json({
     success: true,
-    data: { connections: await settingsService.getProviderConnections() },
+    data: {
+      connections: await settingsService.getProviderConnections(),
+      providers: await buildProviderState(),
+    },
   })
+})
+
+app.post('/provider-connections/:provider/test', async (c) => {
+  const blocked = await requireSetupIncomplete(c)
+  if (blocked) return blocked
+
+  return handleProviderConnectionTest(c)
 })
 
 // ── Google OAuth client credentials (env-only) ────
@@ -354,8 +367,8 @@ app.post('/preflight', async (c) => {
   }
 
   // 1. AI Providers — test each configured LLM provider
-  const { createLLMForModel } = await import('../providers/index.js')
-  const { discoverLLMModels } = await import('../services/model-discovery.service.js')
+  const { discoverLLMModels, discoverEmbeddingModels } =
+    await import('../services/model-discovery.service.js')
   const configured = await settingsService.getConfiguredProviders()
   const metadata = settingsService.getProviderMetadata()
 
@@ -363,26 +376,31 @@ app.post('/preflight', async (c) => {
     const label = metadata[provider as keyof typeof metadata]?.label ?? provider
     await runCheck(`${label} Connection`, async () => {
       const models = await discoverLLMModels(provider)
-      const model = models[0]
-      if (!model) return { status: 'fail', message: `No models discovered for ${provider}` }
+      if (!models.length) {
+        return { status: 'fail', message: `No models discovered for ${provider}` }
+      }
 
-      const llm = await createLLMForModel(provider, model)
-      await llm.chat([{ role: 'user', content: 'Say ok' }], { maxTokens: 5, temperature: 0 })
-      return { status: 'pass', message: `${label} is reachable (${model})` }
+      return {
+        status: 'pass',
+        message: `${label} credentials are valid (${models.length} models available)`,
+      }
     })
   }
 
-  // 2. Embedding Provider — generate a test embedding
+  // 2. Embedding Provider — validate catalog only, without running a model
   await runCheck('Embedding Provider', async () => {
     const provider = settings.embeddingProvider
     const connectionValue = await settingsService.getProviderConnectionValue(provider)
     if (!connectionValue) return { status: 'fail', message: `No connection for ${provider}` }
 
-    const vector = await embeddingService.embed('preflight test')
-    const embeddingModel = settings.embeddingModel ?? 'unknown'
+    const models = await discoverEmbeddingModels(provider)
+    if (!models.length) {
+      return { status: 'fail', message: `No embedding models discovered for ${provider}` }
+    }
+
     return {
       status: 'pass',
-      message: `${provider} (${embeddingModel}) — ${vector.length}d vectors`,
+      message: `${provider} credentials are valid (${models.length} embedding models available)`,
     }
   })
 
@@ -504,35 +522,6 @@ app.post('/preflight', async (c) => {
     return { status: 'pass', message: 'Container started and executed successfully' }
   })
 
-  // 10. Tool Discovery index — check Qdrant collection has the right dimensions (skip during initial setup)
-  await runCheck(
-    'Tool Discovery Index',
-    async () => {
-      try {
-        const info = await qdrant.getCollection(TOOL_DISCOVERY_COLLECTION)
-        const size = (info.config.params.vectors as { size: number }).size
-        const points = info.points_count
-
-        if (settings.embeddingModel) {
-          const vector = await embeddingService.embed('tool discovery dimension check')
-          if (size !== vector.length) {
-            return {
-              status: 'fail',
-              message: `Dimension mismatch: collection has ${size}d but embedding model returns ${vector.length}d — restart the API to re-index`,
-            }
-          }
-        }
-        return { status: 'pass', message: `${points} capabilities indexed (${size}d vectors)` }
-      } catch {
-        return {
-          status: 'fail',
-          message: `Collection "${TOOL_DISCOVERY_COLLECTION}" not found — restart the API to create it`,
-        }
-      }
-    },
-    settings.onboardingComplete,
-  )
-
   const allPassed = checks.every((c) => c.status === 'pass' || c.status === 'skip')
 
   return c.json({
@@ -639,6 +628,15 @@ app.post('/complete', async (c) => {
       {
         success: false,
         error: `AI provider "${aiProvider}" is not available`,
+      },
+      400,
+    )
+  }
+  if (!settings.aiModel) {
+    return c.json(
+      {
+        success: false,
+        error: 'Select a primary AI model before completing setup',
       },
       400,
     )
