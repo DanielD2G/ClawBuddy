@@ -18,6 +18,7 @@ step_header() { echo -e "\n${BOLD}${CYAN}━━━ Step $1/$TOTAL_STEPS: $2 ━�
 
 TOTAL_STEPS=5
 RAW_BASE="https://raw.githubusercontent.com/DanielD2G/ClawBuddy/main"
+STACK_NAME="clawbuddy"
 
 # ── Collected config (globals) ───────────────────────
 AI_PROVIDER=""
@@ -370,6 +371,15 @@ step_docker_check() {
 
   ok "Docker $(docker --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
   ok "Docker Compose $(docker compose version --short)"
+
+  # Initialize Docker Swarm if not already active
+  if ! docker info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null | grep -q "active"; then
+    info "Initializing Docker Swarm..."
+    docker swarm init 2>/dev/null || docker swarm init --advertise-addr 127.0.0.1
+    ok "Docker Swarm initialized"
+  else
+    ok "Docker Swarm is active"
+  fi
 }
 
 # ── Step 2: Download & Pull ──────────────────────────
@@ -391,31 +401,35 @@ step_pull_images() {
     ok "docker-compose.yml found in current directory"
   fi
 
-  # Check ports
-  info "Checking required ports..."
-  local PORTS=(4321 4000 5433 6333 6334 6380 9000 9001 9090)
-  local BUSY=()
+  # Check ports (skip if our stack is already running)
+  if ! docker stack ls --format '{{.Name}}' 2>/dev/null | grep -q "^${STACK_NAME}$"; then
+    info "Checking required ports..."
+    local PORTS=(4321 4000 5433 6333 6334 6380 9000 9001 9090)
+    local BUSY=()
 
-  for port in "${PORTS[@]}"; do
-    if lsof -iTCP:"$port" -sTCP:LISTEN -t &>/dev/null 2>&1; then
-      BUSY+=("$port")
+    for port in "${PORTS[@]}"; do
+      if lsof -iTCP:"$port" -sTCP:LISTEN -t &>/dev/null 2>&1; then
+        BUSY+=("$port")
+      fi
+    done
+
+    if [[ ${#BUSY[@]} -gt 0 ]]; then
+      echo ""
+      echo -e "  ${RED}The following ports are already in use: ${BOLD}${BUSY[*]}${NC}"
+      echo ""
+      echo -e "  ClawBuddy needs these ports:"
+      echo -e "    4321 - Web app       4000 - API"
+      echo -e "    5433 - PostgreSQL    6333 - Qdrant"
+      echo -e "    6380 - Redis         9000 - MinIO"
+      echo -e "    9001 - MinIO Console 9090 - BrowserGrid"
+      echo ""
+      echo -e "  To find what's using a port: ${CYAN}lsof -i :PORT${NC}"
+      fail "Free the ports listed above and re-run this script."
     fi
-  done
-
-  if [[ ${#BUSY[@]} -gt 0 ]]; then
-    echo ""
-    echo -e "  ${RED}The following ports are already in use: ${BOLD}${BUSY[*]}${NC}"
-    echo ""
-    echo -e "  ClawBuddy needs these ports:"
-    echo -e "    4321 - Web app       4000 - API"
-    echo -e "    5433 - PostgreSQL    6333 - Qdrant"
-    echo -e "    6380 - Redis         9000 - MinIO"
-    echo -e "    9001 - MinIO Console 9090 - BrowserGrid"
-    echo ""
-    echo -e "  To find what's using a port: ${CYAN}lsof -i :PORT${NC}"
-    fail "Free the ports listed above and re-run this script."
+    ok "All required ports are free"
+  else
+    ok "Stack already running, skipping port check"
   fi
-  ok "All required ports are free"
 
   # Pull images
   info "Pulling Docker images (this may take a few minutes on first run)..."
@@ -668,19 +682,23 @@ step_generate_env() {
 step_start_services() {
   step_header 5 "Start Services"
 
-  info "Starting all services..."
-  docker compose up -d
+  info "Deploying stack..."
+  docker stack deploy -c docker-compose.yml "$STACK_NAME"
   echo ""
 
   info "Waiting for API to become healthy..."
-  local timeout=120
+  local timeout=180
   local elapsed=0
 
   while [[ $elapsed -lt $timeout ]]; do
-    local status
-    status=$(docker compose ps api --format json 2>/dev/null | grep -o '"Health":"[^"]*"' | head -1 || true)
-    if [[ "$status" == *"healthy"* ]]; then
-      break
+    local container_id
+    container_id=$(docker ps --filter "label=com.docker.swarm.service.name=${STACK_NAME}_api" --format "{{.ID}}" 2>/dev/null | head -1 || true)
+    if [[ -n "$container_id" ]]; then
+      local health
+      health=$(docker inspect --format='{{.State.Health.Status}}' "$container_id" 2>/dev/null || true)
+      if [[ "$health" == "healthy" ]]; then
+        break
+      fi
     fi
     sleep 5
     elapsed=$((elapsed + 5))
@@ -692,8 +710,8 @@ step_start_services() {
     warn "API did not become healthy within ${timeout}s."
     echo ""
     echo -e "  This might just need more time. You can check with:"
-    echo -e "    ${CYAN}docker compose ps${NC}      - see service status"
-    echo -e "    ${CYAN}docker compose logs api${NC} - see API logs"
+    echo -e "    ${CYAN}docker stack services ${STACK_NAME}${NC}        - see service status"
+    echo -e "    ${CYAN}docker service logs ${STACK_NAME}_api${NC}  - see API logs"
     echo ""
   else
     ok "All services are healthy"
@@ -709,9 +727,10 @@ step_start_services() {
   echo -e "    ${CYAN}http://localhost:4321${NC}"
   echo ""
   echo -e "  ${BOLD}Useful commands:${NC}"
-  echo -e "    ${DIM}View logs:${NC}    docker compose logs -f"
-  echo -e "    ${DIM}Stop:${NC}         docker compose down"
-  echo -e "    ${DIM}Restart:${NC}      docker compose restart"
+  echo -e "    ${DIM}View logs:${NC}    docker service logs ${STACK_NAME}_api -f"
+  echo -e "    ${DIM}Stop:${NC}         docker stack rm ${STACK_NAME}"
+  echo -e "    ${DIM}Restart:${NC}      docker service update --force ${STACK_NAME}_api"
+  echo -e "    ${DIM}Status:${NC}       docker stack services ${STACK_NAME}"
   echo -e "    ${DIM}Update:${NC}       bash bootstrap.sh --update"
   echo ""
   echo -e "  ${BOLD}Other services:${NC}"
@@ -756,21 +775,25 @@ do_update() {
   echo ""
   ok "Images updated"
 
-  # Restart services
-  info "Restarting services..."
-  docker compose up -d
+  # Deploy updated stack
+  info "Deploying updated stack..."
+  docker stack deploy -c docker-compose.yml "$STACK_NAME"
   echo ""
 
   # Wait for health
   info "Waiting for API to become healthy..."
-  local timeout=120
+  local timeout=180
   local elapsed=0
 
   while [[ $elapsed -lt $timeout ]]; do
-    local status
-    status=$(docker compose ps api --format json 2>/dev/null | grep -o '"Health":"[^"]*"' | head -1 || true)
-    if [[ "$status" == *"healthy"* ]]; then
-      break
+    local container_id
+    container_id=$(docker ps --filter "label=com.docker.swarm.service.name=${STACK_NAME}_api" --format "{{.ID}}" 2>/dev/null | head -1 || true)
+    if [[ -n "$container_id" ]]; then
+      local health
+      health=$(docker inspect --format='{{.State.Health.Status}}' "$container_id" 2>/dev/null || true)
+      if [[ "$health" == "healthy" ]]; then
+        break
+      fi
     fi
     sleep 5
     elapsed=$((elapsed + 5))
@@ -780,7 +803,7 @@ do_update() {
 
   if [[ $elapsed -ge $timeout ]]; then
     warn "API did not become healthy within ${timeout}s."
-    echo -e "  Check logs: ${CYAN}docker compose logs api${NC}"
+    echo -e "  Check logs: ${CYAN}docker service logs ${STACK_NAME}_api${NC}"
   else
     ok "API is healthy"
   fi
@@ -805,6 +828,10 @@ do_update() {
   echo ""
   echo -e "  ${BOLD}Open in your browser:${NC}"
   echo -e "    ${CYAN}http://localhost:4321${NC}"
+  echo ""
+  echo -e "  ${BOLD}Useful commands:${NC}"
+  echo -e "    ${DIM}View logs:${NC}    docker service logs ${STACK_NAME}_api -f"
+  echo -e "    ${DIM}Status:${NC}       docker stack services ${STACK_NAME}"
   echo ""
 }
 
