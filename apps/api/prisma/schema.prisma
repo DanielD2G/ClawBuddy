@@ -92,7 +92,6 @@ model ChatSession {
   contextSummary     String?   @db.Text
   contextSummaryUpTo String?
   lastInputTokens    Int?
-  linuxUser          String?
   sessionAllowRules  Json?
   source             String?
   externalChatId     String?
