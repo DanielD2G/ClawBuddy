@@ -101,8 +101,11 @@ export function SubAgentBlock({ subAgent, expandedToolsRef }: SubAgentBlockProps
           ))}
 
           {subAgent.summary && (
-            <div className="rounded bg-muted/40 px-3 py-2 text-xs text-muted-foreground mt-1">
-              <span className="font-medium">Summary:</span> {subAgent.summary}
+            <div className="rounded bg-muted/40 px-3 py-2 text-xs text-muted-foreground mt-1 overflow-hidden break-words">
+              <span className="font-medium">Summary:</span>{' '}
+              {subAgent.summary
+                .replace(/!\[[^\]]*\]\(data:image\/[^\)]+\)/g, '[image]')
+                .replace(/(?:\/9j\/|iVBOR)[A-Za-z0-9+/=]{100,}/g, '[image]')}
             </div>
           )}
         </div>

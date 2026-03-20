@@ -1,102 +1,21 @@
 import { env } from './env.js'
 
-export interface ModelEntry {
-  id: string
-  supportsVision?: boolean
-}
+/** Known providers that support LLM chat. */
+export const LLM_PROVIDERS = ['openai', 'gemini', 'claude'] as const
 
-const v = (id: string): ModelEntry => ({ id, supportsVision: true })
-const m = (id: string): ModelEntry => ({ id })
+/** Known providers that support embeddings. */
+export const EMBEDDING_PROVIDERS = ['openai', 'gemini'] as const
 
-export const MODEL_CATALOG = {
-  llm: {
-    openai: [
-      v('gpt-5.4'),
-      v('gpt-5.4-pro'),
-      v('gpt-5-mini'),
-      v('gpt-5-nano'),
-      v('gpt-5'),
-      m('o4-mini'),
-      m('o3'),
-      m('o3-mini'),
-      m('o3-pro'),
-      v('gpt-4.1'),
-      v('gpt-4.1-mini'),
-      v('gpt-4.1-nano'),
-      v('gpt-4o'),
-      v('gpt-4o-mini'),
-      v('gpt-4-turbo'),
-    ],
-    gemini: [
-      v('gemini-3.1-pro-preview'),
-      v('gemini-3-flash-preview'),
-      v('gemini-3.1-flash-lite-preview'),
-      v('gemini-2.5-flash'),
-      v('gemini-2.5-flash-lite'),
-      v('gemini-2.5-pro'),
-    ],
-    claude: [
-      v('claude-opus-4-6'),
-      v('claude-sonnet-4-6'),
-      v('claude-haiku-4-5-20251001'),
-      v('claude-sonnet-4-5-20250929'),
-      v('claude-opus-4-5-20251101'),
-      v('claude-sonnet-4-20250514'),
-      v('claude-opus-4-0-20250514'),
-    ],
-  } as Record<string, ModelEntry[]>,
-  embedding: {
-    openai: ['text-embedding-3-small', 'text-embedding-3-large'],
-    gemini: ['gemini-embedding-2-preview', 'gemini-embedding-001'],
-  } as Record<string, string[]>,
-}
-
-/** Helper to extract plain model ID strings from an LLM catalog entry. */
-export function catalogModelIds(provider: string): string[] {
-  return (MODEL_CATALOG.llm[provider] ?? []).map((e) => e.id)
-}
-
-/** Models known to support vision/multimodal input, derived from the catalog. */
-export const VISION_MODELS = new Set(
-  Object.values(MODEL_CATALOG.llm)
-    .flatMap((models) => models)
-    .filter((e) => e.supportsVision)
-    .map((e) => e.id),
-)
-
-export const DEFAULT_LLM_MODELS: Record<string, string> = {
-  openai: 'gpt-5.4',
-  gemini: 'gemini-2.5-flash',
-  claude: 'claude-sonnet-4-6',
-}
-
-export const DEFAULT_EMBEDDING_MODELS: Record<string, string> = {
-  openai: 'text-embedding-3-small',
-  gemini: 'gemini-embedding-001',
-}
-
-export const DEFAULT_MEDIUM_MODELS: Record<string, string> = {
-  openai: 'gpt-5-mini',
-  gemini: 'gemini-2.5-flash',
-  claude: 'claude-sonnet-4-6',
-}
-
-export const DEFAULT_LIGHT_MODELS: Record<string, string> = {
-  openai: 'gpt-5-nano',
-  gemini: 'gemini-2.5-flash-lite',
-  claude: 'claude-haiku-4-5-20251001',
-}
-
-export const DEFAULT_TITLE_MODELS: Record<string, string> = {
-  openai: 'gpt-5-nano',
-  gemini: 'gemini-3.1-flash-lite-preview',
-  claude: 'claude-haiku-4-5-20251001',
-}
-
-export const DEFAULT_COMPACT_MODELS: Record<string, string> = {
-  openai: 'gpt-5-nano',
-  gemini: 'gemini-3.1-flash-lite-preview',
-  claude: 'claude-haiku-4-5-20251001',
+/** Check if a model supports vision/multimodal input based on naming conventions. */
+export function supportsVision(modelId: string): boolean {
+  // o1 does not support vision; o3+ do
+  if (modelId.startsWith('o1')) return false
+  // All GPT-4+, Gemini, Claude, and o3/o4 models support vision
+  if (modelId.startsWith('gpt-4') || modelId.startsWith('gpt-5')) return true
+  if (/^o[3-9]/.test(modelId)) return true
+  if (modelId.startsWith('gemini-')) return true
+  if (modelId.startsWith('claude-')) return true
+  return false
 }
 
 /** Infer the provider from a model ID based on naming conventions. */

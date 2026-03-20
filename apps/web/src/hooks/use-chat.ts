@@ -711,26 +711,31 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
             ])
           }
 
-          streamingRef.current = true
-          const approvalStreamResult = await processSSEStream(
-            res,
-            assistantId,
-            undefined,
-            controller.signal,
-          )
-          const finalSessionId = sessionIdRef.current
-          if (finalSessionId && approvalStreamResult.receivedDone) {
-            try {
-              const snapshot = await fetchSessionSnapshot(finalSessionId)
-              setMessages(snapshot?.messages ?? [])
-              setPendingApprovals(mapPendingApprovals(snapshot?.pendingApprovals))
-            } catch (error) {
-              console.error('Failed to refresh session after approval stream:', error)
+          try {
+            streamingRef.current = true
+            await processSSEStream(
+              res,
+              assistantId,
+              undefined,
+              controller.signal,
+            )
+          } finally {
+            streamingRef.current = false
+            // Always fetch the final snapshot to ensure consistent state,
+            // even if the stream ended without a 'done' event (error, abort, etc.)
+            const finalSessionId = sessionIdRef.current
+            if (finalSessionId) {
+              try {
+                const snapshot = await fetchSessionSnapshot(finalSessionId)
+                setMessages(snapshot?.messages ?? [])
+                setPendingApprovals(mapPendingApprovals(snapshot?.pendingApprovals))
+              } catch (snapshotErr) {
+                console.error('Failed to refresh session after approval stream:', snapshotErr)
+              }
             }
+            setIsPending(false)
+            setThinkingMessage(null)
           }
-          streamingRef.current = false
-          setIsPending(false)
-          setThinkingMessage(null)
         }
         // Otherwise it's JSON (still waiting for more approvals)
       } catch (error) {
@@ -754,7 +759,12 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
         const data = await apiClient.get<{
           messages: ChatMessage[]
           agentStatus: string
-          pendingApprovals: unknown[]
+          pendingApprovals: Array<{
+            id: string
+            toolName: string
+            capabilitySlug: string
+            input: Record<string, unknown>
+          }>
         }>(`/chat/sessions/${sid}/messages`)
         const msgs = data?.messages
         if (msgs && msgs.length > 0) {
@@ -778,11 +788,28 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
             return prev
           })
         }
+
+        // Agent is awaiting approval — restore pending approvals and stop pending indicator
+        if (data?.agentStatus === 'awaiting_approval') {
+          const mapped = mapPendingApprovals(data.pendingApprovals)
+          setPendingApprovals((prev) => {
+            // Only update if the approvals actually changed
+            if (prev.length === mapped.length && prev.every((p, i) => p.approvalId === mapped[i]?.approvalId)) return prev
+            return mapped
+          })
+          if (isPending) {
+            setIsPending(false)
+            setThinkingMessage(null)
+          }
+          if (msgs && msgs.length > 0) setMessages(msgs)
+        }
+
         // Agent finished — load final messages and stop showing pending
         if (data?.agentStatus === 'idle' && isPending) {
           if (msgs && msgs.length > 0) setMessages(msgs)
           setIsPending(false)
           setThinkingMessage(null)
+          setPendingApprovals([])
           queryClient.invalidateQueries({ queryKey: ['chat-sessions'] })
         }
       } catch {
