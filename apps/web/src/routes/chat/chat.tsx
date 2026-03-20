@@ -207,9 +207,10 @@ export function ChatPage() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] -m-6">
-      {/* Messages */}
-      <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
+    <div className="h-[calc(100vh-4rem)] -m-6 p-4 md:p-6">
+      <div className="mx-auto flex h-full w-full max-w-5xl flex-col overflow-hidden rounded-[1.75rem] border border-border/50 bg-background shadow-sm">
+        {/* Messages */}
+        <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-4 py-6">
           {messages.length === 0 && !isPending && (
             <div className="flex flex-col items-center justify-center py-32">
@@ -440,8 +441,8 @@ export function ChatPage() {
         </div>
       )}
 
-      {/* Input */}
-      <div className="border-t bg-background px-4 py-3">
+        {/* Input */}
+        <div className="border-t border-border/50 bg-muted/20 px-4 py-3 backdrop-blur-sm">
         <div className="mx-auto max-w-3xl">
           {pendingApprovals.length > 0 ? (
             <ApprovalInputBar approvals={pendingApprovals} onDecision={approveToolCall} />
@@ -477,11 +478,9 @@ export function ChatPage() {
               >
                 <div
                   className={`
-                    flex flex-col rounded-2xl
-                    bg-muted/60 px-5 py-3
-                    border border-border/40
+                    flex flex-col rounded-[1.4rem] bg-background/70 px-5 py-3
                     transition-all duration-200
-                    ${focused ? 'border-border/80 bg-muted/80 shadow-lg shadow-black/5' : ''}
+                    ${focused ? 'bg-background shadow-sm' : ''}
                   `}
                 >
                   <MentionInput
@@ -629,6 +628,7 @@ export function ChatPage() {
               </form>
             </>
           )}
+        </div>
         </div>
       </div>
     </div>
