@@ -914,6 +914,144 @@ async function executeDelegateTask(
 }
 
 // ---------------------------------------------------------------------------
+// Read File — optimised file reader with line numbers, pagination & guards
+// ---------------------------------------------------------------------------
+
+async function executeReadFile(
+  toolCall: ToolCall,
+  context: ExecutionContext,
+): Promise<ExecutionResult> {
+  const startTime = Date.now()
+  const fail = (error: string): ExecutionResult => ({
+    output: '',
+    error,
+    durationMs: Date.now() - startTime,
+  })
+
+  // 1. Extract & validate parameters
+  const args = toolCall.arguments as Record<string, unknown>
+  const filePath = String(args.file_path ?? '').trim()
+  if (!filePath) return fail('file_path is required.')
+
+  const offset = Math.max(1, Math.floor(Number(args.offset) || 1))
+  const limit = Math.min(2000, Math.max(1, Math.floor(Number(args.limit) || 2000)))
+  const endLine = offset + limit - 1
+
+  // 2. Require active sandbox
+  if (!context.linuxUser) {
+    return fail('read_file requires an active sandbox session.')
+  }
+
+  const userHome = `/workspace/users/${context.linuxUser}`
+  const resolvedPath = filePath.startsWith('/') ? filePath : `${userHome}/${filePath}`
+
+  // 3. Build shell script that runs inside the sandbox
+  //    Uses sentinel prefixes so we can parse the result deterministically.
+  const script = [
+    'set -e',
+    `FILE=${JSON.stringify(resolvedPath)}`,
+    // existence check
+    'if [ ! -e "$FILE" ]; then echo "@@NOT_FOUND@@"; exit 0; fi',
+    // directory check
+    'if [ -d "$FILE" ]; then echo "@@IS_DIRECTORY@@"; exit 0; fi',
+    // binary check (file --mime-encoding returns "binary" for non-text)
+    'ENCODING=$(file --mime-encoding -b "$FILE" 2>/dev/null || echo "unknown")',
+    'if echo "$ENCODING" | grep -qi "binary"; then echo "@@BINARY@@"; exit 0; fi',
+    // empty check
+    'if [ ! -s "$FILE" ]; then echo "@@EMPTY@@"; exit 0; fi',
+    // total line count
+    'TOTAL=$(wc -l < "$FILE")',
+    'echo "@@TOTAL:$TOTAL@@"',
+    // read with awk: line numbers (1-based), range, truncation at 2000 chars
+    `awk 'NR >= ${offset} && NR <= ${endLine} {`,
+    '  line = $0',
+    '  if (length(line) > 2000) line = substr(line, 1, 2000) "... [truncated]"',
+    '  printf "%6d\\t%s\\n", NR, line',
+    `}' "$FILE"`,
+  ].join('\n')
+
+  // 4. Execute inside the sandbox
+  let result = await sandboxService.execInWorkspace(
+    context.workspaceId,
+    script,
+    context.linuxUser,
+    { timeout: 15 },
+  )
+
+  // 5. Fallback: try basename in user home (same pattern as executeGenerateFile)
+  if (
+    result.exitCode !== 0 &&
+    resolvedPath !== `${userHome}/${filePath.split('/').pop()}`
+  ) {
+    const fallbackPath = `${userHome}/${filePath.split('/').pop()}`
+    const fallbackScript = script.replace(
+      `FILE=${JSON.stringify(resolvedPath)}`,
+      `FILE=${JSON.stringify(fallbackPath)}`,
+    )
+    const fallbackResult = await sandboxService.execInWorkspace(
+      context.workspaceId,
+      fallbackScript,
+      context.linuxUser,
+      { timeout: 15 },
+    )
+    if (fallbackResult.exitCode === 0) {
+      result = fallbackResult
+    }
+  }
+
+  if (result.exitCode !== 0) {
+    return fail(
+      `Failed to read file: ${result.stderr || 'unknown error'}. Your working directory is ${userHome}/ — use absolute paths or relative paths from there.`,
+    )
+  }
+
+  const stdout = result.stdout
+
+  // 6. Handle sentinel values
+  if (stdout.startsWith('@@NOT_FOUND@@')) {
+    return fail(`File not found: ${filePath}`)
+  }
+  if (stdout.startsWith('@@IS_DIRECTORY@@')) {
+    return fail(
+      `${filePath} is a directory, not a file. Use bash with \`ls\` to list directory contents.`,
+    )
+  }
+  if (stdout.startsWith('@@BINARY@@')) {
+    return fail(`${filePath} is a binary file and cannot be displayed as text.`)
+  }
+  if (stdout.startsWith('@@EMPTY@@')) {
+    return {
+      output: `${filePath} is empty (0 lines).`,
+      durationMs: Date.now() - startTime,
+    }
+  }
+
+  // 7. Parse total lines and content
+  const totalMatch = stdout.match(/^@@TOTAL:(\d+)@@$/m)
+  const totalLines = totalMatch ? parseInt(totalMatch[1], 10) : 0
+  const content = stdout.replace(/^@@TOTAL:\d+@@\n?/, '')
+
+  // 8. Size guard — cap at 20 KB to prevent context overflow
+  const MAX_OUTPUT_BYTES = 20_000
+  let finalContent = content
+  if (finalContent.length > MAX_OUTPUT_BYTES) {
+    finalContent = finalContent.slice(0, MAX_OUTPUT_BYTES) + '\n... [output truncated at 20 KB]'
+  }
+
+  // 9. Build informative header
+  const actualEnd = Math.min(endLine, totalLines)
+  let header = `[File: ${filePath}] [Lines: ${offset}-${actualEnd} of ${totalLines}]`
+  if (endLine < totalLines) {
+    header += ` (use offset=${endLine + 1} to see more)`
+  }
+
+  return {
+    output: `${header}\n${finalContent}`,
+    durationMs: Date.now() - startTime,
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Tool handler registry — maps tool names to their handler functions
 // ---------------------------------------------------------------------------
 
@@ -921,6 +1059,7 @@ const toolHandlerRegistry = new Map<string, ToolHandler>([
   ['search_documents', executeDocumentSearch],
   ['save_document', executeSaveDocument],
   ['generate_file', executeGenerateFile],
+  ['read_file', executeReadFile],
   ['create_cron', executeCreateCron],
   ['list_crons', (_toolCall, _context) => executeListCrons()],
   ['delete_cron', (toolCall, _context) => executeDeleteCron(toolCall)],
