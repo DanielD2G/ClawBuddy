@@ -1,14 +1,13 @@
 import { useState, useEffect } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { ChevronRight, ChevronLeft } from 'lucide-react'
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuSearchable,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { ChevronRight, ChevronLeft, ChevronsUpDown, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { PROVIDER_LABELS, inferProvider } from '@/constants'
 import type { ProvidersData } from '@/hooks/use-providers'
@@ -118,16 +117,16 @@ export function StepChatModel({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Chat Models</CardTitle>
-        <CardDescription>
+    <div>
+      <div className="mb-6">
+        <h2 className="text-2xl font-semibold tracking-tight">Chat Models</h2>
+        <p className="text-muted-foreground mt-1">
           Choose the AI provider and models for each tier. You can change this later.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+        </p>
+      </div>
+      <div className="flex flex-col gap-4">
         {/* Advanced toggle */}
-        <div className="flex items-center justify-between gap-3 rounded-xl border bg-muted/30 px-3 py-2">
+        <div className="flex items-center justify-between gap-3 rounded-md border bg-muted/30 px-3 py-2">
           <div>
             <div className="text-sm font-medium">Advanced</div>
             <div className="text-xs text-muted-foreground">Customize model per task</div>
@@ -164,46 +163,54 @@ export function StepChatModel({
                   <span className="text-xs text-muted-foreground">{role.description}</span>
                 </div>
                 <div className="flex gap-2">
-                  <Select
-                    value={currentProvider}
-                    onValueChange={(value) => handleProviderChange(role.key, value)}
-                    disabled={isUpdating}
-                  >
-                    <SelectTrigger className="w-[140px] shrink-0">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button disabled={isUpdating} className="flex h-(--control) w-[140px] shrink-0 items-center justify-between rounded-md border border-border bg-muted/40 px-3 text-sm hover:bg-muted/70 dark:bg-muted/20 dark:hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-50">
+                        <span className="truncate">{PROVIDER_LABELS[currentProvider] ?? currentProvider}</span>
+                        <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
                       {availableProviders.map((p: string) => (
-                        <SelectItem key={p} value={p}>
-                          {PROVIDER_LABELS[p] ?? p}
-                        </SelectItem>
+                        <DropdownMenuItem
+                          key={p}
+                          onClick={() => handleProviderChange(role.key, p)}
+                          className="gap-2"
+                        >
+                          <span className="flex-1">{PROVIDER_LABELS[p] ?? p}</span>
+                          {currentProvider === p && <Check className="size-3.5" />}
+                        </DropdownMenuItem>
                       ))}
-                    </SelectContent>
-                  </Select>
-                  <Select
-                    value={currentModel}
-                    onValueChange={(value) => handleModelChange(role.key, value)}
-                    disabled={isUpdating}
-                  >
-                    <SelectTrigger className="w-full font-mono text-xs">
-                      <SelectValue placeholder="Default" />
-                    </SelectTrigger>
-                    <SelectContent>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button disabled={isUpdating} className="flex h-(--control) w-full items-center justify-between rounded-md border border-border/50 bg-transparent px-3 font-mono text-xs hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50">
+                        <span className="truncate">{currentModel || 'Default'}</span>
+                        <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuSearchable placeholder="Search models...">
                       {providerModels.map((m: string) => (
-                        <SelectItem key={m} value={m}>
-                          {m}
-                        </SelectItem>
+                        <DropdownMenuItem
+                          key={m}
+                          onClick={() => handleModelChange(role.key, m)}
+                          className="gap-2 font-mono text-xs"
+                        >
+                          <span className="flex-1 truncate">{m}</span>
+                          {currentModel === m && <Check className="size-3.5" />}
+                        </DropdownMenuItem>
                       ))}
-                    </SelectContent>
-                  </Select>
+                    </DropdownMenuSearchable>
+                  </DropdownMenu>
                 </div>
               </div>
             )
           })}
         </div>
 
-        <div className="flex justify-between mt-4">
-          <Button variant="outline" onClick={onBack}>
+        <div className="flex justify-between mt-8 pt-6 border-t border-border/50">
+          <Button variant="ghost" onClick={onBack}>
             <ChevronLeft className="size-4 mr-1" />
             Back
           </Button>
@@ -212,7 +219,7 @@ export function StepChatModel({
             <ChevronRight className="size-4 ml-1" />
           </Button>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }

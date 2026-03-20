@@ -272,7 +272,7 @@ export function AppSidebar() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="size-7 text-muted-foreground hover:text-destructive"
+                className="size-7 text-brand hover:bg-brand/10 hover:text-brand"
                 onClick={() => {
                   stopContainer.mutate(activeWorkspace.id, {
                     onSuccess: () => toast.success('Container stopped'),

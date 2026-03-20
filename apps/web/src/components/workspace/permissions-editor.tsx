@@ -93,7 +93,7 @@ export function PermissionsEditor({ workspaceId, permissions }: PermissionsEdito
           onChange={(e) => setNewRule(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && addRule()}
           placeholder="e.g. Bash(aws s3 ls *)"
-          className="flex-1 rounded-md border bg-background px-3 py-1.5 text-sm font-mono placeholder:text-muted-foreground/50"
+          className="flex-1 h-(--control-sm) rounded-md border bg-background px-3 text-sm font-mono placeholder:text-muted-foreground/50"
         />
         <Button variant="outline" size="sm" onClick={addRule} disabled={!newRule.trim()}>
           <Plus className="size-4" />

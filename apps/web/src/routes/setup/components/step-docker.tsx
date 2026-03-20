@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Spinner } from '@/components/ui/spinner'
@@ -19,7 +19,7 @@ function ImageRow({ label, state }: { label: string; state: ImageTaskState }) {
   const isError = state.status === 'error'
 
   return (
-    <div className="rounded-lg border p-4 space-y-3">
+    <div className="rounded-md border p-4 space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Container className="size-4" />
@@ -126,14 +126,14 @@ export function StepDockerImages({
   const hasError = images.sandbox.status === 'error'
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Docker Images</CardTitle>
-        <CardDescription>
+    <div>
+      <div className="mb-6">
+        <h2 className="text-2xl font-semibold tracking-tight">Docker Images</h2>
+        <p className="text-muted-foreground mt-1">
           Preparing Docker images so everything is ready when you start.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+        </p>
+      </div>
+      <div className="flex flex-col gap-4">
         <ImageRow label="Sandbox Base" state={images.sandbox} />
 
         {hasError && (
@@ -146,8 +146,8 @@ export function StepDockerImages({
           You can skip this step — images will be pulled on first use.
         </p>
 
-        <div className="flex justify-between mt-2">
-          <Button variant="outline" onClick={onBack}>
+        <div className="flex justify-between mt-8 pt-6 border-t border-border/50">
+          <Button variant="ghost" onClick={onBack}>
             <ChevronLeft className="size-4 mr-1" />
             Back
           </Button>
@@ -167,7 +167,7 @@ export function StepDockerImages({
             )}
           </Button>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }

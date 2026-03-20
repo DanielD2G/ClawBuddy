@@ -1,4 +1,3 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ChevronRight, ChevronLeft } from 'lucide-react'
@@ -27,14 +26,14 @@ export function StepWorkspace({
   onNext,
 }: StepWorkspaceProps) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Create Workspace</CardTitle>
-        <CardDescription>
+    <div>
+      <div className="mb-6">
+        <h2 className="text-2xl font-semibold tracking-tight">Create Workspace</h2>
+        <p className="text-muted-foreground mt-1">
           Everything in ClawBuddy lives inside a workspace — documents, chats, and capabilities.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+        </p>
+      </div>
+      <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-medium">Workspace name</label>
           <Input
@@ -67,8 +66,8 @@ export function StepWorkspace({
             Auto-detected from your browser. Change if needed.
           </p>
         </div>
-        <div className="flex justify-between mt-4">
-          <Button variant="outline" onClick={onBack}>
+        <div className="flex justify-between mt-8 pt-6 border-t border-border/50">
+          <Button variant="ghost" onClick={onBack}>
             <ChevronLeft className="size-4 mr-1" />
             Back
           </Button>
@@ -77,7 +76,7 @@ export function StepWorkspace({
             <ChevronRight className="size-4 ml-1" />
           </Button>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }
