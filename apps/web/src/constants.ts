@@ -10,6 +10,12 @@ export const POLL_CRON_JOBS_MS = 15_000
 export const POLL_DOCUMENT_STATUS_MS = 2000
 export const POLL_DOCKER_IMAGES_MS = 1500
 
+// ── Update polling intervals (ms) ────────────────
+export const POLL_UPDATE_CHECK_MS = 30 * 60 * 1000 // 30 min
+export const UPDATE_HEALTH_POLL_MS = 2_000 // 2s
+export const UPDATE_INITIAL_DELAY_MS = 10_000 // 10s
+export const UPDATE_TIMEOUT_MS = 120_000 // 2 min
+
 // ── Cache staleness (ms) ─────────────────────────
 export const DEFAULT_STALE_TIME_MS = 60_000
 export const MODEL_CONFIG_STALE_TIME_MS = 60_000

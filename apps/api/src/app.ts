@@ -20,6 +20,7 @@ import cronRoutes from './routes/cron.js'
 import oauthRoutes from './routes/oauth.js'
 import browserRoutes from './routes/browser.js'
 import channelRoutes from './routes/channels.js'
+import updateRoutes from './routes/update.js'
 
 const app = new OpenAPIHono()
 
@@ -38,7 +39,7 @@ app.onError(errorHandler)
 
 // Health check & docs
 app.get('/api/health', (c) => {
-  return c.json({ success: true, data: { status: 'ok' } })
+  return c.json({ success: true, data: { status: 'ok', version: process.env.APP_VERSION ?? '0.0.0' } })
 })
 
 app.doc('/api/openapi', {
@@ -68,5 +69,6 @@ app.route('/api', cronRoutes)
 app.route('/api/oauth', oauthRoutes)
 app.route('/api/browser', browserRoutes)
 app.route('/api/channels', channelRoutes)
+app.route('/api', updateRoutes)
 
 export default app

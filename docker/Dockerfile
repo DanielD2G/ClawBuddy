@@ -39,6 +39,8 @@ RUN bun run --filter @clawbuddy/web build
 
 # ── Stage 4: API runtime ─────────────────────────────
 FROM oven/bun:1.3.5-debian AS api
+ARG APP_VERSION=0.0.0
+ENV APP_VERSION=$APP_VERSION
 WORKDIR /app
 
 # Copy node_modules from api-build (includes generated Prisma client)

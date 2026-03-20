@@ -32,6 +32,9 @@ const envSchema = z.object({
 
   // Debug flags
   DEBUG_AGENT: z.string().default(''),
+
+  // App version (injected at build time via Dockerfile)
+  APP_VERSION: z.string().default('0.0.0'),
 })
 
 export const env = envSchema.parse(process.env)
