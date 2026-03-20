@@ -96,8 +96,6 @@ export function ChatPage() {
   const [focused, setFocused] = useState(false)
   const [pendingFiles, setPendingFiles] = useState<ChatAttachment[]>([])
   const [mentionedDocIds, setMentionedDocIds] = useState<string[]>([])
-  const [uploading, setUploading] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const sentInitial = useRef(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -167,30 +165,6 @@ export function ChatPage() {
 
   const scrollToBottom = () => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }
-
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (!files?.length) return
-    setUploading(true)
-    try {
-      for (const file of Array.from(files)) {
-        const formData = new FormData()
-        formData.append('file', file)
-        const res = await fetch('/api/chat/upload', {
-          method: 'POST',
-          credentials: 'include',
-          body: formData,
-        })
-        if (res.ok) {
-          const json = await res.json()
-          setPendingFiles((prev) => [...prev, json.data])
-        }
-      }
-    } finally {
-      setUploading(false)
-      if (fileInputRef.current) fileInputRef.current.value = ''
-    }
   }
 
   const removePendingFile = (idx: number) => {
