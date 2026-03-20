@@ -1,6 +1,5 @@
 import OpenAI from 'openai'
 import Anthropic from '@anthropic-ai/sdk'
-import { MODEL_CATALOG, catalogModelIds } from '../config.js'
 import { settingsService } from './settings.service.js'
 
 const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
@@ -148,7 +147,7 @@ export async function discoverLLMModels(provider: string): Promise<string[]> {
 
   try {
     const apiKey = await settingsService.getApiKey(provider)
-    if (!apiKey) return catalogModelIds(provider)
+    if (!apiKey) return []
 
     const result = await fetchAndCache(provider, apiKey)
 
@@ -158,13 +157,13 @@ export async function discoverLLMModels(provider: string): Promise<string[]> {
       embeddingCache.set(provider, { models: result.embedding, fetchedAt: Date.now() })
     }
 
-    return result.llm.length ? result.llm : catalogModelIds(provider)
+    return result.llm
   } catch (err) {
     console.warn(
       `[model-discovery] Failed to fetch models for ${provider}:`,
       err instanceof Error ? err.message : err,
     )
-    return catalogModelIds(provider)
+    return []
   }
 }
 
@@ -174,7 +173,7 @@ export async function discoverEmbeddingModels(provider: string): Promise<string[
 
   try {
     const apiKey = await settingsService.getApiKey(provider)
-    if (!apiKey) return MODEL_CATALOG.embedding[provider] ?? []
+    if (!apiKey) return []
 
     const result = await fetchAndCache(provider, apiKey)
 
@@ -184,13 +183,13 @@ export async function discoverEmbeddingModels(provider: string): Promise<string[
     }
     embeddingCache.set(provider, { models: result.embedding, fetchedAt: Date.now() })
 
-    return result.embedding.length ? result.embedding : (MODEL_CATALOG.embedding[provider] ?? [])
+    return result.embedding
   } catch (err) {
     console.warn(
       `[model-discovery] Failed to fetch embedding models for ${provider}:`,
       err instanceof Error ? err.message : err,
     )
-    return MODEL_CATALOG.embedding[provider] ?? []
+    return []
   }
 }
 
