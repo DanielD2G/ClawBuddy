@@ -74,6 +74,7 @@ export const PROVIDER_LABELS: Record<string, string> = {
   openai: 'OpenAI',
   gemini: 'Google Gemini',
   claude: 'Anthropic Claude',
+  local: 'Local Models',
 }
 
 // ── Model provider inference ────────────────────

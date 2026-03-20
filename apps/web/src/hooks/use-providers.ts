@@ -13,6 +13,7 @@ export interface ProvidersData {
     titleModel: string | null
     compactModel: string | null
     advancedModelConfig: boolean
+    modelProviders?: Record<string, string>
     embedding: string
     embeddingModel: string | null
   }

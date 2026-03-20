@@ -65,7 +65,7 @@ export function StepWelcome({ onNext, onImport, isImporting }: StepWelcomeProps)
               {isImporting ? 'Importing...' : 'Import from file'}
             </Button>
           </div>
-          <Button onClick={onNext} className="bg-brand text-brand-foreground hover:bg-brand/90 h-11 px-8 text-base">
+          <Button onClick={onNext} className="bg-brand text-brand-foreground hover:bg-brand/90 h-9 px-6 text-sm">
             Get started
             <ChevronRight className="size-4 ml-1" />
           </Button>

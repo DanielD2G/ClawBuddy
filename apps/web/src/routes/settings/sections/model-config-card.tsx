@@ -20,7 +20,6 @@ import {
   DEFAULT_SUB_AGENT_ANALYZE_MAX_ITERATIONS,
   DEFAULT_SUB_AGENT_EXECUTE_MAX_ITERATIONS,
   PROVIDER_LABELS,
-  inferProvider,
 } from '@/constants'
 
 interface ModelConfigData {
@@ -34,6 +33,7 @@ interface ModelConfigData {
     title: string
     compact: string
   }
+  modelProviders: Record<string, string>
   advancedModelConfig: boolean
   contextLimitTokens: number
   maxAgentIterations: number
@@ -111,13 +111,7 @@ export function ModelConfigCard() {
   useEffect(() => {
     if (data) {
       setModels(data.models)
-      const providers: Record<string, string> = {}
-      for (const [key, modelId] of Object.entries(data.models)) {
-        if (modelId) {
-          providers[key] = inferProvider(modelId, data.availableProviders)
-        }
-      }
-      setRoleProviders(providers)
+      setRoleProviders(data.modelProviders)
       setAdvancedMode(data.advancedModelConfig)
       setContextLimitTokens(data.contextLimitTokens)
       setMaxAgentIterations(data.maxAgentIterations)

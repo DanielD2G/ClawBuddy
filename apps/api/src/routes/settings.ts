@@ -1,7 +1,32 @@
 import { Hono } from 'hono'
 import { settingsService } from '../services/settings.service.js'
 import { discoverLLMModels } from '../services/model-discovery.service.js'
+import { inferProviderFromModel } from '../config.js'
 import { prisma } from '../lib/prisma.js'
+
+/**
+ * Resolve the provider for each model ID using prefix matching + local catalog lookup.
+ * Returns a map like { primary: 'local', explore: 'openai', ... }
+ */
+function resolveModelProviders(
+  modelEntries: Record<string, string | null>,
+  globalProvider: string,
+  catalogs: Record<string, string[]>,
+): Record<string, string> {
+  const result: Record<string, string> = {}
+  for (const [key, modelId] of Object.entries(modelEntries)) {
+    if (!modelId) {
+      result[key] = globalProvider
+      continue
+    }
+    let resolved = inferProviderFromModel(modelId)
+    if (!resolved && catalogs.local?.includes(modelId)) {
+      resolved = 'local'
+    }
+    result[key] = resolved ?? globalProvider
+  }
+  return result
+}
 
 const app = new Hono()
 
@@ -68,11 +93,16 @@ app.get('/settings/models', async (c) => {
   )
   const catalogs = Object.fromEntries(catalogEntries) as Record<string, string[]>
 
+  // Resolve the actual provider for each model so the frontend doesn't have to guess
+  const modelEntries = { primary, medium, light, explore, execute, title, compact }
+  const modelProviders = resolveModelProviders(modelEntries, provider, catalogs)
+
   return c.json({
     success: true,
     data: {
       provider,
-      models: { primary, medium, light, explore, execute, title, compact },
+      models: modelEntries,
+      modelProviders,
       embeddingModel,
       advancedModelConfig,
       contextLimitTokens,

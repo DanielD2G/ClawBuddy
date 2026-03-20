@@ -170,6 +170,50 @@ app.delete('/admin/api-keys/:provider', async (c) => {
   return ok(c, { apiKeys })
 })
 
+// ── Local model server ───────────────────────────────────
+
+app.put('/admin/local-server', async (c) => {
+  const { baseUrl } = await c.req.json()
+  if (!baseUrl || typeof baseUrl !== 'string') {
+    return fail(c, 'baseUrl is required')
+  }
+  await settingsService.update({ ollamaBaseUrl: baseUrl.trim() })
+  invalidateModelCache('local')
+  const apiKeys = await settingsService.getMaskedKeys()
+  return ok(c, { apiKeys })
+})
+
+app.delete('/admin/local-server', async (c) => {
+  await settingsService.update({ ollamaBaseUrl: undefined })
+  invalidateModelCache('local')
+  const apiKeys = await settingsService.getMaskedKeys()
+  return ok(c, { apiKeys })
+})
+
+app.post('/admin/local-server/test', async (c) => {
+  const { baseUrl } = await c.req.json()
+  const raw = (baseUrl || '').trim() || 'http://localhost:1234'
+  const normalized = raw.replace(/\/+$/, '')
+  const url = normalized.endsWith('/v1') ? `${normalized}/models` : `${normalized}/v1/models`
+  try {
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(5000),
+      headers: { Authorization: 'Bearer local' },
+    })
+    if (!res.ok) {
+      return ok(c, { reachable: false, error: `HTTP ${res.status}` })
+    }
+    const data = (await res.json()) as { data?: { id: string }[] }
+    const models = (data.data ?? []).map((m) => m.id)
+    return ok(c, { reachable: true, models })
+  } catch (err) {
+    return ok(c, {
+      reachable: false,
+      error: err instanceof Error ? err.message : 'Connection failed',
+    })
+  }
+})
+
 // ── Permissions (Global Auto-Approve Rules) ─────────────
 
 app.get('/admin/permissions', async (c) => {

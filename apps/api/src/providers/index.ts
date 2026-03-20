@@ -7,6 +7,7 @@ import { GeminiEmbeddingProvider } from './gemini-embeddings.js'
 import { OpenAILLMProvider } from './openai-llm.js'
 import { GeminiLLMProvider } from './gemini-llm.js'
 import { ClaudeLLMProvider } from './claude-llm.js'
+import { LocalLLMProvider } from './local-llm.js'
 
 const embeddingRegistry = new Map<string, new (model: string, apiKey: string) => EmbeddingProvider>(
   [
@@ -33,8 +34,34 @@ export async function createEmbeddingProvider(): Promise<EmbeddingProvider> {
 }
 
 export async function createLLMForModel(model: string): Promise<LLMProvider> {
-  // Infer provider from the model name; fall back to the global aiProvider setting
-  const provider = inferProviderFromModel(model) ?? (await settingsService.getAIProvider())
+  // Infer provider from the model name
+  let provider = inferProviderFromModel(model)
+
+  // If we can't infer by prefix, check if it's a known local model or if global provider is local
+  if (!provider) {
+    const globalProvider = await settingsService.getAIProvider()
+    if (globalProvider === 'local') {
+      provider = 'local'
+    } else {
+      // Check if this model exists in the local catalog (mixed provider scenario)
+      const { discoverLLMModels } = await import('../services/model-discovery.service.js')
+      const available = await settingsService.getAvailableProviders()
+      if (available.llm.includes('local')) {
+        const localModels = await discoverLLMModels('local')
+        if (localModels.includes(model)) {
+          provider = 'local'
+        }
+      }
+    }
+    provider ??= globalProvider
+  }
+
+  // Local provider — uses OpenAI-compatible API with custom baseURL, no API key
+  if (provider === 'local') {
+    const baseUrl = await settingsService.getLocalBaseUrl()
+    return new LocalLLMProvider(model, baseUrl)
+  }
+
   const apiKey = await settingsService.getApiKey(provider)
   if (!apiKey) throw new Error(`No API key configured for AI provider: ${provider}`)
 

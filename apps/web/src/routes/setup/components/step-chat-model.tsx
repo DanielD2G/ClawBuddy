@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { ChevronRight, ChevronLeft, ChevronsUpDown, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { PROVIDER_LABELS, inferProvider } from '@/constants'
+import { PROVIDER_LABELS } from '@/constants'
 import type { ProvidersData } from '@/hooks/use-providers'
 
 interface StepChatModelProps {
@@ -58,11 +58,10 @@ export function StepChatModel({
   const roles = advancedMode ? ADVANCED_ROLES : SIMPLE_TIERS
   const availableProviders = providers.available.llm
 
-  // Initialize state from server data
+  // Initialize state from server data (providers resolved by backend)
   useEffect(() => {
     const active = providers.active
     const serverModels: Record<string, string> = {}
-    const serverProviders: Record<string, string> = {}
 
     const entries: [string, string | null][] = [
       ['main', active.llmModel],
@@ -77,22 +76,21 @@ export function StepChatModel({
     for (const [key, modelId] of entries) {
       if (modelId) {
         serverModels[key] = modelId
-        serverProviders[key] = inferProvider(modelId, availableProviders)
       }
     }
 
-    // For keys without a saved model, default to main's provider
-    const mainProvider = serverProviders.main ?? active.llm
+    // Use backend-resolved providers, falling back to global provider for unset roles
+    const backendProviders = active.modelProviders ?? {}
+    const mainProvider = backendProviders.main ?? active.llm
+    const resolvedProviders: Record<string, string> = {}
     for (const role of [...SIMPLE_TIERS, ...ADVANCED_ROLES]) {
-      if (!serverProviders[role.key]) {
-        serverProviders[role.key] = mainProvider
-      }
+      resolvedProviders[role.key] = backendProviders[role.key] ?? mainProvider
     }
 
     setModels(serverModels)
-    setRoleProviders(serverProviders)
+    setRoleProviders(resolvedProviders)
     setAdvancedMode(active.advancedModelConfig ?? false)
-  }, [providers, availableProviders])
+  }, [providers])
 
   const handleProviderChange = (roleKey: string, provider: string) => {
     setRoleProviders((prev) => ({ ...prev, [roleKey]: provider }))

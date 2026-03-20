@@ -13,6 +13,7 @@ export interface SettingsData {
       titleModel: string | null
       compactModel: string | null
       advancedModelConfig: boolean
+      modelProviders: Record<string, string>
       embedding: string
       embeddingModel: string | null
     }
@@ -23,6 +24,7 @@ export interface SettingsData {
     }
   }
   apiKeys: Record<string, { source: 'env' | 'db' | null; masked: string | null }>
+  ollamaBaseUrl?: string | null
   onboardingComplete?: boolean
   browserGridFromEnv?: boolean
 }

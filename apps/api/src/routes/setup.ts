@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { Context } from 'hono'
 import { settingsService } from '../services/settings.service.js'
 import { buildModelCatalogs, invalidateModelCache } from '../services/model-discovery.service.js'
+import { inferProviderFromModel } from '../config.js'
 import { searchService } from '../services/search.service.js'
 import { capabilityService } from '../services/capability.service.js'
 import { toolDiscoveryService } from '../services/tool-discovery.service.js'
@@ -49,6 +50,29 @@ app.get('/settings', async (c) => {
 
   const models = await buildModelCatalogs(available)
 
+  // Resolve the actual provider for each model
+  const modelMap: Record<string, string | null> = {
+    main: settings.aiModel,
+    medium: settings.mediumModel,
+    light: settings.lightModel,
+    explore: settings.exploreModel,
+    execute: settings.executeModel,
+    title: settings.titleModel,
+    compact: settings.compactModel,
+  }
+  const modelProviders: Record<string, string> = {}
+  for (const [key, modelId] of Object.entries(modelMap)) {
+    if (!modelId) {
+      modelProviders[key] = settings.aiProvider
+      continue
+    }
+    let resolved = inferProviderFromModel(modelId)
+    if (!resolved && models.llm.local?.includes(modelId)) {
+      resolved = 'local'
+    }
+    modelProviders[key] = resolved ?? settings.aiProvider
+  }
+
   return c.json({
     success: true,
     data: {
@@ -65,11 +89,13 @@ app.get('/settings', async (c) => {
           advancedModelConfig: settings.advancedModelConfig,
           embedding: settings.embeddingProvider,
           embeddingModel: settings.embeddingModel,
+          modelProviders,
         },
         available,
         models,
       },
       apiKeys,
+      ollamaBaseUrl: (settings as Record<string, unknown>).ollamaBaseUrl as string | null,
       browserGridFromEnv: !!process.env.BROWSER_GRID_URL,
     },
   })
@@ -92,6 +118,7 @@ app.patch('/settings', async (c) => {
     executeModel: body.executeModel,
     titleModel: body.titleModel,
     compactModel: body.compactModel,
+    ollamaBaseUrl: body.ollamaBaseUrl,
   })
   return c.json({
     success: true,
@@ -133,6 +160,55 @@ app.put('/api-keys/:provider', async (c) => {
   invalidateModelCache(provider)
   const apiKeys = await settingsService.getMaskedKeys()
   return c.json({ success: true, data: { apiKeys } })
+})
+
+// ── Local model server configuration ─────
+app.put('/local-server', async (c) => {
+  const blocked = await requireSetupIncomplete(c)
+  if (blocked) return blocked
+
+  const { baseUrl } = await c.req.json()
+  if (!baseUrl || typeof baseUrl !== 'string') {
+    return c.json({ success: false, error: 'baseUrl is required' }, 400)
+  }
+  await settingsService.update({ ollamaBaseUrl: baseUrl.trim() })
+  invalidateModelCache('local')
+  const apiKeys = await settingsService.getMaskedKeys()
+  return c.json({ success: true, data: { apiKeys } })
+})
+
+app.delete('/local-server', async (c) => {
+  const blocked = await requireSetupIncomplete(c)
+  if (blocked) return blocked
+
+  await settingsService.update({ ollamaBaseUrl: undefined })
+  invalidateModelCache('local')
+  const apiKeys = await settingsService.getMaskedKeys()
+  return c.json({ success: true, data: { apiKeys } })
+})
+
+app.post('/local-server/test', async (c) => {
+  const { baseUrl } = await c.req.json()
+  const raw = (baseUrl || '').trim() || 'http://localhost:1234'
+  const normalized = raw.replace(/\/+$/, '')
+  const url = normalized.endsWith('/v1') ? `${normalized}/models` : `${normalized}/v1/models`
+  try {
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(5000),
+      headers: { Authorization: 'Bearer local' },
+    })
+    if (!res.ok) {
+      return c.json({ success: true, data: { reachable: false, error: `HTTP ${res.status}` } })
+    }
+    const data = (await res.json()) as { data?: { id: string }[] }
+    const models = (data.data ?? []).map((m) => m.id)
+    return c.json({ success: true, data: { reachable: true, models } })
+  } catch (err) {
+    return c.json({
+      success: true,
+      data: { reachable: false, error: err instanceof Error ? err.message : 'Connection failed' },
+    })
+  }
 })
 
 // ── Google OAuth client credentials (env-only) ────
@@ -361,10 +437,28 @@ app.post('/preflight', async (c) => {
     openai: 'OpenAI',
     gemini: 'Google Gemini',
     claude: 'Anthropic Claude',
+    local: 'Local Models',
   }
 
   for (const provider of available.llm) {
     const label = PROVIDER_NAMES[provider] ?? provider
+    if (provider === 'local') {
+      // Test local server connectivity by listing models via OpenAI /v1/models
+      await runCheck(`${label} Server`, async () => {
+        const { discoverLLMModels: discover } = await import(
+          '../services/model-discovery.service.js'
+        )
+        const models = await discover('local')
+        if (!models.length) {
+          return { status: 'fail', message: 'Server is reachable but no models are available' }
+        }
+        return {
+          status: 'pass',
+          message: `Connected — ${models.length} model${models.length > 1 ? 's' : ''} available`,
+        }
+      })
+      continue
+    }
     await runCheck(`${label} API Key`, async () => {
       const model = DEFAULT_LLM_MODELS[provider]
       if (!model) return { status: 'fail', message: `No default model for ${provider}` }
@@ -626,17 +720,19 @@ app.post('/complete', async (c) => {
     )
   }
 
-  // Validate AI provider has an API key
+  // Validate AI provider has an API key (local doesn't need one)
   const aiProvider = settings.aiProvider
-  const aiKey = await settingsService.getApiKey(aiProvider)
-  if (!aiKey) {
-    return c.json(
-      {
-        success: false,
-        error: `No API key configured for AI provider: ${aiProvider}`,
-      },
-      400,
-    )
+  if (aiProvider !== 'local') {
+    const aiKey = await settingsService.getApiKey(aiProvider)
+    if (!aiKey) {
+      return c.json(
+        {
+          success: false,
+          error: `No API key configured for AI provider: ${aiProvider}`,
+        },
+        400,
+      )
+    }
   }
 
   // Create Qdrant collection with correct dimensions

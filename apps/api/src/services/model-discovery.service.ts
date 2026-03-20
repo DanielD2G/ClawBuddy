@@ -124,6 +124,25 @@ async function fetchGeminiModels(apiKey: string): Promise<{ llm: string[]; embed
   }
 }
 
+// ── Local / OpenAI-compatible ─────────────────────────
+
+/**
+ * Fetch models from any OpenAI-compatible server via GET /v1/models.
+ * Works with LM Studio, vLLM, LocalAI, text-generation-webui, Ollama, etc.
+ */
+async function fetchLocalModels(baseUrl: string): Promise<{ llm: string[] }> {
+  const normalized = baseUrl.replace(/\/+$/, '')
+  const url = normalized.endsWith('/v1') ? `${normalized}/models` : `${normalized}/v1/models`
+  const res = await fetch(url, {
+    signal: AbortSignal.timeout(5000),
+    headers: { Authorization: 'Bearer local' },
+  })
+  if (!res.ok) throw new Error(`Local server returned ${res.status}`)
+  const data = (await res.json()) as { data?: { id: string }[] }
+  const models = (data.data ?? []).map((m) => m.id).sort()
+  return { llm: models }
+}
+
 // ── Public API ───────────────────────────────────────
 
 async function fetchAndCache(
@@ -137,6 +156,10 @@ async function fetchAndCache(
       return { ...(await fetchAnthropicModels(apiKey)), embedding: [] }
     case 'gemini':
       return fetchGeminiModels(apiKey)
+    case 'local': {
+      const baseUrl = await settingsService.getLocalBaseUrl()
+      return { ...(await fetchLocalModels(baseUrl)), embedding: [] }
+    }
     default:
       return { llm: [], embedding: [] }
   }

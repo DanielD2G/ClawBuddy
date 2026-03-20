@@ -44,6 +44,7 @@ export const MODEL_CATALOG = {
       v('claude-sonnet-4-20250514'),
       v('claude-opus-4-0-20250514'),
     ],
+    local: [] as ModelEntry[], // populated dynamically via model discovery
   } as Record<string, ModelEntry[]>,
   embedding: {
     openai: ['text-embedding-3-small', 'text-embedding-3-large'],
@@ -68,6 +69,7 @@ export const DEFAULT_LLM_MODELS: Record<string, string> = {
   openai: 'gpt-5.4',
   gemini: 'gemini-2.5-flash',
   claude: 'claude-sonnet-4-6',
+  local: 'default',
 }
 
 export const DEFAULT_EMBEDDING_MODELS: Record<string, string> = {
@@ -79,24 +81,28 @@ export const DEFAULT_MEDIUM_MODELS: Record<string, string> = {
   openai: 'gpt-5-mini',
   gemini: 'gemini-2.5-flash',
   claude: 'claude-sonnet-4-6',
+  local: 'default',
 }
 
 export const DEFAULT_LIGHT_MODELS: Record<string, string> = {
   openai: 'gpt-5-nano',
   gemini: 'gemini-2.5-flash-lite',
   claude: 'claude-haiku-4-5-20251001',
+  local: 'default',
 }
 
 export const DEFAULT_TITLE_MODELS: Record<string, string> = {
   openai: 'gpt-5-nano',
   gemini: 'gemini-3.1-flash-lite-preview',
   claude: 'claude-haiku-4-5-20251001',
+  local: 'default',
 }
 
 export const DEFAULT_COMPACT_MODELS: Record<string, string> = {
   openai: 'gpt-5-nano',
   gemini: 'gemini-3.1-flash-lite-preview',
   claude: 'claude-haiku-4-5-20251001',
+  local: 'default',
 }
 
 /** Infer the provider from a model ID based on naming conventions. */
@@ -110,8 +116,13 @@ export function inferProviderFromModel(modelId: string): string | null {
     return 'openai'
   if (modelId.startsWith('gemini-')) return 'gemini'
   if (modelId.startsWith('claude-')) return 'claude'
+  // Local models cannot be inferred by prefix — they are matched by the
+  // caller when the model exists in the local catalog.
   return null
 }
+
+/** Default base URL for local OpenAI-compatible servers. */
+export const DEFAULT_LOCAL_BASE_URL = 'http://localhost:1234'
 
 export const ENV_KEYS: Record<string, string> = {
   openai: env.OPENAI_API_KEY,

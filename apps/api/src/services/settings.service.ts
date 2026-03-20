@@ -8,6 +8,7 @@ import {
   DEFAULT_EMBEDDING_MODELS,
   DEFAULT_MEDIUM_MODELS,
   DEFAULT_LIGHT_MODELS,
+  DEFAULT_LOCAL_BASE_URL,
   ENV_KEYS,
   DB_KEY_FIELDS,
   inferProviderFromModel,
@@ -157,6 +158,25 @@ export const settingsService = {
     return this._getNumericSetting('subAgentExecuteMaxIterations', SUB_AGENT_EXECUTE_MAX_ITERATIONS)
   },
 
+  async getLocalBaseUrl(): Promise<string> {
+    const envUrl = env.LOCAL_MODEL_BASE_URL
+    if (envUrl) return envUrl
+    const s = await this.get()
+    return (s as Record<string, unknown>).ollamaBaseUrl as string ?? DEFAULT_LOCAL_BASE_URL
+  },
+
+  async isLocalServerConfigured(): Promise<boolean> {
+    const baseUrl = await this.getLocalBaseUrl()
+    try {
+      const normalized = baseUrl.replace(/\/+$/, '')
+      const url = normalized.endsWith('/v1') ? `${normalized}/models` : `${normalized}/v1/models`
+      const res = await fetch(url, { signal: AbortSignal.timeout(3000) })
+      return res.ok
+    } catch {
+      return false
+    }
+  },
+
   async getBrowserGridUrl(): Promise<string> {
     const envUrl = process.env.BROWSER_GRID_URL
     if (envUrl) return envUrl
@@ -188,6 +208,8 @@ export const settingsService = {
   },
 
   async getApiKey(provider: string): Promise<string | null> {
+    // Local provider doesn't need an API key — return a dummy value so callers see it as "configured"
+    if (provider === 'local') return 'local'
     // Env takes priority
     if (ENV_KEYS[provider]) return ENV_KEYS[provider]
     // Check DB
@@ -230,12 +252,25 @@ export const settingsService = {
   async getAvailableProviders() {
     const s = await this.get()
     const checkKey = (provider: string) => {
+      if (provider === 'local') return false // handled separately below
       if (ENV_KEYS[provider]) return true
       const field = DB_KEY_FIELDS[provider]
       return field ? !!s[field] : false
     }
+    const llmProviders = Object.keys(MODEL_CATALOG.llm).filter(checkKey)
+
+    // Local is available if explicitly configured (env or DB) or reachable at default URL
+    const localUrl = (s as Record<string, unknown>).ollamaBaseUrl as string | null
+    if (env.LOCAL_MODEL_BASE_URL || localUrl) {
+      llmProviders.push('local')
+    } else {
+      // Auto-detect: probe the default local server URL
+      const localReachable = await this.isLocalServerConfigured()
+      if (localReachable) llmProviders.push('local')
+    }
+
     return {
-      llm: Object.keys(MODEL_CATALOG.llm).filter(checkKey),
+      llm: llmProviders,
       embedding: Object.keys(MODEL_CATALOG.embedding).filter(checkKey),
     }
   },
@@ -260,6 +295,15 @@ export const settingsService = {
           result[provider] = { source: null, masked: null }
         }
       }
+    }
+    // Local provider doesn't use API keys — report the base URL instead
+    const localUrl = (s as Record<string, unknown>).ollamaBaseUrl as string | null
+    if (env.LOCAL_MODEL_BASE_URL) {
+      result.local = { source: 'env', masked: env.LOCAL_MODEL_BASE_URL }
+    } else if (localUrl) {
+      result.local = { source: 'db', masked: localUrl }
+    } else {
+      result.local = { source: null, masked: null }
     }
     return result
   },
@@ -308,6 +352,7 @@ export const settingsService = {
     embeddingProvider?: string
     embeddingModel?: string
     contextLimitTokens?: number
+    ollamaBaseUrl?: string
     browserGridUrl?: string
     browserGridBrowser?: string
     browserModel?: string
@@ -325,7 +370,7 @@ export const settingsService = {
       throw new ValidationError('Embedding model cannot be changed after initial setup')
     }
 
-    if (data.aiProvider && !available.llm.includes(data.aiProvider)) {
+    if (data.aiProvider && data.aiProvider !== 'local' && !available.llm.includes(data.aiProvider)) {
       throw new ValidationError(`AI provider "${data.aiProvider}" is not available (no API key)`)
     }
     if (data.embeddingProvider && !available.embedding.includes(data.embeddingProvider)) {
@@ -336,6 +381,13 @@ export const settingsService = {
 
     // Validate each model against its inferred provider (supports mixed providers per role)
     const defaultProvider = data.aiProvider ?? settings.aiProvider
+
+    // Pre-fetch local models so we can check membership for models with unknown prefixes
+    let localModels: string[] | null = null
+    if (available.llm.includes('local')) {
+      localModels = await discoverLLMModels('local')
+    }
+
     for (const field of [
       'aiModel',
       'mediumModel',
@@ -347,15 +399,26 @@ export const settingsService = {
     ] as const) {
       const modelId = data[field]
       if (!modelId) continue
-      const modelProvider = inferProviderFromModel(modelId) ?? defaultProvider
-      // Verify the provider has an API key
-      const hasKey = available.llm.includes(modelProvider)
-      if (!hasKey) {
-        throw new Error(
-          `No API key configured for provider "${modelProvider}" (model "${modelId}")`,
-        )
+
+      // Infer provider: first try by prefix, then check if it's a known local model
+      let modelProvider = inferProviderFromModel(modelId)
+      if (!modelProvider && localModels?.includes(modelId)) {
+        modelProvider = 'local'
       }
-      const llmModels = await discoverLLMModels(modelProvider)
+      modelProvider ??= defaultProvider
+
+      // Verify the provider has an API key (local doesn't need one)
+      if (modelProvider !== 'local') {
+        const hasKey = available.llm.includes(modelProvider)
+        if (!hasKey) {
+          throw new Error(
+            `No API key configured for provider "${modelProvider}" (model "${modelId}")`,
+          )
+        }
+      }
+      const llmModels = modelProvider === 'local' && localModels
+        ? localModels
+        : await discoverLLMModels(modelProvider)
       if (llmModels.length && !llmModels.includes(modelId)) {
         throw new Error(`Model "${modelId}" is not available for provider "${modelProvider}"`)
       }

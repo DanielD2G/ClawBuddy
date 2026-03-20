@@ -154,6 +154,7 @@ model AppSettings {
   openaiApiKey        String?  @db.Text
   geminiApiKey        String?  @db.Text
   anthropicApiKey     String?  @db.Text
+  ollamaBaseUrl      String?
   onboardingComplete Boolean @default(false)
   contextLimitTokens Int      @default(30000)
   browserGridUrl     String?

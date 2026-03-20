@@ -16,7 +16,7 @@ const envSchema = z.object({
   APP_URL: z.string().default('http://localhost:5173'),
 
   // AI providers
-  AI_PROVIDER: z.enum(['openai', 'gemini', 'claude']).default('openai'),
+  AI_PROVIDER: z.enum(['openai', 'gemini', 'claude', 'local']).default('openai'),
   EMBEDDING_PROVIDER: z.enum(['openai', 'gemini']).default('openai'),
   OPENAI_API_KEY: z.string().default(''),
   GEMINI_API_KEY: z.string().default(''),
@@ -25,6 +25,9 @@ const envSchema = z.object({
   // Google OAuth (for Google Workspace integration)
   GOOGLE_CLIENT_ID: z.string().default(''),
   GOOGLE_CLIENT_SECRET: z.string().default(''),
+
+  // Local models (OpenAI-compatible server: LM Studio, vLLM, Ollama, etc.)
+  LOCAL_MODEL_BASE_URL: z.string().default(''),
 
   // Browser grid
   BROWSER_GRID_URL: z.string().default(''),

@@ -237,6 +237,16 @@ export function SetupPage() {
           <StepApiKeys
             apiKeys={apiKeys}
             onSaveKey={(provider, key) => setApiKey.mutate({ provider, key })}
+            onSaveLocalUrl={async (baseUrl) => {
+              await apiClient.put('/setup/local-server', { baseUrl })
+              await queryClient.invalidateQueries({ queryKey: ['setup-settings'] })
+            }}
+            onTestLocal={async (baseUrl) => {
+              return apiClient.post<{ reachable: boolean; models?: string[]; error?: string }>(
+                '/setup/local-server/test',
+                { baseUrl },
+              )
+            }}
             isSaving={setApiKey.isPending}
             canContinue={hasEmbeddingKey}
             onBack={() => setStep(0)}
