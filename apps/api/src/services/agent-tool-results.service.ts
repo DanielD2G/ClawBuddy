@@ -41,7 +41,6 @@ export async function maybeTruncateOutput(
   output: string,
   toolCallId: string,
   workspaceId: string,
-  linuxUser: string,
 ): Promise<string> {
   if (output.length <= OUTPUT_TRUNCATE_THRESHOLD) return output
 
@@ -52,7 +51,6 @@ export async function maybeTruncateOutput(
     await sandboxService.execInWorkspace(
       workspaceId,
       `echo '${b64}' | base64 -d > ${filename}`,
-      linuxUser,
       { timeout: 10 },
     )
   } catch {

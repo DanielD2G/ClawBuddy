@@ -384,7 +384,7 @@ You MUST use the tools from these capabilities to fulfill this request. Do NOT s
 
     log.debugLog('Sandbox check', { needsSandbox, allToolNames })
 
-    let linuxUser: string | undefined
+    let sandboxReady = false
 
     if (needsSandbox) {
       emit?.('thinking', { message: 'Starting sandbox environment...' })
@@ -404,7 +404,7 @@ You MUST use the tools from these capabilities to fulfill this request. Do NOT s
         { networkAccess: needsNetwork, dockerSocket: needsDockerSocket },
         Object.keys(mergedEnvVars).length ? mergedEnvVars : undefined,
       )
-      linuxUser = await sandboxService.ensureConversationUser(workspaceId, sessionId)
+      sandboxReady = true
       const secretEnvRefs = [
         ...new Set(
           inventory.references.filter((ref) => ref.transport === 'env').map((ref) => ref.alias),
@@ -414,11 +414,10 @@ You MUST use the tools from these capabilities to fulfill this request. Do NOT s
       // Inject sandbox context into system prompt so the LLM knows writable paths
       const sandboxContext = `\n\n${buildPromptSection(
         'sandbox_environment',
-        `Username: ${linuxUser}
-Working directory (cwd): /workspace/users/${linuxUser}/. All relative paths resolve here.
+        `Username: root
+Working directory (cwd): /workspace/. All relative paths resolve here.
 Shared outputs: /workspace/.outputs/ (writable)
-/workspace/ root: read-only. Do not write files there directly.
-When using sourcePath in generate_file, use the full path: /workspace/users/${linuxUser}/filename or /workspace/.outputs/filename` +
+When using sourcePath in generate_file, use the full path: /workspace/filename or /workspace/.outputs/filename` +
           (inventory.enabled && secretEnvRefs.length
             ? `\nAvailable secret env references (values hidden): ${secretEnvRefs.join(', ')}`
             : ''),
@@ -631,7 +630,6 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
             iteration: i,
             pendingToolCalls: response.toolCalls ?? [],
             completedToolResults: [],
-            linuxUser,
             toolExecutionLog,
             workspaceId,
             sessionId,
@@ -713,7 +711,7 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
         const result = await toolExecutorService.execute(toolCall, capabilitySlug, {
           workspaceId,
           chatSessionId: sessionId,
-          linuxUser: linuxUser ?? '',
+
           secretInventory: inventory,
           capability: matchedCapability
             ? {
@@ -939,8 +937,8 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
                 : result.output
           const isSandboxTool = !NON_SANDBOX_TOOLS.has(toolCall.name)
           const toolContent =
-            linuxUser && isSandboxTool
-              ? await maybeTruncateOutput(rawContent, toolCall.id, workspaceId, linuxUser)
+            sandboxReady && isSandboxTool
+              ? await maybeTruncateOutput(rawContent, toolCall.id, workspaceId)
               : rawContent
           const messageContent: MessageContent =
             toolCall.name === 'run_browser_script'
@@ -1136,7 +1134,7 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
       data: { agentState: Prisma.DbNull, agentStateEncrypted: null, agentStatus: 'running' },
     })
 
-    const { messages, toolExecutionLog, workspaceId, linuxUser } = state
+    const { messages, toolExecutionLog, workspaceId } = state
     const collectedSourcesResume: NonNullable<AgentResult['sources']> = []
     let lastSavedMessageId: string | undefined
 
@@ -1221,7 +1219,6 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
       return toolExecutorService.execute(toolCall, capabilitySlug, {
         workspaceId,
         chatSessionId: sessionId,
-        linuxUser: linuxUser ?? '',
         secretInventory: inventory,
         capability: resumeMatchedCap
           ? {
@@ -1272,8 +1269,8 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
             : result.output
       const isSandboxTool = !NON_SANDBOX_TOOLS.has(toolCall.name)
       const toolContent =
-        linuxUser && isSandboxTool
-          ? await maybeTruncateOutput(rawContent, toolCall.id, workspaceId, linuxUser)
+        workspaceId && isSandboxTool
+          ? await maybeTruncateOutput(rawContent, toolCall.id, workspaceId)
           : rawContent
       messages.push({
         role: 'tool',
@@ -1541,7 +1538,6 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
             iteration: i,
             pendingToolCalls: response.toolCalls,
             completedToolResults: [],
-            linuxUser,
             toolExecutionLog,
             workspaceId,
             sessionId,
@@ -1634,7 +1630,7 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
                   return toolExecutorService.execute(t.toolCall, t.capabilitySlug, {
                     workspaceId,
                     chatSessionId: sessionId,
-                    linuxUser: linuxUser ?? '',
+          
                     secretInventory: inventory,
                     capability: t.matchedCap
                       ? {
@@ -1677,7 +1673,7 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
               : await toolExecutorService.execute(toolCall, capabilitySlug, {
                   workspaceId,
                   chatSessionId: sessionId,
-                  linuxUser: linuxUser ?? '',
+        
                   secretInventory: inventory,
                   capability: matchedCap
                     ? {
@@ -1741,8 +1737,8 @@ When using sourcePath in generate_file, use the full path: /workspace/users/${li
                 : result.output
           const isSandboxTool = !NON_SANDBOX_TOOLS.has(toolCall.name)
           const toolContent =
-            linuxUser && isSandboxTool
-              ? await maybeTruncateOutput(rawContent, toolCall.id, workspaceId, linuxUser)
+            sandboxReady && isSandboxTool
+              ? await maybeTruncateOutput(rawContent, toolCall.id, workspaceId)
               : rawContent
           const resumeMessageContent: MessageContent =
             toolCall.name === 'run_browser_script'

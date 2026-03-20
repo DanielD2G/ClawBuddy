@@ -139,7 +139,7 @@ export const sandboxService = {
     // Setup shared workspace structure
     await execSimple(
       container,
-      'mkdir -p /workspace/__agent__ /workspace/users /workspace/.outputs && chmod 755 /workspace /workspace/users && chmod 777 /workspace/.outputs',
+      'mkdir -p /workspace/__agent__ /workspace/.outputs && chmod 755 /workspace && chmod 777 /workspace/.outputs',
     )
 
     // Write credential files (AWS, GWS, etc.)
@@ -259,12 +259,11 @@ export const sandboxService = {
   },
 
   /**
-   * Execute a command in the workspace container as a specific user.
+   * Execute a command in the workspace container as root.
    */
   async execInWorkspace(
     workspaceId: string,
     command: string,
-    username: string,
     options?: { timeout?: number; workingDir?: string },
   ): Promise<ExecResult> {
     const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId } })
@@ -278,7 +277,6 @@ export const sandboxService = {
       const result = await this._execInContainerDirect(
         workspace.containerId,
         command,
-        username,
         options,
       )
       await prisma.workspace.update({
@@ -292,19 +290,18 @@ export const sandboxService = {
         console.warn(`[Sandbox] Workspace container gone for ${workspaceId}, recreating...`)
         await this.getOrCreateWorkspaceContainer(workspaceId, { networkAccess: true })
         const ws = await prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId } })
-        return this._execInContainerDirect(ws.containerId!, command, username, options)
+        return this._execInContainerDirect(ws.containerId!, command, options)
       }
       throw err
     }
   },
 
   /**
-   * Internal: execute a command directly in a container by containerId.
+   * Internal: execute a command directly in a container by containerId as root.
    */
   async _execInContainerDirect(
     containerId: string,
     command: string,
-    user?: string,
     options?: { timeout?: number; workingDir?: string },
   ): Promise<ExecResult> {
     const container = docker.getContainer(containerId)
@@ -320,7 +317,7 @@ export const sandboxService = {
       AttachStdout: true,
       AttachStderr: true,
       WorkingDir: workingDir,
-      User: user || undefined,
+      User: 'root',
     })
 
     return new Promise<ExecResult>((resolve, reject) => {
@@ -400,11 +397,6 @@ export const sandboxService = {
     await prisma.workspace.update({
       where: { id: workspaceId },
       data: { containerStatus: 'stopped', containerId: null },
-    })
-    // Clear linuxUser from all sessions in this workspace
-    await prisma.chatSession.updateMany({
-      where: { workspaceId },
-      data: { linuxUser: null },
     })
   },
 

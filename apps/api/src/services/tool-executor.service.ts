@@ -32,7 +32,6 @@ import { randomUUID } from 'node:crypto'
 interface ExecutionContext {
   workspaceId: string
   chatSessionId: string
-  linuxUser: string
   secretInventory?: SecretInventory
   /** Override browser session key for sub-agent isolation (defaults to chatSessionId) */
   browserSessionId?: string
@@ -362,15 +361,15 @@ async function executeGenerateFile(
   let buffer: Buffer
   if (sourcePath) {
     // Read file content from sandbox
-    if (!context.linuxUser) {
+    if (!context.workspaceId) {
       return {
         output: '',
         error: 'sourcePath requires an active sandbox. Use content parameter instead.',
         durationMs: Date.now() - startTime,
       }
     }
-    const userHome = `/workspace/users/${context.linuxUser}`
-    // Resolve relative paths to user's home directory
+    const userHome = '/workspace'
+    // Resolve relative paths to workspace directory
     const resolvedPath = sourcePath.startsWith('/') ? sourcePath : `${userHome}/${sourcePath}`
 
     if (isBinary) {
@@ -378,10 +377,9 @@ async function executeGenerateFile(
       let readResult = await sandboxService.execInWorkspace(
         context.workspaceId,
         `base64 -w0 ${JSON.stringify(resolvedPath)}`,
-        context.linuxUser,
         { timeout: 30 },
       )
-      // Fallback: try basename in user's home dir
+      // Fallback: try basename in workspace dir
       if (
         readResult.exitCode !== 0 &&
         resolvedPath !== `${userHome}/${sourcePath.split('/').pop()}`
@@ -390,7 +388,6 @@ async function executeGenerateFile(
         const fallbackResult = await sandboxService.execInWorkspace(
           context.workspaceId,
           `base64 -w0 ${JSON.stringify(fallbackPath)}`,
-          context.linuxUser,
           { timeout: 30 },
         )
         if (fallbackResult.exitCode === 0) {
@@ -410,10 +407,9 @@ async function executeGenerateFile(
       let readResult = await sandboxService.execInWorkspace(
         context.workspaceId,
         `cat ${JSON.stringify(resolvedPath)}`,
-        context.linuxUser,
         { timeout: 10 },
       )
-      // Fallback: try basename in user's home dir
+      // Fallback: try basename in workspace dir
       if (
         readResult.exitCode !== 0 &&
         resolvedPath !== `${userHome}/${sourcePath.split('/').pop()}`
@@ -422,7 +418,6 @@ async function executeGenerateFile(
         const fallbackResult = await sandboxService.execInWorkspace(
           context.workspaceId,
           `cat ${JSON.stringify(fallbackPath)}`,
-          context.linuxUser,
           { timeout: 10 },
         )
         if (fallbackResult.exitCode === 0) {
@@ -552,7 +547,7 @@ async function executeSandboxCommand(
 ): Promise<ExecutionResult> {
   const startTime = Date.now()
 
-  if (!context.workspaceId || !context.linuxUser) {
+  if (!context.workspaceId) {
     return {
       output: '',
       error: 'No workspace context available. Sandbox capabilities require a workspace.',
@@ -594,7 +589,7 @@ async function executeSandboxCommand(
     }
   }
 
-  const userHome = context.linuxUser ? `/workspace/users/${context.linuxUser}` : '/workspace'
+  const userHome = '/workspace'
   const execOptions = {
     timeout: (args.timeout as number) ?? 30,
     workingDir: (args.workingDir as string) ?? userHome,
@@ -603,7 +598,6 @@ async function executeSandboxCommand(
   const result = await sandboxService.execInWorkspace(
     context.workspaceId,
     command,
-    context.linuxUser,
     execOptions,
   )
 
@@ -786,7 +780,7 @@ async function executeBrowserScript(
     try {
       const parsed = JSON.parse(output) as Record<string, unknown>
       if (parsed.__saveScreenshot === true) {
-        if (!context.linuxUser) {
+        if (!context.workspaceId) {
           return {
             output: '',
             error: 'saveScreenshot() requires an active sandbox session.',
@@ -811,11 +805,10 @@ async function executeBrowserScript(
             ? path.posix.basename(parsed.filename.trim())
             : `browser-screenshot-${randomUUID()}.jpg`
         const baseName = suggestedName.replace(/\.[^.]+$/i, '')
-        const resolvedPath = `/workspace/users/${context.linuxUser}/screenshots/${baseName}-${randomUUID()}.jpg`
+        const resolvedPath = `/workspace/screenshots/${baseName}-${randomUUID()}.jpg`
         const saveResult = await sandboxService.execInWorkspace(
           context.workspaceId,
           `mkdir -p ${JSON.stringify(path.posix.dirname(resolvedPath))} && printf '%s' ${JSON.stringify(screenshotB64)} | base64 -d | tee ${JSON.stringify(resolvedPath)} >/dev/null && chmod 666 ${JSON.stringify(resolvedPath)}`,
-          context.linuxUser,
           { timeout: 15 },
         )
         if (saveResult.exitCode !== 0) {
@@ -979,7 +972,6 @@ async function executeDelegateTask(
     {
       workspaceId: context.workspaceId,
       sessionId: context.chatSessionId,
-      linuxUser: context.linuxUser,
       secretInventory: inventory,
       emit: context.emit,
       capabilities: context.capabilities,
@@ -1061,11 +1053,11 @@ async function executeReadFile(
   const endLine = offset + limit - 1
 
   // 2. Require active sandbox
-  if (!context.linuxUser) {
+  if (!context.workspaceId) {
     return fail('read_file requires an active sandbox session.')
   }
 
-  const userHome = `/workspace/users/${context.linuxUser}`
+  const userHome = '/workspace'
   const resolvedPath = filePath.startsWith('/') ? filePath : `${userHome}/${filePath}`
 
   // 3. Build shell script that runs inside the sandbox
@@ -1097,12 +1089,14 @@ async function executeReadFile(
   let result = await sandboxService.execInWorkspace(
     context.workspaceId,
     script,
-    context.linuxUser,
     { timeout: 15 },
   )
 
-  // 5. Fallback: try basename in user home (same pattern as executeGenerateFile)
-  if (result.exitCode !== 0 && resolvedPath !== `${userHome}/${filePath.split('/').pop()}`) {
+  // 5. Fallback: try basename in workspace dir (same pattern as executeGenerateFile)
+  if (
+    result.exitCode !== 0 &&
+    resolvedPath !== `${userHome}/${filePath.split('/').pop()}`
+  ) {
     const fallbackPath = `${userHome}/${filePath.split('/').pop()}`
     const fallbackScript = script.replace(
       `FILE=${JSON.stringify(resolvedPath)}`,
@@ -1111,7 +1105,6 @@ async function executeReadFile(
     const fallbackResult = await sandboxService.execInWorkspace(
       context.workspaceId,
       fallbackScript,
-      context.linuxUser,
       { timeout: 15 },
     )
     if (fallbackResult.exitCode === 0) {
