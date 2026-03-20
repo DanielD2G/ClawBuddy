@@ -218,7 +218,17 @@ function DocumentsSection() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button className="flex w-[140px] items-center justify-between rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm hover:bg-muted/70 dark:bg-muted/20 dark:hover:bg-muted/40">
-              <span>{status === '' ? 'All statuses' : status === 'READY' ? 'Ready' : status === 'PENDING' ? 'Pending' : status === 'PROCESSING' ? 'Processing' : 'Failed'}</span>
+              <span>
+                {status === ''
+                  ? 'All statuses'
+                  : status === 'READY'
+                    ? 'Ready'
+                    : status === 'PENDING'
+                      ? 'Pending'
+                      : status === 'PROCESSING'
+                        ? 'Processing'
+                        : 'Failed'}
+              </span>
               <ChevronsUpDown className="size-4 text-muted-foreground" />
             </button>
           </DropdownMenuTrigger>
@@ -232,7 +242,10 @@ function DocumentsSection() {
             ].map((opt) => (
               <DropdownMenuItem
                 key={opt.value || 'all'}
-                onClick={() => { setStatus(opt.value); setPage(1) }}
+                onClick={() => {
+                  setStatus(opt.value)
+                  setPage(1)
+                }}
                 className="gap-2"
               >
                 <span className="flex-1">{opt.label}</span>

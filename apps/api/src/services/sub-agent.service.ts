@@ -225,7 +225,9 @@ export const subAgentService = {
         totalUsage.outputTokens += response.usage.outputTokens
         totalUsage.totalTokens += response.usage.totalTokens
       }
-      await recordTokenUsage(response.usage, parentContext.sessionId, llm.providerId, llm.modelId)
+      await recordTokenUsage(response.usage, parentContext.sessionId, llm.providerId, llm.modelId, {
+        updateSessionContext: false,
+      })
 
       // No tool calls — done
       if (response.finishReason === 'stop' || !response.toolCalls?.length) {

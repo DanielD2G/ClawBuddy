@@ -7,6 +7,7 @@ import {
   useSetupCapabilities,
 } from '@/hooks/use-setup'
 import { useActiveWorkspace } from '@/providers/workspace-provider'
+import { useTheme } from '@/providers/theme-provider'
 import { Spinner } from '@/components/ui/spinner'
 import {
   Sparkles,
@@ -40,7 +41,7 @@ import { StepChannels } from './components/step-channels'
 
 const ALL_STEPS = [
   { label: 'Welcome', icon: Sparkles },
-  { label: 'API Keys', icon: Key },
+  { label: 'Providers', icon: Key },
   { label: 'Embeddings', icon: Brain },
   { label: 'Chat', icon: MessageSquare },
   { label: 'Workspace', icon: FolderOpen },
@@ -50,6 +51,34 @@ const ALL_STEPS = [
   { label: 'Preflight', icon: ShieldCheck },
   { label: 'Configure', icon: Settings },
 ]
+
+function buildChatModelDraft(
+  providers: NonNullable<ReturnType<typeof useSetupSettings>['query']['data']>['providers'],
+) {
+  const active = providers.active
+  const models: Record<string, string> = {}
+  const entries: [string, string | null][] = [
+    ['primary', active.llmModel],
+    ['medium', active.mediumModel],
+    ['light', active.lightModel],
+    ['explore', active.exploreModel],
+    ['execute', active.executeModel],
+    ['title', active.titleModel],
+    ['compact', active.compactModel],
+  ]
+
+  for (const [key, modelId] of entries) {
+    if (modelId) {
+      models[key] = modelId
+    }
+  }
+
+  return {
+    advancedMode: active.advancedModelConfig ?? false,
+    models,
+    roleProviders: active.roleProviders ?? { primary: active.llm },
+  }
+}
 
 export function SetupPage() {
   const queryClient = useQueryClient()
@@ -68,6 +97,12 @@ export function SetupPage() {
   const [telegramEnabled, setTelegramEnabled] = useState(false)
   const [telegramToken, setTelegramToken] = useState('')
   const [telegramTokenTested, setTelegramTokenTested] = useState(false)
+  const [chatModelDraft, setChatModelDraft] = useState<{
+    advancedMode: boolean
+    models: Record<string, string>
+    roleProviders: Record<string, string>
+  } | null>(null)
+  const { theme, setTheme } = useTheme()
   const { setActiveWorkspace } = useActiveWorkspace()
   // Sync picked workspace color to CSS --brand variable in real time
   useEffect(() => {
@@ -77,7 +112,8 @@ export function SetupPage() {
   const {
     query: { data, isPending },
     updateProviders,
-    setApiKey,
+    setProviderConnection,
+    removeProviderConnection,
   } = useSetupSettings()
   const { data: capabilities } = useSetupCapabilities()
   const completeSetup = useCompleteSetup()
@@ -142,8 +178,8 @@ export function SetupPage() {
       }
       // Invalidate setup-settings so Embeddings/Chat steps fetch updated model config
       await queryClient.invalidateQueries({ queryKey: ['setup-settings'] })
-      toast.success('Configuration imported — review each step and enter your API keys')
-      setStep(1) // Go to API Keys step
+      toast.success('Configuration imported — review each step and reconnect your providers')
+      setStep(1) // Go to provider connections step
     } catch {
       toast.error('Failed to import — check that the file is a valid workspace export')
     }
@@ -164,8 +200,9 @@ export function SetupPage() {
 
   if (!data) return null
 
-  const { providers, apiKeys, browserGridFromEnv } = data
-  const hasEmbeddingKey = providers.available.embedding.length > 0
+  const { providers, browserGridFromEnv } = data
+  const effectiveChatModelDraft = chatModelDraft ?? buildChatModelDraft(providers)
+  const hasEmbeddingProvider = providers.available.embedding.length > 0
 
   // Capabilities that need config and are selected (exclude OAuth capabilities — configured post-setup via OAuth flow)
   const OAUTH_CAPABILITY_SLUGS = ['google-workspace']
@@ -235,10 +272,15 @@ export function SetupPage() {
         )}
         {step === 1 && (
           <StepApiKeys
-            apiKeys={apiKeys}
-            onSaveKey={(provider, key) => setApiKey.mutate({ provider, key })}
-            isSaving={setApiKey.isPending}
-            canContinue={hasEmbeddingKey}
+            providerMetadata={providers.metadata}
+            connections={providers.connections}
+            onSaveConnection={(provider, value) =>
+              setProviderConnection.mutate({ provider, value })
+            }
+            onRemoveConnection={(provider) => removeProviderConnection.mutate(provider)}
+            isSaving={setProviderConnection.isPending}
+            isRemoving={removeProviderConnection.isPending}
+            canContinue={hasEmbeddingProvider}
             onBack={() => setStep(0)}
             onNext={() => setStep(2)}
           />
@@ -255,7 +297,34 @@ export function SetupPage() {
         {step === 3 && (
           <StepChatModel
             providers={providers}
+            advancedMode={effectiveChatModelDraft.advancedMode}
+            models={effectiveChatModelDraft.models}
+            roleProviders={effectiveChatModelDraft.roleProviders}
             onUpdate={updateProviders.mutate}
+            onAdvancedModeChange={(advancedMode) =>
+              setChatModelDraft((prev) => ({
+                ...(prev ?? buildChatModelDraft(providers)),
+                advancedMode,
+              }))
+            }
+            onModelChange={(roleKey, modelId) =>
+              setChatModelDraft((prev) => ({
+                ...(prev ?? buildChatModelDraft(providers)),
+                models: {
+                  ...(prev?.models ?? buildChatModelDraft(providers).models),
+                  [roleKey]: modelId,
+                },
+              }))
+            }
+            onRoleProviderChange={(roleKey, provider) =>
+              setChatModelDraft((prev) => ({
+                ...(prev ?? buildChatModelDraft(providers)),
+                roleProviders: {
+                  ...(prev?.roleProviders ?? buildChatModelDraft(providers).roleProviders),
+                  [roleKey]: provider,
+                },
+              }))
+            }
             isUpdating={updateProviders.isPending}
             onBack={() => setStep(2)}
             onNext={() => setStep(4)}
@@ -266,9 +335,11 @@ export function SetupPage() {
             name={workspaceName}
             color={workspaceColor}
             timezone={timezone}
+            theme={theme}
             onNameChange={setWorkspaceName}
             onColorChange={setWorkspaceColor}
             onTimezoneChange={setTimezone}
+            onThemeChange={setTheme}
             onBack={() => setStep(3)}
             onNext={() => setStep(5)}
           />

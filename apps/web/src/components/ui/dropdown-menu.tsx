@@ -71,9 +71,7 @@ function DropdownMenuSearchable({
           typeof (child.props as Record<string, unknown>)?.children === 'string'
             ? ((child.props as Record<string, unknown>).children as string)
             : ''
-        const nested = React.isValidElement(child)
-          ? extractText(child)
-          : ''
+        const nested = React.isValidElement(child) ? extractText(child) : ''
         const searchable = (text + ' ' + nested).toLowerCase()
         return searchable.includes(search.toLowerCase())
       })
@@ -106,13 +104,16 @@ function DropdownMenuSearchable({
             />
           </div>
         )}
-        <div className="overflow-y-auto p-1" style={{ maxHeight: 'min(300px, var(--radix-dropdown-menu-content-available-height, 300px))' }}>
+        <div
+          className="overflow-y-auto p-1"
+          style={{
+            maxHeight: 'min(300px, var(--radix-dropdown-menu-content-available-height, 300px))',
+          }}
+        >
           {filtered.length > 0 ? (
             filtered
           ) : (
-            <div className="px-3 py-2 text-center text-sm text-muted-foreground">
-              No results
-            </div>
+            <div className="px-3 py-2 text-center text-sm text-muted-foreground">No results</div>
           )}
         </div>
       </DropdownMenuPrimitive.Content>
@@ -271,10 +272,7 @@ function DropdownMenuShortcut({ className, ...props }: React.ComponentProps<'spa
   return (
     <span
       data-slot="dropdown-menu-shortcut"
-      className={cn(
-        'ml-auto text-xs tracking-widest text-muted-foreground',
-        className,
-      )}
+      className={cn('ml-auto text-xs tracking-widest text-muted-foreground', className)}
       {...props}
     />
   )

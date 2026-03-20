@@ -502,7 +502,9 @@ export const chatService = {
           ],
           { temperature: TITLE_TEMPERATURE, maxTokens: TITLE_MAX_TOKENS },
         )
-        recordTokenUsage(response.usage, sessionId, titleLLM.providerId, titleLLM.modelId)
+        recordTokenUsage(response.usage, sessionId, titleLLM.providerId, titleLLM.modelId, {
+          updateSessionContext: false,
+        })
         return response.content
       })
       .then((title) => {

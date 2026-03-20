@@ -52,7 +52,7 @@ export function StepCapabilities({
   const { data: browserHealth } = useQuery({
     queryKey: ['browser-health-check'],
     queryFn: () =>
-      apiClient.get<{ status: string }>('/browser/health').catch(() => ({ status: 'error' })),
+      apiClient.get<{ healthy: boolean }>('/browser/health').catch(() => ({ healthy: false })),
     retry: false,
   })
 
@@ -61,13 +61,13 @@ export function StepCapabilities({
   useEffect(() => {
     if (browserHealth && !browserAutoDetected) {
       setBrowserAutoDetected(true)
-      if (browserHealth.status === 'ok' || browserHealth.status === 'healthy') {
+      if (browserGridFromEnv || browserHealth.healthy) {
         if (!selected.includes('browser-automation')) {
           onToggle('browser-automation')
         }
       }
     }
-  }, [browserHealth, browserAutoDetected]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [browserHealth, browserAutoDetected, browserGridFromEnv, onToggle, selected])
 
   return (
     <div>

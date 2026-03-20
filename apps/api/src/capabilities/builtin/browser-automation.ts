@@ -18,6 +18,8 @@ Available globals:
 - \`getPageSnapshot()\` — Quick page overview: title, URL, and all interactive elements
 - \`getReadableContent()\` — Extract clean text from current page (max 50KB)
 - \`getLinks()\` — Get top 30 links as [{text, href}]
+- \`getVisualSnapshot(options?)\` — Capture a visual JPEG screenshot for you to see the page. Does NOT save to disk. Use this when you need to visually inspect the page. Returns \`{ screenshot, description }\`. Options: \`{ description?: string, fullPage?: boolean }\`
+- \`saveScreenshot(options?)\` — Save a JPEG screenshot to disk. ONLY use when the user explicitly asks to save, download, or export a screenshot file. Returns \`{ savedPath, description? }\`
 
 RULES:
 1. ONE action per call. Navigate OR discover OR fill OR click — never combine them.
@@ -25,6 +27,8 @@ RULES:
 3. ALWAYS return an observation (getPageSnapshot, getReadableContent, or getLinks) so you can see what happened.
 4. After page.goto(), ONLY return getPageSnapshot() — do NOT try to interact in the same call.
 5. After filling/clicking, return getPageSnapshot() or getReadableContent() to verify the result.
+6. To visually see what a page looks like, use \`getVisualSnapshot()\` — it lets you see the page as an image without saving to disk.
+7. Do NOT call saveScreenshot() unless the user explicitly asked to save/download/export an image file to disk.
 
 Example — searching on a site takes 3+ separate calls:
   Call 1: await page.goto(url); return await getPageSnapshot();
@@ -60,7 +64,8 @@ Each run_browser_script call must do exactly ONE of these:
 2. **Discover**: \`return await getPageSnapshot();\` or \`return await getInteractiveElements();\`
 3. **Interact**: Find element + fill/click ONE thing, then \`return await getPageSnapshot();\`
 4. **Read**: \`return await getReadableContent();\` or \`return await getLinks();\`
-5. **Screenshot**: \`const s = await page.screenshot({ encoding: 'base64' }); return { screenshot: s, description: '...' };\`
+5. **Visual inspect**: \`return await getVisualSnapshot({ description: 'what I expect to see' });\` — lets you see the page as an image without saving to disk. Use this when you need to visually describe a page.
+6. **Save screenshot (only when user explicitly asks)**: \`return await saveScreenshot({ description: '...', filename: 'name', fullPage: true });\` — writes to disk. Only use when the user asks to save/download/export an image file.
 
 NEVER combine navigate + interact in one call. NEVER guess selectors — discover first, interact in the next call.
 
@@ -87,6 +92,8 @@ Call 3: return await getReadableContent();
 ## Rules
 - Always use the \`selector\` field from getInteractiveElements/getPageSnapshot results
 - After any navigation or click that loads new content, call getPageSnapshot() to see the new state
-- Use page.waitForTimeout(1000-2000) after clicks that trigger page loads before reading`,
+- Use page.waitForTimeout(1000-2000) after clicks that trigger page loads before reading
+- To visually inspect a page, use \`getVisualSnapshot()\` — it sends you the image without saving to disk
+- Only use \`saveScreenshot()\` when the user explicitly requests saving/downloading/exporting a screenshot file to disk`,
   sandbox: {},
 }

@@ -10,4 +10,13 @@ export const embeddingService = {
     const provider = await createEmbeddingProvider()
     return provider.embedBatch(texts)
   },
+
+  _dimensionsCache: null as number | null,
+
+  async getEmbeddingDimensions(): Promise<number> {
+    if (this._dimensionsCache != null) return this._dimensionsCache
+    const vector = await this.embed('dimension probe')
+    this._dimensionsCache = vector.length
+    return vector.length
+  },
 }

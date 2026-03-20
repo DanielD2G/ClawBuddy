@@ -26,6 +26,8 @@ import { htmlToMarkdown, htmlToText } from '../lib/html-to-markdown.js'
 import { isPrivateHost } from '../lib/url-safety.js'
 import type { SecretInventory } from './secret-redaction.service.js'
 import { secretRedactionService } from './secret-redaction.service.js'
+import path from 'node:path'
+import { randomUUID } from 'node:crypto'
 
 interface ExecutionContext {
   workspaceId: string
@@ -314,7 +316,49 @@ async function executeGenerateFile(
   const filename = String(args.filename ?? 'file.txt')
   const sourcePath = args.sourcePath as string | undefined
 
-  let content: string
+  const ext = filename.split('.').pop()?.toLowerCase() ?? 'txt'
+  const BINARY_EXTENSIONS = new Set([
+    'jpg',
+    'jpeg',
+    'png',
+    'gif',
+    'webp',
+    'bmp',
+    'ico',
+    'pdf',
+    'zip',
+    'tar',
+    'gz',
+    'mp3',
+    'mp4',
+    'wav',
+    'ogg',
+    'woff',
+    'woff2',
+    'ttf',
+    'otf',
+  ])
+  const isBinary = BINARY_EXTENSIONS.has(ext)
+
+  const mimeTypes: Record<string, string> = {
+    csv: 'text/csv',
+    md: 'text/markdown',
+    txt: 'text/plain',
+    json: 'application/json',
+    html: 'text/html',
+    xml: 'application/xml',
+    yaml: 'text/yaml',
+    yml: 'text/yaml',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    png: 'image/png',
+    gif: 'image/gif',
+    webp: 'image/webp',
+    pdf: 'application/pdf',
+    zip: 'application/zip',
+  }
+
+  let buffer: Buffer
   if (sourcePath) {
     // Read file content from sandbox
     if (!context.workspaceId) {
@@ -327,36 +371,70 @@ async function executeGenerateFile(
     const userHome = '/workspace'
     // Resolve relative paths to workspace directory
     const resolvedPath = sourcePath.startsWith('/') ? sourcePath : `${userHome}/${sourcePath}`
-    let readResult = await sandboxService.execInWorkspace(
-      context.workspaceId,
-      `cat ${JSON.stringify(resolvedPath)}`,
-      { timeout: 10 },
-    )
-    // Fallback: if absolute path failed, try the basename in workspace dir
-    if (
-      readResult.exitCode !== 0 &&
-      resolvedPath !== `${userHome}/${sourcePath.split('/').pop()}`
-    ) {
-      const fallbackPath = `${userHome}/${sourcePath.split('/').pop()}`
-      const fallbackResult = await sandboxService.execInWorkspace(
+
+    if (isBinary) {
+      // For binary files, read as base64 to preserve bytes
+      let readResult = await sandboxService.execInWorkspace(
         context.workspaceId,
-        `cat ${JSON.stringify(fallbackPath)}`,
+        `base64 -w0 ${JSON.stringify(resolvedPath)}`,
+        { timeout: 30 },
+      )
+      // Fallback: try basename in workspace dir
+      if (
+        readResult.exitCode !== 0 &&
+        resolvedPath !== `${userHome}/${sourcePath.split('/').pop()}`
+      ) {
+        const fallbackPath = `${userHome}/${sourcePath.split('/').pop()}`
+        const fallbackResult = await sandboxService.execInWorkspace(
+          context.workspaceId,
+          `base64 -w0 ${JSON.stringify(fallbackPath)}`,
+          { timeout: 30 },
+        )
+        if (fallbackResult.exitCode === 0) {
+          readResult = fallbackResult
+        }
+      }
+      if (readResult.exitCode !== 0) {
+        return {
+          output: '',
+          error: `Failed to read ${sourcePath}: ${readResult.stderr}. Your working directory is ${userHome}/ — use absolute paths or relative paths from there.`,
+          durationMs: Date.now() - startTime,
+        }
+      }
+      buffer = Buffer.from(readResult.stdout.trim(), 'base64')
+    } else {
+      // For text files, read normally
+      let readResult = await sandboxService.execInWorkspace(
+        context.workspaceId,
+        `cat ${JSON.stringify(resolvedPath)}`,
         { timeout: 10 },
       )
-      if (fallbackResult.exitCode === 0) {
-        readResult = fallbackResult
+      // Fallback: try basename in workspace dir
+      if (
+        readResult.exitCode !== 0 &&
+        resolvedPath !== `${userHome}/${sourcePath.split('/').pop()}`
+      ) {
+        const fallbackPath = `${userHome}/${sourcePath.split('/').pop()}`
+        const fallbackResult = await sandboxService.execInWorkspace(
+          context.workspaceId,
+          `cat ${JSON.stringify(fallbackPath)}`,
+          { timeout: 10 },
+        )
+        if (fallbackResult.exitCode === 0) {
+          readResult = fallbackResult
+        }
       }
-    }
-    if (readResult.exitCode !== 0) {
-      return {
-        output: '',
-        error: `Failed to read ${sourcePath}: ${readResult.stderr}. Your working directory is ${userHome}/ — use absolute paths or relative paths from there.`,
-        durationMs: Date.now() - startTime,
+      if (readResult.exitCode !== 0) {
+        return {
+          output: '',
+          error: `Failed to read ${sourcePath}: ${readResult.stderr}. Your working directory is ${userHome}/ — use absolute paths or relative paths from there.`,
+          durationMs: Date.now() - startTime,
+        }
       }
+      buffer = Buffer.from(readResult.stdout, 'utf-8')
     }
-    content = readResult.stdout
   } else if (args.content) {
-    content = String(args.content)
+    buffer = Buffer.from(String(args.content), 'utf-8')
   } else {
     return {
       output: '',
@@ -366,18 +444,7 @@ async function executeGenerateFile(
   }
 
   const key = `generated/${Date.now()}-${filename}`
-  const ext = filename.split('.').pop()?.toLowerCase() ?? 'txt'
-  const mimeTypes: Record<string, string> = {
-    csv: 'text/csv',
-    md: 'text/markdown',
-    txt: 'text/plain',
-    json: 'application/json',
-    html: 'text/html',
-    xml: 'application/xml',
-    yaml: 'text/yaml',
-    yml: 'text/yaml',
-  }
-  await storageService.upload(key, Buffer.from(content, 'utf-8'), mimeTypes[ext] ?? 'text/plain')
+  await storageService.upload(key, buffer, mimeTypes[ext] ?? 'application/octet-stream')
 
   const downloadUrl = `/api/files/${key}`
 
@@ -709,8 +776,61 @@ async function executeBrowserScript(
   const result = await browserService.executeScript(sessionKey, script, timeout)
 
   if (result.success) {
+    let output = result.result ?? 'Script completed.'
+    try {
+      const parsed = JSON.parse(output) as Record<string, unknown>
+      if (parsed.__saveScreenshot === true) {
+        if (!context.workspaceId) {
+          return {
+            output: '',
+            error: 'saveScreenshot() requires an active sandbox session.',
+            durationMs: Date.now() - startTime,
+          }
+        }
+
+        const screenshotB64 =
+          typeof parsed.screenshot === 'string'
+            ? parsed.screenshot
+            : extractScreenshotBase64(output).screenshotB64
+        if (!screenshotB64) {
+          return {
+            output: '',
+            error: 'saveScreenshot() did not produce screenshot data.',
+            durationMs: Date.now() - startTime,
+          }
+        }
+
+        const suggestedName =
+          typeof parsed.filename === 'string' && parsed.filename.trim()
+            ? path.posix.basename(parsed.filename.trim())
+            : `browser-screenshot-${randomUUID()}.jpg`
+        const baseName = suggestedName.replace(/\.[^.]+$/i, '')
+        const resolvedPath = `/workspace/screenshots/${baseName}-${randomUUID()}.jpg`
+        const saveResult = await sandboxService.execInWorkspace(
+          context.workspaceId,
+          `mkdir -p ${JSON.stringify(path.posix.dirname(resolvedPath))} && printf '%s' ${JSON.stringify(screenshotB64)} | base64 -d | tee ${JSON.stringify(resolvedPath)} >/dev/null && chmod 666 ${JSON.stringify(resolvedPath)}`,
+          { timeout: 15 },
+        )
+        if (saveResult.exitCode !== 0) {
+          return {
+            output: '',
+            error: `Failed to save screenshot to ${resolvedPath}: ${saveResult.stderr || 'unknown error'}`,
+            durationMs: Date.now() - startTime,
+          }
+        }
+
+        delete parsed.__saveScreenshot
+        delete parsed.screenshot
+        delete parsed.filename
+        parsed.savedPath = resolvedPath
+        output = JSON.stringify(parsed, null, 2)
+      }
+    } catch {
+      // Non-JSON browser output is returned as-is.
+    }
+
     return {
-      output: result.result ?? 'Script completed.',
+      output,
       durationMs: Date.now() - startTime,
     }
   }

@@ -14,6 +14,7 @@ import { prisma } from '../lib/prisma.js'
 import { decrypt } from '../services/crypto.service.js'
 import { decryptConfigFields } from '../services/config-validation.service.js'
 import { validateBody } from '../lib/validate.js'
+import { buildResolvedRoleProviders } from '../lib/llm-resolver.js'
 
 const app = new Hono()
 
@@ -168,6 +169,7 @@ app.get('/:id/export', async (c) => {
   const modelConfig = {
     aiProvider: settings.aiProvider,
     aiModel: settings.aiModel,
+    roleProviders: buildResolvedRoleProviders(settings),
     mediumModel: settings.mediumModel,
     lightModel: settings.lightModel,
     exploreModel: settings.exploreModel,
@@ -177,6 +179,7 @@ app.get('/:id/export', async (c) => {
     advancedModelConfig: settings.advancedModelConfig,
     embeddingProvider: settings.embeddingProvider,
     embeddingModel: settings.embeddingModel,
+    localBaseUrl: settings.localBaseUrl,
     contextLimitTokens: settings.contextLimitTokens,
     maxAgentIterations: settings.maxAgentIterations,
     subAgentExploreMaxIterations: settings.subAgentExploreMaxIterations,

@@ -217,6 +217,7 @@ describe('browser-automation capability', () => {
     expect(desc).toContain('getInteractiveElements()')
     expect(desc).toContain('getPageSnapshot()')
     expect(desc).toContain('page')
+    expect(desc).toContain('saveScreenshot')
   })
 })
 

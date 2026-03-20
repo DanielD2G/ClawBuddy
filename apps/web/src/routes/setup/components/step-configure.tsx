@@ -93,7 +93,11 @@ export function StepConfigure({
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <button className="flex h-(--control) w-full items-center justify-between rounded-md border border-border bg-muted/40 px-3 text-sm hover:bg-muted/70 dark:bg-muted/20 dark:hover:bg-muted/40">
-                          <span>{field.options?.find((o) => o.value === getFieldValue(cap.slug, field.key))?.label || 'Select...'}</span>
+                          <span>
+                            {field.options?.find(
+                              (o) => o.value === getFieldValue(cap.slug, field.key),
+                            )?.label || 'Select...'}
+                          </span>
                           <ChevronsUpDown className="size-4 text-muted-foreground" />
                         </button>
                       </DropdownMenuTrigger>
@@ -105,7 +109,9 @@ export function StepConfigure({
                             className="gap-2"
                           >
                             <span className="flex-1">{opt.label}</span>
-                            {getFieldValue(cap.slug, field.key) === opt.value && <Check className="size-3.5" />}
+                            {getFieldValue(cap.slug, field.key) === opt.value && (
+                              <Check className="size-3.5" />
+                            )}
                           </DropdownMenuItem>
                         ))}
                       </DropdownMenuContent>

@@ -19,9 +19,7 @@ export function StepNav({ visibleSteps, currentStep }: StepNavProps) {
         <span className="text-sm text-muted-foreground">
           Step {currentStep + 1} of {visibleSteps.length}
         </span>
-        <span className="text-sm font-medium">
-          {visibleSteps[currentStep]?.label}
-        </span>
+        <span className="text-sm font-medium">{visibleSteps[currentStep]?.label}</span>
       </div>
       <div className="h-1 w-full rounded-full bg-muted overflow-hidden">
         <div
