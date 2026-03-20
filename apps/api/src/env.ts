@@ -16,11 +16,12 @@ const envSchema = z.object({
   APP_URL: z.string().default('http://localhost:5173'),
 
   // AI providers
-  AI_PROVIDER: z.enum(['openai', 'gemini', 'claude']).default('openai'),
+  AI_PROVIDER: z.enum(['openai', 'gemini', 'claude', 'openrouter']).default('openai'),
   EMBEDDING_PROVIDER: z.enum(['openai', 'gemini']).default('openai'),
   OPENAI_API_KEY: z.string().default(''),
   GEMINI_API_KEY: z.string().default(''),
   ANTHROPIC_API_KEY: z.string().default(''),
+  OPENROUTER_API_KEY: z.string().default(''),
 
   // Google OAuth (for Google Workspace integration)
   GOOGLE_CLIENT_ID: z.string().default(''),
@@ -37,9 +38,9 @@ const envSchema = z.object({
 export const env = envSchema.parse(process.env)
 
 // Warn at startup if no API keys are configured at all
-const hasAnyKey = !!(env.OPENAI_API_KEY || env.GEMINI_API_KEY || env.ANTHROPIC_API_KEY)
+const hasAnyKey = !!(env.OPENAI_API_KEY || env.GEMINI_API_KEY || env.ANTHROPIC_API_KEY || env.OPENROUTER_API_KEY)
 if (!hasAnyKey) {
   console.warn(
-    '⚠️  No AI provider API keys configured. Set at least one of: OPENAI_API_KEY, GEMINI_API_KEY, ANTHROPIC_API_KEY',
+    '⚠️  No AI provider API keys configured. Set at least one of: OPENAI_API_KEY, GEMINI_API_KEY, ANTHROPIC_API_KEY, OPENROUTER_API_KEY',
   )
 }

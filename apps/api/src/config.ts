@@ -44,6 +44,15 @@ export const MODEL_CATALOG = {
       v('claude-sonnet-4-20250514'),
       v('claude-opus-4-0-20250514'),
     ],
+    openrouter: [
+      v('openai/gpt-4o'),
+      v('anthropic/claude-sonnet-4-6'),
+      v('google/gemini-2.5-flash'),
+      v('meta-llama/llama-4-maverick'),
+      v('deepseek/deepseek-r1'),
+      v('mistralai/mistral-large'),
+      v('qwen/qwen3-235b-a22b'),
+    ],
   } as Record<string, ModelEntry[]>,
   embedding: {
     openai: ['text-embedding-3-small', 'text-embedding-3-large'],
@@ -68,6 +77,7 @@ export const DEFAULT_LLM_MODELS: Record<string, string> = {
   openai: 'gpt-5.4',
   gemini: 'gemini-2.5-flash',
   claude: 'claude-sonnet-4-6',
+  openrouter: 'openai/gpt-4o',
 }
 
 export const DEFAULT_EMBEDDING_MODELS: Record<string, string> = {
@@ -79,24 +89,28 @@ export const DEFAULT_MEDIUM_MODELS: Record<string, string> = {
   openai: 'gpt-5-mini',
   gemini: 'gemini-2.5-flash',
   claude: 'claude-sonnet-4-6',
+  openrouter: 'openai/gpt-4o',
 }
 
 export const DEFAULT_LIGHT_MODELS: Record<string, string> = {
   openai: 'gpt-5-nano',
   gemini: 'gemini-2.5-flash-lite',
   claude: 'claude-haiku-4-5-20251001',
+  openrouter: 'google/gemini-2.5-flash',
 }
 
 export const DEFAULT_TITLE_MODELS: Record<string, string> = {
   openai: 'gpt-5-nano',
   gemini: 'gemini-3.1-flash-lite-preview',
   claude: 'claude-haiku-4-5-20251001',
+  openrouter: 'google/gemini-2.5-flash',
 }
 
 export const DEFAULT_COMPACT_MODELS: Record<string, string> = {
   openai: 'gpt-5-nano',
   gemini: 'gemini-3.1-flash-lite-preview',
   claude: 'claude-haiku-4-5-20251001',
+  openrouter: 'google/gemini-2.5-flash',
 }
 
 /** Infer the provider from a model ID based on naming conventions. */
@@ -110,6 +124,7 @@ export function inferProviderFromModel(modelId: string): string | null {
     return 'openai'
   if (modelId.startsWith('gemini-')) return 'gemini'
   if (modelId.startsWith('claude-')) return 'claude'
+  if (modelId.includes('/')) return 'openrouter'
   return null
 }
 
@@ -117,10 +132,12 @@ export const ENV_KEYS: Record<string, string> = {
   openai: env.OPENAI_API_KEY,
   gemini: env.GEMINI_API_KEY,
   claude: env.ANTHROPIC_API_KEY,
+  openrouter: env.OPENROUTER_API_KEY,
 }
 
-export const DB_KEY_FIELDS: Record<string, 'openaiApiKey' | 'geminiApiKey' | 'anthropicApiKey'> = {
+export const DB_KEY_FIELDS: Record<string, 'openaiApiKey' | 'geminiApiKey' | 'anthropicApiKey' | 'openrouterApiKey'> = {
   openai: 'openaiApiKey',
   gemini: 'geminiApiKey',
   claude: 'anthropicApiKey',
+  openrouter: 'openrouterApiKey',
 }

@@ -124,6 +124,31 @@ async function fetchGeminiModels(apiKey: string): Promise<{ llm: string[]; embed
   }
 }
 
+// ── OpenRouter ─────────────────────────────────────
+
+interface OpenRouterModel {
+  id: string
+  name: string
+  context_length?: number
+}
+
+interface OpenRouterListResponse {
+  data: OpenRouterModel[]
+}
+
+async function fetchOpenRouterModels(apiKey: string): Promise<{ llm: string[] }> {
+  const res = await fetch('https://openrouter.ai/api/v1/models', {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  })
+  if (!res.ok) throw new Error(`OpenRouter API returned ${res.status}`)
+  const data = (await res.json()) as OpenRouterListResponse
+  const models = (data.data ?? [])
+    .map((m) => m.id)
+    .filter((id) => !id.includes(':free') || true) // include all models
+    .sort()
+  return { llm: models }
+}
+
 // ── Public API ───────────────────────────────────────
 
 async function fetchAndCache(
@@ -137,6 +162,8 @@ async function fetchAndCache(
       return { ...(await fetchAnthropicModels(apiKey)), embedding: [] }
     case 'gemini':
       return fetchGeminiModels(apiKey)
+    case 'openrouter':
+      return { ...(await fetchOpenRouterModels(apiKey)), embedding: [] }
     default:
       return { llm: [], embedding: [] }
   }

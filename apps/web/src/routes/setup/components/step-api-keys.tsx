@@ -31,7 +31,7 @@ export function StepApiKeys({
         </p>
       </div>
       <div className="flex flex-col gap-3">
-        {['openai', 'gemini', 'claude'].map((provider) => (
+        {['openai', 'gemini', 'claude', 'openrouter'].map((provider) => (
           <ApiKeyInput
             key={provider}
             label={PROVIDER_LABELS[provider] ?? provider}

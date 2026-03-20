@@ -41,7 +41,7 @@ export function ApiKeysSection() {
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        {['openai', 'gemini', 'claude'].map((provider) => (
+        {['openai', 'gemini', 'claude', 'openrouter'].map((provider) => (
           <ApiKeyRow
             key={provider}
             label={PROVIDER_LABELS[provider] ?? provider}

@@ -74,6 +74,7 @@ export const PROVIDER_LABELS: Record<string, string> = {
   openai: 'OpenAI',
   gemini: 'Google Gemini',
   claude: 'Anthropic Claude',
+  openrouter: 'OpenRouter',
 }
 
 // ── Model provider inference ────────────────────
@@ -87,6 +88,7 @@ export function inferProvider(modelId: string, availableProviders: string[]): st
     return 'openai'
   if (modelId.startsWith('gemini-')) return 'gemini'
   if (modelId.startsWith('claude-')) return 'claude'
+  if (modelId.includes('/')) return 'openrouter'
   return availableProviders[0] ?? 'openai'
 }
 

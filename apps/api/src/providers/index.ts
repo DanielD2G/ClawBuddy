@@ -7,6 +7,7 @@ import { GeminiEmbeddingProvider } from './gemini-embeddings.js'
 import { OpenAILLMProvider } from './openai-llm.js'
 import { GeminiLLMProvider } from './gemini-llm.js'
 import { ClaudeLLMProvider } from './claude-llm.js'
+import { OpenRouterLLMProvider } from './openrouter-llm.js'
 
 const embeddingRegistry = new Map<string, new (model: string, apiKey: string) => EmbeddingProvider>(
   [
@@ -19,6 +20,7 @@ const llmRegistry = new Map<string, new (model: string, apiKey: string) => LLMPr
   ['openai', OpenAILLMProvider],
   ['gemini', GeminiLLMProvider],
   ['claude', ClaudeLLMProvider],
+  ['openrouter', OpenRouterLLMProvider],
 ])
 
 export async function createEmbeddingProvider(): Promise<EmbeddingProvider> {

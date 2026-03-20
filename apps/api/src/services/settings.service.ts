@@ -243,7 +243,7 @@ export const settingsService = {
   async getMaskedKeys() {
     const s = await this.get()
     const result: Record<string, { source: 'env' | 'db' | null; masked: string | null }> = {}
-    for (const provider of ['openai', 'gemini', 'claude']) {
+    for (const provider of ['openai', 'gemini', 'claude', 'openrouter']) {
       const envKey = ENV_KEYS[provider]
       if (envKey) {
         result[provider] = { source: 'env', masked: mask(envKey) }

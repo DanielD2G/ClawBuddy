@@ -361,6 +361,7 @@ app.post('/preflight', async (c) => {
     openai: 'OpenAI',
     gemini: 'Google Gemini',
     claude: 'Anthropic Claude',
+    openrouter: 'OpenRouter',
   }
 
   for (const provider of available.llm) {
