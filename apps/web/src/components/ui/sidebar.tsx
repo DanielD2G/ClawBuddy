@@ -163,7 +163,7 @@ function Sidebar({ className, children, ...props }: React.ComponentProps<'div'>)
       {/* Fixed sidebar panel */}
       <div
         className={cn(
-          'fixed inset-y-0 left-0 z-10 hidden h-svh w-(--sidebar-width) border-r transition-[left,width] duration-200 ease-linear md:flex',
+          'fixed inset-y-0 left-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,width] duration-200 ease-linear md:flex',
           'group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]',
           className,
         )}
