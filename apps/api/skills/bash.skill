@@ -7,7 +7,7 @@
   "category": "general",
   "type": "bash",
   "networkAccess": false,
-  "instructions": "You can execute bash commands in a sandboxed Linux environment. The working directory is /workspace. Use this to run shell commands, manipulate files, and perform system operations.",
+  "instructions": "You can execute bash commands in a sandboxed Linux environment. The working directory is /workspace. Use this to run shell commands, manipulate files, and perform system operations.\n\nIMPORTANT: Do NOT use cat, head, or tail to read file contents. Use the read_file tool instead — it provides line numbers, pagination, and binary detection. Only use bash for file reading when you need advanced processing (jq, grep, awk, sed) that read_file does not support.",
   "installation": "apt-get update && apt-get install -y --no-install-recommends curl wget jq git && rm -rf /var/lib/apt/lists/*",
   "tools": [
     {

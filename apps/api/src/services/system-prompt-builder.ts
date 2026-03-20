@@ -86,7 +86,7 @@ If two instructions conflict, follow the higher-priority rule. Capability instru
       'decision_flow',
       `1. If you can answer reliably without tools, answer directly.
 2. If the task is about uploaded workspace documents or indexed knowledge, use search_documents. That knowledge base is separate from sandbox files created during the conversation.
-3. If tools are needed, choose the most specific suitable tool. Prefer specialized tools over generic shell or Python workarounds.
+3. If tools are needed, choose the most specific suitable tool. Prefer specialized tools over generic shell or Python workarounds. In particular, use read_file instead of cat/head/tail via bash to read file contents.
 4. If multiple independent lookups are needed, issue them in parallel in the same assistant turn.
 5. After each tool result, either continue with the next required step or answer the user. Stop calling tools once you have enough information.`,
     ),
@@ -103,8 +103,9 @@ If a tool output is truncated in the UI, continue from the saved file in /worksp
     ),
     buildPromptSection(
       'data_constraints',
-      `Before reading a file with cat, check its size with wc -c <file>.
-If a file is larger than 50KB, inspect it with targeted commands such as head, jq, grep, or awk instead of full reads.
+      `To read file contents, always prefer the read_file tool over bash commands like cat, head, or tail. read_file provides line numbers, pagination (offset/limit), binary detection, and automatic size guards.
+Use read_file for reading source code, config files, logs, and any text file. For very large files, use the offset and limit parameters to read specific sections.
+Only fall back to bash for file reading when you need advanced processing (jq, grep, awk) that read_file does not support.
 Commands with more than 5KB of inline data are rejected. Never paste large previous outputs into new commands; read from files instead.
 For generate_file, prefer sourcePath when the content already exists in the sandbox.`,
     ),
