@@ -207,10 +207,15 @@ export function ChatPage() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] -m-6">
+    <div className="relative flex h-full flex-col">
+      {/* Top fade */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-col">
+        <div className="h-2 w-full bg-background" />
+        <div className="h-16 w-full bg-gradient-to-b from-background to-transparent" />
+      </div>
       {/* Messages */}
       <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl px-4 py-6">
+        <div className="mx-auto max-w-3xl px-4 pt-16 pb-36">
           {messages.length === 0 && !isPending && (
             <div className="flex flex-col items-center justify-center py-32">
               <p className="text-lg font-medium text-foreground">
@@ -427,22 +432,21 @@ export function ChatPage() {
         </div>
       </div>
 
-      {/* Scroll-to-bottom */}
-      {showScrollDown && (
-        <div className="relative">
-          <button
-            onClick={scrollToBottom}
-            aria-label="Scroll to bottom"
-            className="absolute -top-12 left-1/2 -translate-x-1/2 flex size-8 items-center justify-center rounded-full border bg-background shadow-md transition-colors hover:bg-muted"
-          >
-            <ArrowDown className="size-4" />
-          </button>
-        </div>
-      )}
-
         {/* Input */}
-        <div className="border-t border-border/50 bg-muted/20 px-4 py-3 backdrop-blur-sm">
-        <div className="mx-auto max-w-3xl">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex flex-col items-center">
+          {/* Scroll-to-bottom */}
+          {showScrollDown && (
+            <button
+              onClick={scrollToBottom}
+              aria-label="Scroll to bottom"
+              className="pointer-events-auto -mb-4 flex size-8 items-center justify-center rounded-full border bg-background shadow-md transition-colors hover:bg-muted"
+            >
+              <ArrowDown className="size-4" />
+            </button>
+          )}
+          <div className="h-10 w-full bg-gradient-to-t from-background to-transparent" />
+          <div className="w-full bg-background px-4 pb-6">
+            <div className="pointer-events-auto mx-auto w-full max-w-3xl">
           {pendingApprovals.length > 0 ? (
             <ApprovalInputBar approvals={pendingApprovals} onDecision={approveToolCall} />
           ) : (
@@ -477,9 +481,9 @@ export function ChatPage() {
               >
                 <div
                   className={`
-                    flex flex-col rounded-[1.4rem] bg-background/70 px-5 py-3
+                    flex flex-col rounded-[1.4rem] border border-border/40 bg-background px-5 py-3 shadow-2xl
                     transition-all duration-200
-                    ${focused ? 'bg-background shadow-sm' : ''}
+                    ${focused ? 'shadow-[0_-8px_40px_rgba(0,0,0,0.25)]' : ''}
                   `}
                 >
                   <MentionInput
@@ -502,28 +506,6 @@ export function ChatPage() {
                       capabilities={enabledCapabilities}
                       documents={allDocsForMenu}
                     />
-
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      multiple
-                      className="hidden"
-                      onChange={handleFileSelect}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={uploading}
-                      className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground transition-colors"
-                      title="Attach file"
-                      aria-label="Attach files"
-                    >
-                      {uploading ? (
-                        <Loader2 className="size-4 animate-spin" />
-                      ) : (
-                        <Paperclip className="size-4" strokeWidth={1.5} />
-                      )}
-                    </button>
 
                     <div className="flex-1" />
 
@@ -627,6 +609,7 @@ export function ChatPage() {
               </form>
             </>
           )}
+          </div>
         </div>
       </div>
     </div>

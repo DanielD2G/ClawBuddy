@@ -10,7 +10,7 @@ export function DashboardLayout() {
       <AppSidebar />
       <SidebarInset>
         <Header />
-        <main className="flex flex-1 flex-col overflow-hidden p-6">
+        <main className="flex flex-1 flex-col overflow-hidden">
           <ErrorBoundary>
             <Outlet />
           </ErrorBoundary>
