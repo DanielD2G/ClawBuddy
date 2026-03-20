@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { ChevronRight, ChevronLeft, ChevronsUpDown, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { PROVIDER_LABELS, inferProvider } from '@/constants'
+import { PROVIDER_LABELS } from '@/constants'
 import type { ProvidersData } from '@/hooks/use-providers'
 
 interface StepChatModelProps {
@@ -21,13 +21,13 @@ interface StepChatModelProps {
 }
 
 const SIMPLE_TIERS = [
-  { key: 'main', label: 'Main', description: 'Primary agent reasoning' },
+  { key: 'primary', label: 'Main', description: 'Primary agent reasoning' },
   { key: 'medium', label: 'Medium', description: 'Execute sub-agent, RAG, compression' },
   { key: 'light', label: 'Light', description: 'Explore sub-agent, titles' },
 ]
 
 const ADVANCED_ROLES = [
-  { key: 'main', label: 'Main', description: 'Primary agent' },
+  { key: 'primary', label: 'Main', description: 'Primary agent' },
   { key: 'explore', label: 'Explore', description: 'Search & browse sub-agent' },
   { key: 'execute', label: 'Execute', description: 'Multi-step sub-agent' },
   { key: 'title', label: 'Title', description: 'Chat title generation' },
@@ -35,7 +35,7 @@ const ADVANCED_ROLES = [
 ]
 
 const MODEL_FIELD_MAP: Record<string, string> = {
-  main: 'llmModel',
+  primary: 'llmModel',
   medium: 'mediumModel',
   light: 'lightModel',
   explore: 'exploreModel',
@@ -62,10 +62,9 @@ export function StepChatModel({
   useEffect(() => {
     const active = providers.active
     const serverModels: Record<string, string> = {}
-    const serverProviders: Record<string, string> = {}
 
     const entries: [string, string | null][] = [
-      ['main', active.llmModel],
+      ['primary', active.llmModel],
       ['medium', active.mediumModel],
       ['light', active.lightModel],
       ['explore', active.exploreModel],
@@ -77,31 +76,30 @@ export function StepChatModel({
     for (const [key, modelId] of entries) {
       if (modelId) {
         serverModels[key] = modelId
-        serverProviders[key] = inferProvider(modelId, availableProviders)
-      }
-    }
-
-    // For keys without a saved model, default to main's provider
-    const mainProvider = serverProviders.main ?? active.llm
-    for (const role of [...SIMPLE_TIERS, ...ADVANCED_ROLES]) {
-      if (!serverProviders[role.key]) {
-        serverProviders[role.key] = mainProvider
       }
     }
 
     setModels(serverModels)
-    setRoleProviders(serverProviders)
+    setRoleProviders(active.roleProviders ?? { primary: active.llm })
     setAdvancedMode(active.advancedModelConfig ?? false)
   }, [providers, availableProviders])
 
   const handleProviderChange = (roleKey: string, provider: string) => {
-    setRoleProviders((prev) => ({ ...prev, [roleKey]: provider }))
+    const nextProviders = { ...roleProviders, [roleKey]: provider }
+    setRoleProviders(nextProviders)
     const firstModel = providers.models.llm[provider]?.[0]
     if (firstModel) {
       setModels((prev) => ({ ...prev, [roleKey]: firstModel }))
       const field = MODEL_FIELD_MAP[roleKey]
-      if (field) onUpdate({ [field]: firstModel })
+      if (field)
+        onUpdate({
+          roleProviders: nextProviders,
+          [field]: firstModel,
+          ...(roleKey === 'primary' ? { llm: provider } : {}),
+        })
+      return
     }
+    onUpdate({ roleProviders: nextProviders, ...(roleKey === 'primary' ? { llm: provider } : {}) })
   }
 
   const handleModelChange = (roleKey: string, modelId: string) => {
@@ -165,8 +163,13 @@ export function StepChatModel({
                 <div className="flex gap-2">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <button disabled={isUpdating} className="flex h-(--control) w-[140px] shrink-0 items-center justify-between rounded-md border border-border bg-muted/40 px-3 text-sm hover:bg-muted/70 dark:bg-muted/20 dark:hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-50">
-                        <span className="truncate">{PROVIDER_LABELS[currentProvider] ?? currentProvider}</span>
+                      <button
+                        disabled={isUpdating}
+                        className="flex h-(--control) w-[140px] shrink-0 items-center justify-between rounded-md border border-border bg-muted/40 px-3 text-sm hover:bg-muted/70 dark:bg-muted/20 dark:hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <span className="truncate">
+                          {PROVIDER_LABELS[currentProvider] ?? currentProvider}
+                        </span>
                         <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" />
                       </button>
                     </DropdownMenuTrigger>
@@ -185,7 +188,10 @@ export function StepChatModel({
                   </DropdownMenu>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <button disabled={isUpdating} className="flex h-(--control) w-full items-center justify-between rounded-md border border-border/50 bg-transparent px-3 font-mono text-xs hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50">
+                      <button
+                        disabled={isUpdating}
+                        className="flex h-(--control) w-full items-center justify-between rounded-md border border-border/50 bg-transparent px-3 font-mono text-xs hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                      >
                         <span className="truncate">{currentModel || 'Default'}</span>
                         <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" />
                       </button>

@@ -147,6 +147,7 @@ model AppSettings {
   executeModel      String?
   titleModel        String?
   compactModel      String?
+  llmProviderOverrides Json?
   useLightModel     Boolean  @default(true)
   advancedModelConfig Boolean @default(false)
   embeddingProvider String   @default("openai")
@@ -154,6 +155,7 @@ model AppSettings {
   openaiApiKey        String?  @db.Text
   geminiApiKey        String?  @db.Text
   anthropicApiKey     String?  @db.Text
+  localBaseUrl        String?
   onboardingComplete Boolean @default(false)
   contextLimitTokens Int      @default(30000)
   browserGridUrl     String?

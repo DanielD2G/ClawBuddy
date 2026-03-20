@@ -1,8 +1,24 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
 
+export interface ProviderMetadata {
+  label: string
+  connectionType: 'apiKey' | 'baseUrl'
+  supports: {
+    llm: boolean
+    embedding: boolean
+  }
+}
+
+export interface ProviderConnectionInfo {
+  source: 'env' | 'db' | null
+  value: string | null
+}
+
 export interface SettingsData {
   providers: {
+    metadata: Record<string, ProviderMetadata>
+    connections: Record<string, ProviderConnectionInfo>
     active: {
       llm: string
       llmModel: string | null
@@ -13,8 +29,10 @@ export interface SettingsData {
       titleModel: string | null
       compactModel: string | null
       advancedModelConfig: boolean
+      roleProviders: Record<string, string>
       embedding: string
       embeddingModel: string | null
+      localBaseUrl: string | null
     }
     available: { llm: string[]; embedding: string[] }
     models: {
@@ -22,7 +40,6 @@ export interface SettingsData {
       embedding: Record<string, string[]>
     }
   }
-  apiKeys: Record<string, { source: 'env' | 'db' | null; masked: string | null }>
   onboardingComplete?: boolean
   browserGridFromEnv?: boolean
 }
@@ -46,24 +63,32 @@ export function createSettingsHook(options: SettingsHookOptions) {
       mutationFn: (data: {
         llm?: string
         llmModel?: string
+        mediumModel?: string
+        lightModel?: string
+        exploreModel?: string
+        executeModel?: string
+        titleModel?: string
+        compactModel?: string
         embedding?: string
         embeddingModel?: string
+        advancedModelConfig?: boolean
+        roleProviders?: Record<string, string>
       }) => apiClient.patch(`${options.basePath}/settings`, data),
       onSuccess: () => queryClient.invalidateQueries({ queryKey }),
     })
 
-    const setApiKey = useMutation({
-      mutationFn: ({ provider, key }: { provider: string; key: string }) =>
-        apiClient.put(`${options.basePath}/api-keys/${provider}`, { key }),
+    const setProviderConnection = useMutation({
+      mutationFn: ({ provider, value }: { provider: string; value: string }) =>
+        apiClient.put(`${options.basePath}/provider-connections/${provider}`, { value }),
       onSuccess: () => queryClient.invalidateQueries({ queryKey }),
     })
 
-    const removeApiKey = useMutation({
+    const removeProviderConnection = useMutation({
       mutationFn: (provider: string) =>
-        apiClient.delete(`${options.basePath}/api-keys/${provider}`),
+        apiClient.delete(`${options.basePath}/provider-connections/${provider}`),
       onSuccess: () => queryClient.invalidateQueries({ queryKey }),
     })
 
-    return { query, updateProviders, setApiKey, removeApiKey }
+    return { query, updateProviders, setProviderConnection, removeProviderConnection }
   }
 }

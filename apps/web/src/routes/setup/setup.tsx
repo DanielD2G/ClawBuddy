@@ -40,7 +40,7 @@ import { StepChannels } from './components/step-channels'
 
 const ALL_STEPS = [
   { label: 'Welcome', icon: Sparkles },
-  { label: 'API Keys', icon: Key },
+  { label: 'Providers', icon: Key },
   { label: 'Embeddings', icon: Brain },
   { label: 'Chat', icon: MessageSquare },
   { label: 'Workspace', icon: FolderOpen },
@@ -77,7 +77,8 @@ export function SetupPage() {
   const {
     query: { data, isPending },
     updateProviders,
-    setApiKey,
+    setProviderConnection,
+    removeProviderConnection,
   } = useSetupSettings()
   const { data: capabilities } = useSetupCapabilities()
   const completeSetup = useCompleteSetup()
@@ -142,8 +143,8 @@ export function SetupPage() {
       }
       // Invalidate setup-settings so Embeddings/Chat steps fetch updated model config
       await queryClient.invalidateQueries({ queryKey: ['setup-settings'] })
-      toast.success('Configuration imported — review each step and enter your API keys')
-      setStep(1) // Go to API Keys step
+      toast.success('Configuration imported — review each step and reconnect your providers')
+      setStep(1) // Go to provider connections step
     } catch {
       toast.error('Failed to import — check that the file is a valid workspace export')
     }
@@ -164,8 +165,8 @@ export function SetupPage() {
 
   if (!data) return null
 
-  const { providers, apiKeys, browserGridFromEnv } = data
-  const hasEmbeddingKey = providers.available.embedding.length > 0
+  const { providers, browserGridFromEnv } = data
+  const hasEmbeddingProvider = providers.available.embedding.length > 0
 
   // Capabilities that need config and are selected (exclude OAuth capabilities — configured post-setup via OAuth flow)
   const OAUTH_CAPABILITY_SLUGS = ['google-workspace']
@@ -235,10 +236,15 @@ export function SetupPage() {
         )}
         {step === 1 && (
           <StepApiKeys
-            apiKeys={apiKeys}
-            onSaveKey={(provider, key) => setApiKey.mutate({ provider, key })}
-            isSaving={setApiKey.isPending}
-            canContinue={hasEmbeddingKey}
+            providerMetadata={providers.metadata}
+            connections={providers.connections}
+            onSaveConnection={(provider, value) =>
+              setProviderConnection.mutate({ provider, value })
+            }
+            onRemoveConnection={(provider) => removeProviderConnection.mutate(provider)}
+            isSaving={setProviderConnection.isPending}
+            isRemoving={removeProviderConnection.isPending}
+            canContinue={hasEmbeddingProvider}
             onBack={() => setStep(0)}
             onNext={() => setStep(2)}
           />

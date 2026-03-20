@@ -421,166 +421,166 @@ export function ChatPage() {
         </div>
       </div>
 
-        {/* Input */}
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex flex-col items-center">
-          {/* Scroll-to-bottom */}
-          {showScrollDown && (
-            <button
-              onClick={scrollToBottom}
-              aria-label="Scroll to bottom"
-              className="pointer-events-auto -mb-4 flex size-8 items-center justify-center rounded-full border bg-background shadow-md transition-colors hover:bg-muted"
-            >
-              <ArrowDown className="size-4" />
-            </button>
-          )}
-          <div className="h-10 w-full bg-gradient-to-t from-background to-transparent" />
-          <div className="w-full bg-background px-4 pb-6">
-            <div className="pointer-events-auto mx-auto w-full max-w-3xl">
-          {pendingApprovals.length > 0 ? (
-            <ApprovalInputBar approvals={pendingApprovals} onDecision={approveToolCall} />
-          ) : (
-            <>
-              {/* Pending file attachments */}
-              {pendingFiles.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {pendingFiles.map((f, i) => (
-                    <span
-                      key={f.storageKey ?? f.url}
-                      className="inline-flex items-center gap-1.5 rounded-lg border bg-muted/50 px-2.5 py-1 text-xs"
-                    >
-                      <Paperclip className="size-3 text-muted-foreground" />
-                      {f.name}
-                      <button
-                        type="button"
-                        onClick={() => removePendingFile(i)}
-                        className="text-muted-foreground hover:text-foreground"
+      {/* Input */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex flex-col items-center">
+        {/* Scroll-to-bottom */}
+        {showScrollDown && (
+          <button
+            onClick={scrollToBottom}
+            aria-label="Scroll to bottom"
+            className="pointer-events-auto -mb-4 flex size-8 items-center justify-center rounded-full border bg-background shadow-md transition-colors hover:bg-muted"
+          >
+            <ArrowDown className="size-4" />
+          </button>
+        )}
+        <div className="h-10 w-full bg-gradient-to-t from-background to-transparent" />
+        <div className="w-full bg-background px-4 pb-6">
+          <div className="pointer-events-auto mx-auto w-full max-w-3xl">
+            {pendingApprovals.length > 0 ? (
+              <ApprovalInputBar approvals={pendingApprovals} onDecision={approveToolCall} />
+            ) : (
+              <>
+                {/* Pending file attachments */}
+                {pendingFiles.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {pendingFiles.map((f, i) => (
+                      <span
+                        key={f.storageKey ?? f.url}
+                        className="inline-flex items-center gap-1.5 rounded-lg border bg-muted/50 px-2.5 py-1 text-xs"
                       >
-                        <X className="size-3" />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
+                        <Paperclip className="size-3 text-muted-foreground" />
+                        {f.name}
+                        <button
+                          type="button"
+                          onClick={() => removePendingFile(i)}
+                          className="text-muted-foreground hover:text-foreground"
+                        >
+                          <X className="size-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
 
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  handleSend()
-                }}
-              >
-                <div
-                  className={`
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    handleSend()
+                  }}
+                >
+                  <div
+                    className={`
                     flex flex-col rounded-3xl border border-border/40 bg-background px-5 py-3 shadow-2xl
                     transition-all duration-200
                     ${focused ? 'shadow-[0_-8px_40px_rgba(0,0,0,0.25)]' : ''}
                   `}
-                >
-                  <MentionInput
-                    value={input}
-                    onChange={setInput}
-                    onFocus={() => setFocused(true)}
-                    onBlur={() => setFocused(false)}
-                    disabled={isPending || isCompressing}
-                    placeholder="Ask anything — use / for tools, @ for files"
-                    onDocumentMentionsChange={setMentionedDocIds}
-                    capabilities={enabledCapabilities}
-                    documents={readyDocuments}
-                    folders={allFolders}
-                  />
-
-                  <div className="flex items-center gap-1 mt-2">
-                    <ChatAttachMenu
-                      onSelectFile={(title) => setInput((v) => `${v}@${title} `)}
-                      onSelectTool={(slug) => setInput((v) => `${v}/${slug} `)}
+                  >
+                    <MentionInput
+                      value={input}
+                      onChange={setInput}
+                      onFocus={() => setFocused(true)}
+                      onBlur={() => setFocused(false)}
+                      disabled={isPending || isCompressing}
+                      placeholder="Ask anything — use / for tools, @ for files"
+                      onDocumentMentionsChange={setMentionedDocIds}
                       capabilities={enabledCapabilities}
-                      documents={allDocsForMenu}
+                      documents={readyDocuments}
+                      folders={allFolders}
                     />
 
-                    <div className="flex-1" />
+                    <div className="flex items-center gap-1 mt-2">
+                      <ChatAttachMenu
+                        onSelectFile={(title) => setInput((v) => `${v}@${title} `)}
+                        onSelectTool={(slug) => setInput((v) => `${v}/${slug} `)}
+                        capabilities={enabledCapabilities}
+                        documents={allDocsForMenu}
+                      />
 
-                    {/* Context usage circle */}
-                    {contextPct != null && contextPct > 0 && (
-                      <div className="relative group shrink-0">
-                        <div className="flex size-8 items-center justify-center rounded-full bg-muted/60 cursor-default">
-                          {isCompressing ? (
-                            <Loader2 className="size-4 animate-spin text-brand" />
-                          ) : (
-                            <>
-                              <svg className="size-6 -rotate-90" viewBox="0 0 36 36">
-                                <circle
-                                  cx="18"
-                                  cy="18"
-                                  r="15"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2.5"
-                                  className="text-muted-foreground/15"
-                                />
-                                <circle
-                                  cx="18"
-                                  cy="18"
-                                  r="15"
-                                  fill="none"
-                                  strokeWidth="2.5"
-                                  strokeLinecap="round"
-                                  strokeDasharray={`${contextPct * 0.9425} 94.25`}
-                                  className={
-                                    contextPct >= 80
-                                      ? 'text-destructive'
-                                      : contextPct >= 50
-                                        ? 'text-yellow-500'
-                                        : 'text-brand'
-                                  }
-                                  stroke="currentColor"
-                                />
-                              </svg>
-                              <span className="absolute inset-0 flex items-center justify-center text-[8px] font-semibold tabular-nums text-muted-foreground">
-                                {contextPct}
-                              </span>
-                            </>
-                          )}
-                        </div>
-                        {/* Hover tooltip */}
-                        <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block z-50">
-                          <div className="rounded-lg border bg-popover px-3.5 py-2.5 text-xs text-popover-foreground shadow-lg whitespace-nowrap">
-                            <p className="font-medium mb-1">Context window:</p>
+                      <div className="flex-1" />
+
+                      {/* Context usage circle */}
+                      {contextPct != null && contextPct > 0 && (
+                        <div className="relative group shrink-0">
+                          <div className="flex size-8 items-center justify-center rounded-full bg-muted/60 cursor-default">
                             {isCompressing ? (
-                              <p className="text-brand">Compressing conversation...</p>
+                              <Loader2 className="size-4 animate-spin text-brand" />
                             ) : (
                               <>
-                                <p className="tabular-nums">
-                                  {contextPct}% used ({100 - contextPct}% left)
-                                </p>
-                                <p className="tabular-nums text-muted-foreground">
-                                  {contextTokens != null
-                                    ? `${Math.round(contextTokens / 1000)}k`
-                                    : '0'}{' '}
-                                  / {Math.round(contextLimit / 1000)}k tokens
-                                </p>
-                                <p className="text-muted-foreground mt-1.5">
-                                  Auto-compacts when full
-                                </p>
+                                <svg className="size-6 -rotate-90" viewBox="0 0 36 36">
+                                  <circle
+                                    cx="18"
+                                    cy="18"
+                                    r="15"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2.5"
+                                    className="text-muted-foreground/15"
+                                  />
+                                  <circle
+                                    cx="18"
+                                    cy="18"
+                                    r="15"
+                                    fill="none"
+                                    strokeWidth="2.5"
+                                    strokeLinecap="round"
+                                    strokeDasharray={`${contextPct * 0.9425} 94.25`}
+                                    className={
+                                      contextPct >= 80
+                                        ? 'text-destructive'
+                                        : contextPct >= 50
+                                          ? 'text-yellow-500'
+                                          : 'text-brand'
+                                    }
+                                    stroke="currentColor"
+                                  />
+                                </svg>
+                                <span className="absolute inset-0 flex items-center justify-center text-[8px] font-semibold tabular-nums text-muted-foreground">
+                                  {contextPct}
+                                </span>
                               </>
                             )}
                           </div>
+                          {/* Hover tooltip */}
+                          <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block z-50">
+                            <div className="rounded-lg border bg-popover px-3.5 py-2.5 text-xs text-popover-foreground shadow-lg whitespace-nowrap">
+                              <p className="font-medium mb-1">Context window:</p>
+                              {isCompressing ? (
+                                <p className="text-brand">Compressing conversation...</p>
+                              ) : (
+                                <>
+                                  <p className="tabular-nums">
+                                    {contextPct}% used ({100 - contextPct}% left)
+                                  </p>
+                                  <p className="tabular-nums text-muted-foreground">
+                                    {contextTokens != null
+                                      ? `${Math.round(contextTokens / 1000)}k`
+                                      : '0'}{' '}
+                                    / {Math.round(contextLimit / 1000)}k tokens
+                                  </p>
+                                  <p className="text-muted-foreground mt-1.5">
+                                    Auto-compacts when full
+                                  </p>
+                                </>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
 
-                    {isPending ? (
-                      <button
-                        type="button"
-                        onClick={abortAgent}
-                        className="flex size-8 shrink-0 items-center justify-center rounded-full bg-brand text-brand-foreground shadow-md transition-all duration-200 hover:opacity-90"
-                        title="Stop generation"
-                      >
-                        <Square className="size-3.5" strokeWidth={2.5} />
-                      </button>
-                    ) : (
-                      <button
-                        type="submit"
-                        disabled={(!input.trim() && !pendingFiles.length) || isCompressing}
-                        className={`
+                      {isPending ? (
+                        <button
+                          type="button"
+                          onClick={abortAgent}
+                          className="flex size-8 shrink-0 items-center justify-center rounded-full bg-brand text-brand-foreground shadow-md transition-all duration-200 hover:opacity-90"
+                          title="Stop generation"
+                        >
+                          <Square className="size-3.5" strokeWidth={2.5} />
+                        </button>
+                      ) : (
+                        <button
+                          type="submit"
+                          disabled={(!input.trim() && !pendingFiles.length) || isCompressing}
+                          className={`
                           flex size-8 shrink-0 items-center justify-center rounded-full
                           transition-all duration-200
                           ${
@@ -589,15 +589,15 @@ export function ChatPage() {
                               : 'bg-muted-foreground/20 text-muted-foreground/50 cursor-not-allowed'
                           }
                         `}
-                      >
-                        <Send className="size-4" strokeWidth={2} />
-                      </button>
-                    )}
+                        >
+                          <Send className="size-4" strokeWidth={2} />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </form>
-            </>
-          )}
+                </form>
+              </>
+            )}
           </div>
         </div>
       </div>

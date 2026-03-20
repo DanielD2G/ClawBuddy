@@ -979,10 +979,7 @@ async function executeReadFile(
   )
 
   // 5. Fallback: try basename in user home (same pattern as executeGenerateFile)
-  if (
-    result.exitCode !== 0 &&
-    resolvedPath !== `${userHome}/${filePath.split('/').pop()}`
-  ) {
+  if (result.exitCode !== 0 && resolvedPath !== `${userHome}/${filePath.split('/').pop()}`) {
     const fallbackPath = `${userHome}/${filePath.split('/').pop()}`
     const fallbackScript = script.replace(
       `FILE=${JSON.stringify(resolvedPath)}`,

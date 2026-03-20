@@ -3,8 +3,7 @@ import type { CapabilityDefinition } from '../types.js'
 export const readFile: CapabilityDefinition = {
   slug: 'read-file',
   name: 'Read File',
-  description:
-    'Read files from the workspace with line numbers, pagination, and binary detection.',
+  description: 'Read files from the workspace with line numbers, pagination, and binary detection.',
   icon: 'FileText',
   category: 'builtin',
   version: '1.0.0',
@@ -27,8 +26,7 @@ export const readFile: CapabilityDefinition = {
           },
           limit: {
             type: 'number',
-            description:
-              'Number of lines to read. Defaults to 2000. Maximum 2000.',
+            description: 'Number of lines to read. Defaults to 2000. Maximum 2000.',
           },
         },
         required: ['file_path'],

@@ -46,7 +46,7 @@ curl -fsSL https://raw.githubusercontent.com/DanielD2G/ClawBuddy/main/scripts/bo
 
 This downloads the compose file, pulls pre-built images from GHCR, and starts all services. Once done, open **http://localhost:4321** and follow the setup wizard.
 
-> You'll need at least one AI provider API key (OpenAI, Anthropic, or Google Gemini). See the **[API Keys & OAuth Setup Guide](docs/api-keys-setup.md)** for step-by-step instructions.
+> You'll need at least one AI provider connection: an API key (OpenAI, Anthropic, or Google Gemini) or a local OpenAI-compatible endpoint such as LM Studio or Ollama. See the **[API Keys & OAuth Setup Guide](docs/api-keys-setup.md)** for step-by-step instructions.
 
 ---
 

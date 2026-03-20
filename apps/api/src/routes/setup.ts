@@ -1,12 +1,12 @@
 import { Hono } from 'hono'
 import type { Context } from 'hono'
 import { settingsService } from '../services/settings.service.js'
-import { buildModelCatalogs, invalidateModelCache } from '../services/model-discovery.service.js'
+import { invalidateModelCache } from '../services/model-discovery.service.js'
 import { searchService } from '../services/search.service.js'
 import { capabilityService } from '../services/capability.service.js'
 import { toolDiscoveryService } from '../services/tool-discovery.service.js'
 import { prisma } from '../lib/prisma.js'
-import { EMBEDDING_DIMENSIONS, workspaceExportSchema } from '@clawbuddy/shared'
+import { workspaceExportSchema } from '@clawbuddy/shared'
 import { imageBuilderService } from '../services/image-builder.service.js'
 import { qdrant } from '../lib/qdrant.js'
 import { s3 } from '../lib/s3.js'
@@ -17,6 +17,7 @@ import { ListBucketsCommand } from '@aws-sdk/client-s3'
 import { Prisma } from '@prisma/client'
 import { validateBody } from '../lib/validate.js'
 import Docker from 'dockerode'
+import { buildProviderState } from '../services/provider-state.service.js'
 
 const app = new Hono()
 
@@ -43,33 +44,10 @@ app.get('/settings', async (c) => {
   const blocked = await requireSetupIncomplete(c)
   if (blocked) return blocked
 
-  const settings = await settingsService.get()
-  const available = await settingsService.getAvailableProviders()
-  const apiKeys = await settingsService.getMaskedKeys()
-
-  const models = await buildModelCatalogs(available)
-
   return c.json({
     success: true,
     data: {
-      providers: {
-        active: {
-          llm: settings.aiProvider,
-          llmModel: settings.aiModel,
-          mediumModel: settings.mediumModel,
-          lightModel: settings.lightModel,
-          exploreModel: settings.exploreModel,
-          executeModel: settings.executeModel,
-          titleModel: settings.titleModel,
-          compactModel: settings.compactModel,
-          advancedModelConfig: settings.advancedModelConfig,
-          embedding: settings.embeddingProvider,
-          embeddingModel: settings.embeddingModel,
-        },
-        available,
-        models,
-      },
-      apiKeys,
+      providers: await buildProviderState(),
       browserGridFromEnv: !!process.env.BROWSER_GRID_URL,
     },
   })
@@ -92,6 +70,7 @@ app.patch('/settings', async (c) => {
     executeModel: body.executeModel,
     titleModel: body.titleModel,
     compactModel: body.compactModel,
+    roleProviders: body.roleProviders,
   })
   return c.json({
     success: true,
@@ -99,6 +78,13 @@ app.patch('/settings', async (c) => {
       active: {
         llm: settings.aiProvider,
         llmModel: settings.aiModel,
+        mediumModel: settings.mediumModel,
+        lightModel: settings.lightModel,
+        exploreModel: settings.exploreModel,
+        executeModel: settings.executeModel,
+        titleModel: settings.titleModel,
+        compactModel: settings.compactModel,
+        roleProviders: await settingsService.getResolvedRoleProviders(),
         embedding: settings.embeddingProvider,
         embeddingModel: settings.embeddingModel,
       },
@@ -120,19 +106,34 @@ app.get('/capabilities', async (c) => {
   return c.json({ success: true, data: capabilities })
 })
 
-app.put('/api-keys/:provider', async (c) => {
+app.put('/provider-connections/:provider', async (c) => {
   const blocked = await requireSetupIncomplete(c)
   if (blocked) return blocked
 
   const { provider } = c.req.param()
-  const { key } = await c.req.json()
-  if (!key || typeof key !== 'string') {
-    return c.json({ success: false, error: 'key is required' }, 400)
+  const { value } = await c.req.json()
+  if (!value || typeof value !== 'string') {
+    return c.json({ success: false, error: 'value is required' }, 400)
   }
-  await settingsService.setApiKey(provider, key)
+  await settingsService.setProviderConnection(provider, value)
   invalidateModelCache(provider)
-  const apiKeys = await settingsService.getMaskedKeys()
-  return c.json({ success: true, data: { apiKeys } })
+  return c.json({
+    success: true,
+    data: { connections: await settingsService.getProviderConnections() },
+  })
+})
+
+app.delete('/provider-connections/:provider', async (c) => {
+  const blocked = await requireSetupIncomplete(c)
+  if (blocked) return blocked
+
+  const { provider } = c.req.param()
+  await settingsService.removeProviderConnection(provider)
+  invalidateModelCache(provider)
+  return c.json({
+    success: true,
+    data: { connections: await settingsService.getProviderConnections() },
+  })
 })
 
 // ── Google OAuth client credentials (env-only) ────
@@ -352,45 +353,33 @@ app.post('/preflight', async (c) => {
     }
   }
 
-  // 1. AI Provider API Keys — test each configured LLM provider
+  // 1. AI Providers — test each configured LLM provider
   const { createLLMForModel } = await import('../providers/index.js')
   const { discoverLLMModels } = await import('../services/model-discovery.service.js')
-  const available = await settingsService.getAvailableProviders()
+  const configured = await settingsService.getConfiguredProviders()
+  const metadata = settingsService.getProviderMetadata()
 
-  const PROVIDER_NAMES: Record<string, string> = {
-    openai: 'OpenAI',
-    gemini: 'Google Gemini',
-    claude: 'Anthropic Claude',
-  }
-
-  for (const provider of available.llm) {
-    const label = PROVIDER_NAMES[provider] ?? provider
-    await runCheck(`${label} API Key`, async () => {
+  for (const provider of configured.llm) {
+    const label = metadata[provider as keyof typeof metadata]?.label ?? provider
+    await runCheck(`${label} Connection`, async () => {
       const models = await discoverLLMModels(provider)
       const model = models[0]
       if (!model) return { status: 'fail', message: `No models discovered for ${provider}` }
 
-      const llm = await createLLMForModel(model)
+      const llm = await createLLMForModel(provider, model)
       await llm.chat([{ role: 'user', content: 'Say ok' }], { maxTokens: 5, temperature: 0 })
-      return { status: 'pass', message: `${label} key is valid (${model})` }
+      return { status: 'pass', message: `${label} is reachable (${model})` }
     })
   }
 
-  // 2. Embedding Provider API Key — generate a test embedding
+  // 2. Embedding Provider — generate a test embedding
   await runCheck('Embedding Provider', async () => {
     const provider = settings.embeddingProvider
-    const apiKey = await settingsService.getApiKey(provider)
-    if (!apiKey) return { status: 'fail', message: `No API key for ${provider}` }
+    const connectionValue = await settingsService.getProviderConnectionValue(provider)
+    if (!connectionValue) return { status: 'fail', message: `No connection for ${provider}` }
 
     const vector = await embeddingService.embed('preflight test')
     const embeddingModel = settings.embeddingModel ?? 'unknown'
-    const expectedDimensions = EMBEDDING_DIMENSIONS[embeddingModel]
-    if (expectedDimensions && vector.length !== expectedDimensions) {
-      return {
-        status: 'fail',
-        message: `Dimension mismatch: model ${embeddingModel} returned ${vector.length}d, expected ${expectedDimensions}d`,
-      }
-    }
     return {
       status: 'pass',
       message: `${provider} (${embeddingModel}) — ${vector.length}d vectors`,
@@ -524,13 +513,13 @@ app.post('/preflight', async (c) => {
         const size = (info.config.params.vectors as { size: number }).size
         const points = info.points_count
 
-        // Verify dimensions match the configured embedding model
-        const embeddingModel = settings.embeddingModel ?? 'unknown'
-        const expectedDimensions = EMBEDDING_DIMENSIONS[embeddingModel]
-        if (expectedDimensions && size !== expectedDimensions) {
-          return {
-            status: 'fail',
-            message: `Dimension mismatch: collection has ${size}d but model ${embeddingModel} produces ${expectedDimensions}d — restart the API to re-index`,
+        if (settings.embeddingModel) {
+          const vector = await embeddingService.embed('tool discovery dimension check')
+          if (size !== vector.length) {
+            return {
+              status: 'fail',
+              message: `Dimension mismatch: collection has ${size}d but embedding model returns ${vector.length}d — restart the API to re-index`,
+            }
           }
         }
         return { status: 'pass', message: `${points} capabilities indexed (${size}d vectors)` }
@@ -562,9 +551,25 @@ app.post('/import', async (c) => {
 
   // Apply model config including embedding (safe during setup — embedding is only locked after onboarding)
   try {
+    if (
+      typeof parsed.modelConfig.localBaseUrl === 'string' &&
+      parsed.modelConfig.localBaseUrl.trim()
+    ) {
+      await settingsService.setProviderConnection('local', parsed.modelConfig.localBaseUrl)
+      invalidateModelCache('local')
+    }
+
     await settingsService.update({
       aiProvider: parsed.modelConfig.aiProvider,
       aiModel: parsed.modelConfig.aiModel ?? undefined,
+      roleProviders: parsed.modelConfig.roleProviders as
+        | Partial<
+            Record<
+              'primary' | 'medium' | 'light' | 'explore' | 'execute' | 'title' | 'compact',
+              string
+            >
+          >
+        | undefined,
       mediumModel: parsed.modelConfig.mediumModel ?? undefined,
       lightModel: parsed.modelConfig.lightModel ?? undefined,
       exploreModel: parsed.modelConfig.exploreModel ?? undefined,
@@ -613,38 +618,35 @@ app.post('/complete', async (c) => {
   } = body
 
   const settings = await settingsService.get()
+  const available = await settingsService.getAvailableProviders()
 
-  // Validate embedding provider has an API key
+  // Validate embedding provider is configured and catalog-backed
   const embeddingProvider = settings.embeddingProvider
-  const embeddingKey = await settingsService.getApiKey(embeddingProvider)
-  if (!embeddingKey) {
+  if (!available.embedding.includes(embeddingProvider as (typeof available.embedding)[number])) {
     return c.json(
       {
         success: false,
-        error: `No API key configured for embedding provider: ${embeddingProvider}`,
+        error: `Embedding provider "${embeddingProvider}" is not available`,
       },
       400,
     )
   }
 
-  // Validate AI provider has an API key
+  // Validate AI provider is configured and catalog-backed
   const aiProvider = settings.aiProvider
-  const aiKey = await settingsService.getApiKey(aiProvider)
-  if (!aiKey) {
+  if (!available.llm.includes(aiProvider as (typeof available.llm)[number])) {
     return c.json(
       {
         success: false,
-        error: `No API key configured for AI provider: ${aiProvider}`,
+        error: `AI provider "${aiProvider}" is not available`,
       },
       400,
     )
   }
 
   // Create Qdrant collection with correct dimensions
-  const embeddingModel =
-    settings.embeddingModel ??
-    (embeddingProvider === 'openai' ? 'text-embedding-3-small' : 'gemini-embedding-001')
-  const dimensions = EMBEDDING_DIMENSIONS[embeddingModel] ?? 1536
+  const vector = await embeddingService.embed('setup dimension probe')
+  const dimensions = vector.length
   await searchService.ensureCollection(dimensions)
 
   // Create the first workspace

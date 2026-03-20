@@ -5,20 +5,20 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { useAdminSettings } from '@/hooks/use-admin-settings'
 import { Trash2, Eye, EyeOff } from 'lucide-react'
-import { PROVIDER_LABELS } from '@/constants'
+import type { ProviderConnectionInfo, ProviderMetadata } from '@/hooks/use-settings-base'
 
 export function ApiKeysSection() {
   const {
     query: { data, isPending },
-    setApiKey,
-    removeApiKey,
+    setProviderConnection,
+    removeProviderConnection,
   } = useAdminSettings()
 
   if (isPending) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>API Keys</CardTitle>
+          <CardTitle>Provider Connections</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="text-sm text-muted-foreground">Loading...</div>
@@ -29,27 +29,27 @@ export function ApiKeysSection() {
 
   if (!data) return null
 
-  const { apiKeys } = data
+  const { providers } = data
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>API Keys</CardTitle>
+        <CardTitle>Provider Connections</CardTitle>
         <CardDescription>
-          Manage API keys for each provider. Keys set in the environment take priority over database
-          keys.
+          Manage provider credentials and local base URLs. Environment values take priority over
+          database values.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        {['openai', 'gemini', 'claude'].map((provider) => (
+        {Object.entries(providers.metadata).map(([provider, metadata]) => (
           <ApiKeyRow
             key={provider}
-            label={PROVIDER_LABELS[provider] ?? provider}
-            info={apiKeys[provider]}
-            onSave={(key) => setApiKey.mutate({ provider, key })}
-            onRemove={() => removeApiKey.mutate(provider)}
-            isSaving={setApiKey.isPending}
-            isRemoving={removeApiKey.isPending}
+            metadata={metadata}
+            info={providers.connections[provider]}
+            onSave={(value) => setProviderConnection.mutate({ provider, value })}
+            onRemove={() => removeProviderConnection.mutate(provider)}
+            isSaving={setProviderConnection.isPending}
+            isRemoving={removeProviderConnection.isPending}
           />
         ))}
       </CardContent>
@@ -58,23 +58,27 @@ export function ApiKeysSection() {
 }
 
 function ApiKeyRow({
-  label,
+  metadata,
   info,
   onSave,
   onRemove,
   isSaving,
   isRemoving,
 }: {
-  label: string
-  info: { source: 'env' | 'db' | null; masked: string | null }
-  onSave: (key: string) => void
+  metadata: ProviderMetadata
+  info: ProviderConnectionInfo
+  onSave: (value: string) => void
   onRemove: () => void
   isSaving: boolean
   isRemoving: boolean
 }) {
   const [editing, setEditing] = useState(false)
   const [value, setValue] = useState('')
-  const [showMasked, setShowMasked] = useState(false)
+  const [showValue, setShowValue] = useState(false)
+  const placeholder =
+    metadata.connectionType === 'baseUrl'
+      ? `Enter ${metadata.label} base URL`
+      : `Enter ${metadata.label} API key`
 
   const handleSave = () => {
     if (!value.trim()) return
@@ -87,7 +91,7 @@ function ApiKeyRow({
     <div className="flex flex-col gap-2 rounded-lg border p-3 md:p-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">{label}</span>
+          <span className="text-sm font-medium">{metadata.label}</span>
           {info.source === 'env' && (
             <Badge variant="secondary" className="text-xs">
               ENV
@@ -105,12 +109,12 @@ function ApiKeyRow({
           )}
         </div>
         <div className="flex items-center gap-1">
-          {info.masked && (
+          {info.value && (
             <button
-              onClick={() => setShowMasked(!showMasked)}
+              onClick={() => setShowValue(!showValue)}
               className="p-1.5 text-muted-foreground hover:text-foreground rounded-md"
             >
-              {showMasked ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+              {showValue ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
             </button>
           )}
           {info.source === 'db' && (
@@ -125,15 +129,15 @@ function ApiKeyRow({
         </div>
       </div>
 
-      {info.masked && showMasked && (
-        <p className="text-xs text-muted-foreground font-mono">{info.masked}</p>
+      {info.value && showValue && (
+        <p className="text-xs text-muted-foreground font-mono">{info.value}</p>
       )}
 
       {editing ? (
         <div className="flex gap-2">
           <Input
-            type="password"
-            placeholder={`Enter ${label} API key`}
+            type={metadata.connectionType === 'apiKey' ? 'password' : 'text'}
+            placeholder={placeholder}
             value={value}
             onChange={(e) => setValue(e.target.value)}
             className="flex-1 text-sm"
@@ -163,8 +167,8 @@ function ApiKeyRow({
           {info.source === 'env'
             ? 'Set via environment'
             : info.source === 'db'
-              ? 'Update key'
-              : 'Add key'}
+              ? 'Update'
+              : 'Add connection'}
         </Button>
       )}
     </div>

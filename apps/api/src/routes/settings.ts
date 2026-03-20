@@ -2,23 +2,14 @@ import { Hono } from 'hono'
 import { settingsService } from '../services/settings.service.js'
 import { discoverLLMModels } from '../services/model-discovery.service.js'
 import { prisma } from '../lib/prisma.js'
+import { buildProviderState } from '../services/provider-state.service.js'
 
 const app = new Hono()
 
 app.get('/settings/providers', async (c) => {
-  const settings = await settingsService.get()
-  const available = await settingsService.getAvailableProviders()
   return c.json({
     success: true,
-    data: {
-      available,
-      active: {
-        llm: settings.aiProvider,
-        llmModel: settings.aiModel,
-        embedding: settings.embeddingProvider,
-        embeddingModel: settings.embeddingModel,
-      },
-    },
+    data: await buildProviderState(),
   })
 })
 
@@ -41,6 +32,7 @@ app.get('/settings/models', async (c) => {
     subAgentAnalyzeMaxIterations,
     subAgentExecuteMaxIterations,
     available,
+    roleProviders,
     timezone,
   ] = await Promise.all([
     settingsService.getAIProvider(),
@@ -59,6 +51,7 @@ app.get('/settings/models', async (c) => {
     settingsService.getSubAgentAnalyzeMaxIterations(),
     settingsService.getSubAgentExecuteMaxIterations(),
     settingsService.getAvailableProviders(),
+    settingsService.getResolvedRoleProviders(),
     settingsService.getTimezone(),
   ])
 
@@ -73,6 +66,7 @@ app.get('/settings/models', async (c) => {
     data: {
       provider,
       models: { primary, medium, light, explore, execute, title, compact },
+      roleProviders,
       embeddingModel,
       advancedModelConfig,
       contextLimitTokens,
@@ -91,6 +85,7 @@ app.patch('/settings/models', async (c) => {
   const body = await c.req.json()
   const updateData: Record<string, unknown> = {}
 
+  if (body.provider !== undefined) updateData.aiProvider = body.provider
   if (body.primary !== undefined) updateData.aiModel = body.primary
   if (body.medium !== undefined) updateData.mediumModel = body.medium
   if (body.light !== undefined) updateData.lightModel = body.light
@@ -98,6 +93,7 @@ app.patch('/settings/models', async (c) => {
   if (body.execute !== undefined) updateData.executeModel = body.execute
   if (body.title !== undefined) updateData.titleModel = body.title
   if (body.compact !== undefined) updateData.compactModel = body.compact
+  if (body.roleProviders !== undefined) updateData.roleProviders = body.roleProviders
   if (body.advancedModelConfig !== undefined)
     updateData.advancedModelConfig = body.advancedModelConfig
   if (body.contextLimitTokens !== undefined) updateData.contextLimitTokens = body.contextLimitTokens
