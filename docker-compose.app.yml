@@ -1,0 +1,62 @@
+services:
+  api:
+    image: ghcr.io/danield2g/clawbuddy-api:latest
+    ports:
+      - "4000:4000"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://clawbuddy:clawbuddy@postgres:5432/clawbuddy
+      REDIS_URL: redis://redis:6379
+      QDRANT_URL: http://qdrant:6333
+      MINIO_ENDPOINT: http://minio:9000
+      BROWSER_GRID_URL: http://browsergrid:9090
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - shared
+    healthcheck:
+      test: ["CMD", "bun", "--eval", "fetch('http://localhost:4000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 10
+        window: 120s
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+        order: stop-first
+      rollback_config:
+        parallelism: 1
+      placement:
+        constraints:
+          - node.role == manager
+
+  web:
+    image: ghcr.io/danield2g/clawbuddy-web:latest
+    ports:
+      - "4321:80"
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 5
+        window: 60s
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+      rollback_config:
+        parallelism: 1
+
+networks:
+  shared:
+    external: true
+    name: clawbuddy_shared

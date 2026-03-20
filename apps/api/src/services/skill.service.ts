@@ -97,7 +97,7 @@ export const skillService = {
    * Sync skills from MinIO storage into the database.
    * Called on server startup.
    */
-  async syncSkillsFromStorage() {
+  async syncSkillsFromStorage(options?: { throwOnError?: boolean }) {
     try {
       // First, seed bundled skills from filesystem to MinIO if they don't exist
       await this.seedBundledSkills()
@@ -150,6 +150,9 @@ export const skillService = {
       }
     } catch (err) {
       console.error('[SkillService] Failed to sync skills from storage:', err)
+      if (options?.throwOnError) {
+        throw err
+      }
     }
   },
 

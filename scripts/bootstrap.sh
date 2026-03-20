@@ -18,7 +18,13 @@ step_header() { echo -e "\n${BOLD}${CYAN}━━━ Step $1/$TOTAL_STEPS: $2 ━�
 
 TOTAL_STEPS=5
 RAW_BASE="https://raw.githubusercontent.com/DanielD2G/ClawBuddy/main"
-STACK_NAME="clawbuddy"
+INFRA_STACK_NAME="clawbuddy-infra"
+APP_STACK_NAME="clawbuddy-app"
+SHARED_NETWORK_NAME="clawbuddy_shared"
+INFRA_COMPOSE_FILE="docker-compose.infra.yml"
+APP_COMPOSE_FILE="docker-compose.app.yml"
+LEGACY_COMPOSE_FILE="docker-compose.yml"
+HOST_ARCH=""
 
 # ── Collected config (globals) ───────────────────────
 AI_PROVIDER=""
@@ -196,16 +202,33 @@ set_env_var() {
   local key="$1"
   local value="$2"
   local file="${3:-.env}"
+  local tmp_file
 
-  if grep -q "^${key}=" "$file" 2>/dev/null; then
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-      sed -i '' "s|^${key}=.*|${key}=\"${value}\"|" "$file"
-    else
-      sed -i "s|^${key}=.*|${key}=\"${value}\"|" "$file"
-    fi
-  else
-    echo "${key}=\"${value}\"" >> "$file"
+  if [[ "$value" == *$'\n'* || "$value" == *$'\r'* ]]; then
+    fail "Value for ${key} contains an unsupported newline."
   fi
+
+  tmp_file=$(mktemp)
+
+  awk -v k="$key" -v v="$value" '
+    BEGIN { done = 0 }
+    index($0, k "=") == 1 {
+      print k "=" v
+      done = 1
+      next
+    }
+    { print }
+    END {
+      if (!done) {
+        print k "=" v
+      }
+    }
+  ' "$file" > "$tmp_file" || {
+    rm -f "$tmp_file"
+    fail "Could not update ${file}."
+  }
+
+  mv "$tmp_file" "$file"
 }
 
 # Detect OS type
@@ -229,6 +252,154 @@ detect_os() {
   fi
 }
 
+detect_host_arch() {
+  local arch
+  arch=$(uname -m 2>/dev/null || echo "unknown")
+  case "$arch" in
+    arm64|aarch64) HOST_ARCH="arm64" ;;
+    x86_64|amd64) HOST_ARCH="amd64" ;;
+    *) HOST_ARCH="$arch" ;;
+  esac
+}
+
+is_stack_active() {
+  local stack_name="$1"
+  docker stack ls --format '{{.Name}}' 2>/dev/null | grep -q "^${stack_name}$"
+}
+
+is_any_stack_active() {
+  is_stack_active "$INFRA_STACK_NAME" || is_stack_active "$APP_STACK_NAME"
+}
+
+has_legacy_compose_installation() {
+  [[ -f "$LEGACY_COMPOSE_FILE" ]] || return 1
+  docker compose -f "$LEGACY_COMPOSE_FILE" ps -q 2>/dev/null | grep -q .
+}
+
+install_files_exist() {
+  [[ -f "$INFRA_COMPOSE_FILE" && -f "$APP_COMPOSE_FILE" ]]
+}
+
+strip_wrapping_quotes() {
+  local value="$1"
+  if [[ ${#value} -ge 2 ]]; then
+    local first_char="${value:0:1}"
+    local last_char="${value:${#value}-1:1}"
+    if [[ "$first_char" == "$last_char" && ( "$first_char" == "\"" || "$first_char" == "'" ) ]]; then
+      printf '%s' "${value:1:${#value}-2}"
+      return
+    fi
+  fi
+  if [[ "$value" =~ ^\"(.*)\"$ ]]; then
+    printf '%s' "${BASH_REMATCH[1]}"
+    return
+  fi
+  printf '%s' "$value"
+}
+
+normalize_env_file() {
+  local file="${1:-.env}"
+  local tmp_file
+  tmp_file=$(mktemp)
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    if [[ "$line" =~ ^[[:space:]]*# || "$line" != *=* ]]; then
+      printf '%s\n' "$line" >> "$tmp_file"
+      continue
+    fi
+
+    local key="${line%%=*}"
+    local value="${line#*=}"
+    value=$(strip_wrapping_quotes "$value")
+    printf '%s=%s\n' "$key" "$value" >> "$tmp_file"
+  done < "$file"
+
+  mv "$tmp_file" "$file"
+}
+
+validate_stack_env_file() {
+  local file="${1:-.env}"
+  local required_keys=(
+    "AI_PROVIDER"
+    "EMBEDDING_PROVIDER"
+    "ENCRYPTION_SECRET"
+    "DATABASE_URL"
+    "REDIS_URL"
+    "QDRANT_URL"
+    "MINIO_ENDPOINT"
+  )
+
+  [[ -f "$file" ]] || fail "${file} not found."
+
+  for key in "${required_keys[@]}"; do
+    local line value
+    line=$(grep -E "^${key}=" "$file" | tail -1 || true)
+    [[ -n "$line" ]] || fail "${file} is missing required key ${key}."
+    value="${line#*=}"
+    if [[ "$value" =~ ^\".*\"$ || "$value" =~ ^\'.*\'$ ]]; then
+      fail "${file} contains quoted value for ${key}. Swarm env files must use unquoted values."
+    fi
+  done
+}
+
+preflight_browsergrid_arm64() {
+  if [[ "$HOST_ARCH" != "arm64" ]]; then
+    return
+  fi
+
+  info "Detected ARM64 host. Verifying linux/amd64 emulation for BrowserGrid..."
+
+  docker run --rm --platform linux/amd64 alpine:3.20 uname -m >/dev/null 2>&1 || \
+    fail "linux/amd64 emulation is not available. Enable Docker Desktop Rosetta/binfmt support or use an amd64 host."
+
+  docker pull --platform linux/amd64 ghcr.io/danield2g/browsergrid-standalone:latest >/dev/null || \
+    fail "Could not pull BrowserGrid for linux/amd64 emulation on this ARM64 host."
+
+  ok "ARM64 emulation is available for BrowserGrid"
+}
+
+pull_stack_images() {
+  if [[ "$HOST_ARCH" == "arm64" ]]; then
+    docker compose -f "$INFRA_COMPOSE_FILE" pull postgres redis qdrant minio minio-init
+    docker compose -f "$APP_COMPOSE_FILE" pull api web
+    docker pull --platform linux/amd64 ghcr.io/danield2g/browsergrid-standalone:latest >/dev/null
+    return
+  fi
+
+  docker compose -f "$INFRA_COMPOSE_FILE" pull
+  docker compose -f "$APP_COMPOSE_FILE" pull
+}
+
+deploy_stack() {
+  local stack_name="$1"
+  local compose_file="$2"
+  local resolve_mode="always"
+  if [[ "$HOST_ARCH" == "arm64" && "$stack_name" == "$INFRA_STACK_NAME" ]]; then
+    resolve_mode="never"
+  fi
+
+  docker stack deploy --resolve-image "$resolve_mode" -c "$compose_file" "$stack_name"
+}
+
+wait_for_shared_network() {
+  local timeout=60
+  local elapsed=0
+
+  while [[ $elapsed -lt $timeout ]]; do
+    if docker network inspect "$SHARED_NETWORK_NAME" >/dev/null 2>&1; then
+      return
+    fi
+    sleep 2
+    elapsed=$((elapsed + 2))
+  done
+
+  fail "Shared overlay network ${SHARED_NETWORK_NAME} was not created in time."
+}
+
+get_api_service_name() {
+  printf '%s_api' "$APP_STACK_NAME"
+}
+
 # ── Banner ───────────────────────────────────────────
 
 show_banner() {
@@ -243,7 +414,7 @@ show_banner() {
   echo "  ║                                              ║"
   echo "  ╚══════════════════════════════════════════════╝"
   echo -e "${NC}"
-  echo -e "  This wizard will guide you through the complete setup."
+  echo -e "  This wizard will guide you through a Docker Swarm setup."
   echo -e "  It should take about ${BOLD}5 minutes${NC}."
   echo ""
 }
@@ -254,7 +425,8 @@ step_docker_check() {
   step_header 1 "Docker"
 
   detect_os
-  info "Detected system: ${BOLD}$OS_TYPE${NC}"
+  detect_host_arch
+  info "Detected system: ${BOLD}$OS_TYPE${NC} (${BOLD}${HOST_ARCH}${NC})"
 
   # Check if Docker is installed
   if ! command -v docker &>/dev/null; then
@@ -380,6 +552,8 @@ step_docker_check() {
   else
     ok "Docker Swarm is active"
   fi
+
+  preflight_browsergrid_arm64
 }
 
 # ── Step 2: Download & Pull ──────────────────────────
@@ -388,21 +562,26 @@ step_pull_images() {
   step_header 2 "Download & Pull Images"
 
   # Download files if not present
-  if [[ ! -f "docker-compose.yml" ]]; then
-    mkdir -p ClawBuddy && cd ClawBuddy
-    info "Downloading docker-compose.yml..."
-    curl -fsSL "$RAW_BASE/docker-compose.yml" -o docker-compose.yml || \
-      fail "Could not download docker-compose.yml. Check your internet connection."
+  if ! install_files_exist; then
+    if [[ ! -f ".env" && ! -f "$LEGACY_COMPOSE_FILE" && ! -f "$INFRA_COMPOSE_FILE" && ! -f "$APP_COMPOSE_FILE" ]]; then
+      mkdir -p ClawBuddy && cd ClawBuddy
+    fi
+    info "Downloading ${INFRA_COMPOSE_FILE}..."
+    curl -fsSL "$RAW_BASE/${INFRA_COMPOSE_FILE}" -o "$INFRA_COMPOSE_FILE" || \
+      fail "Could not download ${INFRA_COMPOSE_FILE}. Check your internet connection."
+    info "Downloading ${APP_COMPOSE_FILE}..."
+    curl -fsSL "$RAW_BASE/${APP_COMPOSE_FILE}" -o "$APP_COMPOSE_FILE" || \
+      fail "Could not download ${APP_COMPOSE_FILE}. Check your internet connection."
     info "Downloading .env.example..."
     curl -fsSL "$RAW_BASE/.env.example" -o .env.example || \
       fail "Could not download .env.example. Check your internet connection."
     ok "Project files downloaded to $(pwd)"
   else
-    ok "docker-compose.yml found in current directory"
+    ok "Stack files found in current directory"
   fi
 
   # Check ports (skip if our stack is already running)
-  if ! docker stack ls --format '{{.Name}}' 2>/dev/null | grep -q "^${STACK_NAME}$"; then
+  if ! is_any_stack_active; then
     info "Checking required ports..."
     local PORTS=(4321 4000 5433 6333 6334 6380 9000 9001 9090)
     local BUSY=()
@@ -434,7 +613,7 @@ step_pull_images() {
   # Pull images
   info "Pulling Docker images (this may take a few minutes on first run)..."
   echo ""
-  docker compose pull
+  pull_stack_images
   echo ""
   ok "All images pulled"
 }
@@ -627,6 +806,8 @@ step_generate_env() {
   step_header 4 "Generate Configuration"
 
   if [[ "$SKIP_API_SETUP" == true ]]; then
+    normalize_env_file .env
+
     # Just ensure ENCRYPTION_SECRET is set
     if grep -q "change-me-to-a-random-secret" .env 2>/dev/null; then
       local secret
@@ -634,6 +815,7 @@ step_generate_env() {
       set_env_var "ENCRYPTION_SECRET" "$secret"
       ok "Generated ENCRYPTION_SECRET"
     fi
+    validate_stack_env_file .env
     ok "Using existing .env configuration"
     return
   fi
@@ -641,6 +823,7 @@ step_generate_env() {
   # Start from .env.example
   if [[ -f .env.example ]]; then
     cp .env.example .env
+    normalize_env_file .env
   else
     fail ".env.example not found. Cannot generate configuration."
   fi
@@ -662,6 +845,8 @@ step_generate_env() {
   secret=$(openssl rand -base64 32)
   set_env_var "ENCRYPTION_SECRET" "$secret"
 
+  validate_stack_env_file .env
+
   ok "Configuration saved to .env"
   echo ""
 
@@ -682,17 +867,26 @@ step_generate_env() {
 step_start_services() {
   step_header 5 "Start Services"
 
-  info "Deploying stack..."
-  docker stack deploy -c docker-compose.yml "$STACK_NAME"
+  validate_stack_env_file .env
+
+  info "Deploying infrastructure stack..."
+  deploy_stack "$INFRA_STACK_NAME" "$INFRA_COMPOSE_FILE"
+  wait_for_shared_network
+  echo ""
+
+  info "Deploying application stack..."
+  deploy_stack "$APP_STACK_NAME" "$APP_COMPOSE_FILE"
   echo ""
 
   info "Waiting for API to become healthy..."
   local timeout=180
   local elapsed=0
+  local api_service_name
+  api_service_name=$(get_api_service_name)
 
   while [[ $elapsed -lt $timeout ]]; do
     local container_id
-    container_id=$(docker ps --filter "label=com.docker.swarm.service.name=${STACK_NAME}_api" --format "{{.ID}}" 2>/dev/null | head -1 || true)
+    container_id=$(docker ps --filter "label=com.docker.swarm.service.name=${api_service_name}" --format "{{.ID}}" 2>/dev/null | head -1 || true)
     if [[ -n "$container_id" ]]; then
       local health
       health=$(docker inspect --format='{{.State.Health.Status}}' "$container_id" 2>/dev/null || true)
@@ -710,8 +904,9 @@ step_start_services() {
     warn "API did not become healthy within ${timeout}s."
     echo ""
     echo -e "  This might just need more time. You can check with:"
-    echo -e "    ${CYAN}docker stack services ${STACK_NAME}${NC}        - see service status"
-    echo -e "    ${CYAN}docker service logs ${STACK_NAME}_api${NC}  - see API logs"
+    echo -e "    ${CYAN}docker stack services ${INFRA_STACK_NAME}${NC}  - see infrastructure status"
+    echo -e "    ${CYAN}docker stack services ${APP_STACK_NAME}${NC}    - see application status"
+    echo -e "    ${CYAN}docker service logs ${api_service_name}${NC}  - see API logs"
     echo ""
   else
     ok "All services are healthy"
@@ -727,10 +922,11 @@ step_start_services() {
   echo -e "    ${CYAN}http://localhost:4321${NC}"
   echo ""
   echo -e "  ${BOLD}Useful commands:${NC}"
-  echo -e "    ${DIM}View logs:${NC}    docker service logs ${STACK_NAME}_api -f"
-  echo -e "    ${DIM}Stop:${NC}         docker stack rm ${STACK_NAME}"
-  echo -e "    ${DIM}Restart:${NC}      docker service update --force ${STACK_NAME}_api"
-  echo -e "    ${DIM}Status:${NC}       docker stack services ${STACK_NAME}"
+  echo -e "    ${DIM}View logs:${NC}    docker service logs ${api_service_name} -f"
+  echo -e "    ${DIM}Stop:${NC}         docker stack rm ${APP_STACK_NAME} ${INFRA_STACK_NAME}"
+  echo -e "    ${DIM}Restart:${NC}      docker service update --force ${api_service_name}"
+  echo -e "    ${DIM}Infra:${NC}        docker stack services ${INFRA_STACK_NAME}"
+  echo -e "    ${DIM}App:${NC}          docker stack services ${APP_STACK_NAME}"
   echo -e "    ${DIM}Update:${NC}       bash bootstrap.sh --update"
   echo ""
   echo -e "  ${BOLD}Other services:${NC}"
@@ -746,48 +942,89 @@ do_update() {
   echo -e "${BOLD}${CYAN}━━━ ClawBuddy Update ━━━${NC}"
   echo ""
 
+  detect_os
+  detect_host_arch
+
+  command -v docker &>/dev/null || fail "Docker is required to run updates."
+  docker info &>/dev/null || fail "Docker daemon is not running."
+  docker compose version &>/dev/null || fail "Docker Compose plugin is required to detect legacy installs."
+  docker info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null | grep -q "active" || \
+    fail "Docker Swarm must be active to update this installation."
+
+  preflight_browsergrid_arm64
+
   # Find installation
-  if [[ -f "docker-compose.yml" ]]; then
+  if install_files_exist || [[ -f "$LEGACY_COMPOSE_FILE" ]]; then
     : # we're in the right directory
-  elif [[ -f "ClawBuddy/docker-compose.yml" ]]; then
+  elif [[ -f "ClawBuddy/${INFRA_COMPOSE_FILE}" || -f "ClawBuddy/${APP_COMPOSE_FILE}" || -f "ClawBuddy/${LEGACY_COMPOSE_FILE}" ]]; then
     cd ClawBuddy
   else
     fail "No ClawBuddy installation found. Run this script without --update to install."
   fi
 
-  # Backup current compose file
-  cp docker-compose.yml docker-compose.yml.bak
-  ok "Backed up docker-compose.yml"
+  if has_legacy_compose_installation && ! is_any_stack_active; then
+    fail "This version does not migrate Docker Compose installations to Swarm automatically. Do a clean install or perform the migration manually first."
+  fi
 
-  # Download latest compose file
-  info "Downloading latest docker-compose.yml..."
-  curl -fsSL "$RAW_BASE/docker-compose.yml" -o docker-compose.yml || {
-    warn "Could not download latest docker-compose.yml. Restoring backup."
-    mv docker-compose.yml.bak docker-compose.yml
+  if ! is_stack_active "$INFRA_STACK_NAME"; then
+    fail "No active ClawBuddy infrastructure stack found. --update only supports existing Swarm installations."
+  fi
+
+  if [[ ! -f ".env" ]]; then
+    fail "No .env configuration found. --update requires an existing Swarm installation."
+  fi
+
+  normalize_env_file .env
+  validate_stack_env_file .env
+
+  # Backup current stack files
+  [[ -f "$INFRA_COMPOSE_FILE" ]] && cp "$INFRA_COMPOSE_FILE" "${INFRA_COMPOSE_FILE}.bak"
+  [[ -f "$APP_COMPOSE_FILE" ]] && cp "$APP_COMPOSE_FILE" "${APP_COMPOSE_FILE}.bak"
+  ok "Backed up stack files"
+
+  # Download latest stack files
+  info "Downloading latest ${INFRA_COMPOSE_FILE}..."
+  curl -fsSL "$RAW_BASE/${INFRA_COMPOSE_FILE}" -o "$INFRA_COMPOSE_FILE" || {
+    warn "Could not download latest ${INFRA_COMPOSE_FILE}. Restoring backup."
+    [[ -f "${INFRA_COMPOSE_FILE}.bak" ]] && mv "${INFRA_COMPOSE_FILE}.bak" "$INFRA_COMPOSE_FILE"
+    [[ -f "${APP_COMPOSE_FILE}.bak" ]] && mv "${APP_COMPOSE_FILE}.bak" "$APP_COMPOSE_FILE"
     fail "Update failed. Check your internet connection."
   }
-  ok "docker-compose.yml updated"
+  info "Downloading latest ${APP_COMPOSE_FILE}..."
+  curl -fsSL "$RAW_BASE/${APP_COMPOSE_FILE}" -o "$APP_COMPOSE_FILE" || {
+    warn "Could not download latest ${APP_COMPOSE_FILE}. Restoring backup."
+    [[ -f "${INFRA_COMPOSE_FILE}.bak" ]] && mv "${INFRA_COMPOSE_FILE}.bak" "$INFRA_COMPOSE_FILE"
+    [[ -f "${APP_COMPOSE_FILE}.bak" ]] && mv "${APP_COMPOSE_FILE}.bak" "$APP_COMPOSE_FILE"
+    fail "Update failed. Check your internet connection."
+  }
+  ok "Stack files updated"
 
-  # Pull latest images
-  info "Pulling latest images..."
+  info "Refreshing stack images..."
   echo ""
-  docker compose pull
+  pull_stack_images
   echo ""
   ok "Images updated"
 
-  # Deploy updated stack
-  info "Deploying updated stack..."
-  docker stack deploy -c docker-compose.yml "$STACK_NAME"
+  # Deploy updated stacks
+  info "Deploying updated infrastructure stack..."
+  deploy_stack "$INFRA_STACK_NAME" "$INFRA_COMPOSE_FILE"
+  wait_for_shared_network
+  echo ""
+
+  info "Deploying updated application stack..."
+  deploy_stack "$APP_STACK_NAME" "$APP_COMPOSE_FILE"
   echo ""
 
   # Wait for health
   info "Waiting for API to become healthy..."
   local timeout=180
   local elapsed=0
+  local api_service_name
+  api_service_name=$(get_api_service_name)
 
   while [[ $elapsed -lt $timeout ]]; do
     local container_id
-    container_id=$(docker ps --filter "label=com.docker.swarm.service.name=${STACK_NAME}_api" --format "{{.ID}}" 2>/dev/null | head -1 || true)
+    container_id=$(docker ps --filter "label=com.docker.swarm.service.name=${api_service_name}" --format "{{.ID}}" 2>/dev/null | head -1 || true)
     if [[ -n "$container_id" ]]; then
       local health
       health=$(docker inspect --format='{{.State.Health.Status}}' "$container_id" 2>/dev/null || true)
@@ -803,10 +1040,12 @@ do_update() {
 
   if [[ $elapsed -ge $timeout ]]; then
     warn "API did not become healthy within ${timeout}s."
-    echo -e "  Check logs: ${CYAN}docker service logs ${STACK_NAME}_api${NC}"
+    echo -e "  Check logs: ${CYAN}docker service logs ${api_service_name}${NC}"
   else
     ok "API is healthy"
   fi
+
+  rm -f "${INFRA_COMPOSE_FILE}.bak" "${APP_COMPOSE_FILE}.bak"
 
   # Check for migration script
   info "Checking for migration scripts..."
@@ -830,8 +1069,9 @@ do_update() {
   echo -e "    ${CYAN}http://localhost:4321${NC}"
   echo ""
   echo -e "  ${BOLD}Useful commands:${NC}"
-  echo -e "    ${DIM}View logs:${NC}    docker service logs ${STACK_NAME}_api -f"
-  echo -e "    ${DIM}Status:${NC}       docker stack services ${STACK_NAME}"
+  echo -e "    ${DIM}View logs:${NC}    docker service logs ${api_service_name} -f"
+  echo -e "    ${DIM}Infra:${NC}        docker stack services ${INFRA_STACK_NAME}"
+  echo -e "    ${DIM}App:${NC}          docker stack services ${APP_STACK_NAME}"
   echo ""
 }
 
@@ -848,10 +1088,10 @@ main() {
       echo "Usage: bootstrap.sh [OPTIONS]"
       echo ""
       echo "Options:"
-      echo "  --update, -u    Update an existing ClawBuddy installation"
+      echo "  --update, -u    Update an existing ClawBuddy Swarm installation"
       echo "  --help, -h      Show this help message"
       echo ""
-      echo "Run without arguments for first-time setup."
+      echo "Run without arguments for a first-time Docker Swarm setup."
       exit 0
       ;;
   esac
