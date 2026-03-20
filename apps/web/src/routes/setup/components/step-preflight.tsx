@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
 import {
@@ -82,17 +82,17 @@ export function StepPreflight({
   const failCount = result?.checks.filter((c) => c.status === 'fail').length ?? 0
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+    <div>
+      <div className="mb-6">
+        <h2 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
           <ShieldCheck className="size-5" />
           Preflight Check
-        </CardTitle>
-        <CardDescription>
+        </h2>
+        <p className="text-muted-foreground mt-1">
           Verifying that all services are configured correctly before completing setup.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
+        </p>
+      </div>
+      <div className="flex flex-col gap-3">
         {running && (
           <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
             <Spinner className="size-4" />
@@ -152,8 +152,8 @@ export function StepPreflight({
           </>
         )}
 
-        <div className="flex justify-between mt-2">
-          <Button variant="outline" onClick={onBack}>
+        <div className="flex justify-between mt-8 pt-6 border-t border-border/50">
+          <Button variant="ghost" onClick={onBack}>
             <ChevronLeft className="size-4 mr-1" />
             Back
           </Button>
@@ -173,7 +173,7 @@ export function StepPreflight({
             )}
           </Button>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }

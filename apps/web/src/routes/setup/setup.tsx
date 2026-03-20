@@ -213,14 +213,14 @@ export function SetupPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="w-full max-w-lg px-4 py-8">
+      <div className="w-full max-w-2xl px-6 py-12">
         {/* Header */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-2 mb-2">
-            <span className="size-2.5 rounded-full bg-brand" />
-            <span className="text-lg font-semibold tracking-tight">ClawBuddy</span>
+        <div className="text-center mb-12">
+          <div className="flex items-center justify-center gap-2.5 mb-1">
+            <span className="size-3 rounded-full bg-brand" />
+            <span className="text-xl font-semibold tracking-tight">ClawBuddy</span>
           </div>
-          <p className="text-sm text-muted-foreground">Initial setup</p>
+          <p className="text-sm text-muted-foreground tracking-wide">Setup</p>
         </div>
 
         <StepNav visibleSteps={visibleSteps} currentStep={step} />

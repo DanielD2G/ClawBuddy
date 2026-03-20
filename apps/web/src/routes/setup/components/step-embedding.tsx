@@ -1,4 +1,3 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -28,15 +27,15 @@ export function StepEmbedding({
   onNext,
 }: StepEmbeddingProps) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Embedding Model</CardTitle>
-        <CardDescription>
+    <div>
+      <div className="mb-6">
+        <h2 className="text-2xl font-semibold tracking-tight">Embedding Model</h2>
+        <p className="text-muted-foreground mt-1">
           Choose the provider and model for document embeddings. This setting is{' '}
           <strong>permanent</strong> and cannot be changed later.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+        </p>
+      </div>
+      <div className="flex flex-col gap-4">
         <div className="flex gap-3">
           <div className="flex flex-col gap-1.5 flex-1">
             <label className="text-sm font-medium">Provider</label>
@@ -88,8 +87,8 @@ export function StepEmbedding({
             </DropdownMenu>
           </div>
         </div>
-        <div className="flex justify-between mt-4">
-          <Button variant="outline" onClick={onBack}>
+        <div className="flex justify-between mt-8 pt-6 border-t border-border/50">
+          <Button variant="ghost" onClick={onBack}>
             <ChevronLeft className="size-4 mr-1" />
             Back
           </Button>
@@ -98,7 +97,7 @@ export function StepEmbedding({
             <ChevronRight className="size-4 ml-1" />
           </Button>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }

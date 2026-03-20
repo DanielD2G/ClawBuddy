@@ -1,4 +1,3 @@
-import { Check, ChevronRight } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 export interface StepDefinition {
@@ -12,32 +11,24 @@ interface StepNavProps {
 }
 
 export function StepNav({ visibleSteps, currentStep }: StepNavProps) {
+  const progress = visibleSteps.length > 1 ? (currentStep / (visibleSteps.length - 1)) * 100 : 0
+
   return (
-    <div className="flex items-center justify-center gap-1 mb-8">
-      {visibleSteps.map((s, i) => {
-        const Icon = s.icon
-        const isActive = i === currentStep
-        const isDone = i < currentStep
-        return (
-          <div key={s.label} className="flex items-center gap-1">
-            <div
-              className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap transition-colors ${
-                isActive
-                  ? 'bg-brand text-brand-foreground'
-                  : isDone
-                    ? 'bg-brand/10 text-brand'
-                    : 'bg-muted text-muted-foreground'
-              }`}
-            >
-              {isDone ? <Check className="size-3" /> : <Icon className="size-3" />}
-              <span className="hidden sm:inline">{s.label}</span>
-            </div>
-            {i < visibleSteps.length - 1 && (
-              <ChevronRight className="size-3 text-muted-foreground/50" />
-            )}
-          </div>
-        )
-      })}
+    <div className="mb-10">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-sm text-muted-foreground">
+          Step {currentStep + 1} of {visibleSteps.length}
+        </span>
+        <span className="text-sm font-medium">
+          {visibleSteps[currentStep]?.label}
+        </span>
+      </div>
+      <div className="h-1 w-full rounded-full bg-muted overflow-hidden">
+        <div
+          className="h-full rounded-full bg-brand transition-all duration-500 ease-out"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
     </div>
   )
 }

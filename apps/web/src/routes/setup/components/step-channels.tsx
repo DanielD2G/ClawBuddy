@@ -1,4 +1,4 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
@@ -37,15 +37,15 @@ export function StepChannels({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Channels</CardTitle>
-        <CardDescription>
+    <div>
+      <div className="mb-6">
+        <h2 className="text-2xl font-semibold tracking-tight">Channels</h2>
+        <p className="text-muted-foreground mt-1">
           Connect external messaging platforms to interact with the assistant outside the web
           interface.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+        </p>
+      </div>
+      <div className="flex flex-col gap-4">
         {/* Telegram Card */}
         <div className="rounded-lg border p-4 space-y-3">
           <div className="flex items-center justify-between">
@@ -116,8 +116,8 @@ export function StepChannels({
           )}
         </div>
 
-        <div className="flex justify-between mt-4">
-          <Button variant="outline" onClick={onBack}>
+        <div className="flex justify-between mt-8 pt-6 border-t border-border/50">
+          <Button variant="ghost" onClick={onBack}>
             <ChevronLeft className="size-4 mr-1" />
             Back
           </Button>
@@ -126,7 +126,7 @@ export function StepChannels({
             <ChevronRight className="size-4 ml-1" />
           </Button>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }

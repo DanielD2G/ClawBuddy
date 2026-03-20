@@ -12,7 +12,13 @@
 <summary><strong>More screenshots</strong></summary>
 <br>
 <p align="center">
+  <img src="docs/images/setup.jpeg" alt="ClawBuddy – Setup Wizard" width="720" />
+</p>
+<p align="center">
   <img src="docs/images/capabilities.jpeg" alt="ClawBuddy – Capabilities Overview" width="720" />
+</p>
+<p align="center">
+  <img src="docs/images/telegram.jpeg" alt="ClawBuddy – Telegram Integration" width="720" />
 </p>
 <p align="center">
   <img src="docs/images/products.png" alt="ClawBuddy – Product Search" width="720" />

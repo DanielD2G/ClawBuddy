@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -118,14 +117,14 @@ export function StepChatModel({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Chat Models</CardTitle>
-        <CardDescription>
+    <div>
+      <div className="mb-6">
+        <h2 className="text-2xl font-semibold tracking-tight">Chat Models</h2>
+        <p className="text-muted-foreground mt-1">
           Choose the AI provider and models for each tier. You can change this later.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+        </p>
+      </div>
+      <div className="flex flex-col gap-4">
         {/* Advanced toggle */}
         <div className="flex items-center justify-between gap-3 rounded-xl border bg-muted/30 px-3 py-2">
           <div>
@@ -210,8 +209,8 @@ export function StepChatModel({
           })}
         </div>
 
-        <div className="flex justify-between mt-4">
-          <Button variant="outline" onClick={onBack}>
+        <div className="flex justify-between mt-8 pt-6 border-t border-border/50">
+          <Button variant="ghost" onClick={onBack}>
             <ChevronLeft className="size-4 mr-1" />
             Back
           </Button>
@@ -220,7 +219,7 @@ export function StepChatModel({
             <ChevronRight className="size-4 ml-1" />
           </Button>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }
