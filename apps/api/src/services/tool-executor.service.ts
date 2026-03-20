@@ -373,35 +373,30 @@ async function executeGenerateFile(
     const resolvedPath = sourcePath.startsWith('/') ? sourcePath : `${userHome}/${sourcePath}`
 
     if (isBinary) {
-      // For binary files, read as base64 to preserve bytes
-      let readResult = await sandboxService.execInWorkspace(
-        context.workspaceId,
-        `base64 -w0 ${JSON.stringify(resolvedPath)}`,
-        { timeout: 30 },
-      )
-      // Fallback: try basename in workspace dir
-      if (
-        readResult.exitCode !== 0 &&
-        resolvedPath !== `${userHome}/${sourcePath.split('/').pop()}`
-      ) {
-        const fallbackPath = `${userHome}/${sourcePath.split('/').pop()}`
-        const fallbackResult = await sandboxService.execInWorkspace(
-          context.workspaceId,
-          `base64 -w0 ${JSON.stringify(fallbackPath)}`,
-          { timeout: 30 },
-        )
-        if (fallbackResult.exitCode === 0) {
-          readResult = fallbackResult
+      // For binary files, use Docker getArchive to bypass stdout size limits
+      try {
+        buffer = await sandboxService.readFileFromContainer(context.workspaceId, resolvedPath)
+      } catch {
+        // Fallback: try basename in workspace dir
+        if (resolvedPath !== `${userHome}/${sourcePath.split('/').pop()}`) {
+          try {
+            const fallbackPath = `${userHome}/${sourcePath.split('/').pop()}`
+            buffer = await sandboxService.readFileFromContainer(context.workspaceId, fallbackPath)
+          } catch (fallbackErr) {
+            return {
+              output: '',
+              error: `Failed to read ${sourcePath}: ${fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)}. Your working directory is ${userHome}/ — use absolute paths or relative paths from there.`,
+              durationMs: Date.now() - startTime,
+            }
+          }
+        } else {
+          return {
+            output: '',
+            error: `Failed to read ${sourcePath}. Your working directory is ${userHome}/ — use absolute paths or relative paths from there.`,
+            durationMs: Date.now() - startTime,
+          }
         }
       }
-      if (readResult.exitCode !== 0) {
-        return {
-          output: '',
-          error: `Failed to read ${sourcePath}: ${readResult.stderr}. Your working directory is ${userHome}/ — use absolute paths or relative paths from there.`,
-          durationMs: Date.now() - startTime,
-        }
-      }
-      buffer = Buffer.from(readResult.stdout.trim(), 'base64')
     } else {
       // For text files, read normally
       let readResult = await sandboxService.execInWorkspace(
@@ -806,15 +801,17 @@ async function executeBrowserScript(
             : `browser-screenshot-${randomUUID()}.jpg`
         const baseName = suggestedName.replace(/\.[^.]+$/i, '')
         const resolvedPath = `/workspace/screenshots/${baseName}-${randomUUID()}.jpg`
-        const saveResult = await sandboxService.execInWorkspace(
-          context.workspaceId,
-          `mkdir -p ${JSON.stringify(path.posix.dirname(resolvedPath))} && printf '%s' ${JSON.stringify(screenshotB64)} | base64 -d | tee ${JSON.stringify(resolvedPath)} >/dev/null && chmod 666 ${JSON.stringify(resolvedPath)}`,
-          { timeout: 15 },
-        )
-        if (saveResult.exitCode !== 0) {
+        try {
+          const imageBuffer = Buffer.from(screenshotB64, 'base64')
+          await sandboxService.writeFileToContainer(
+            context.workspaceId,
+            resolvedPath,
+            imageBuffer,
+          )
+        } catch (writeErr) {
           return {
             output: '',
-            error: `Failed to save screenshot to ${resolvedPath}: ${saveResult.stderr || 'unknown error'}`,
+            error: `Failed to save screenshot to ${resolvedPath}: ${writeErr instanceof Error ? writeErr.message : String(writeErr)}`,
             durationMs: Date.now() - startTime,
           }
         }

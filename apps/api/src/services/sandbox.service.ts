@@ -1,5 +1,7 @@
 import Docker from 'dockerode'
 import { PassThrough } from 'stream'
+import path from 'node:path'
+import { pack, extract } from 'tar-stream'
 import { prisma } from '../lib/prisma.js'
 
 const docker = new Docker()
@@ -377,6 +379,90 @@ export const sandboxService = {
           reject(err)
         })
       })
+    })
+  },
+
+  /**
+   * Write a file directly into the workspace container using Docker putArchive.
+   * Bypasses shell argument limits — safe for large binary files (screenshots, etc.).
+   */
+  async writeFileToContainer(
+    workspaceId: string,
+    filePath: string,
+    data: Buffer,
+  ): Promise<void> {
+    const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId } })
+    if (!workspace.containerId || workspace.containerStatus !== 'running') {
+      throw new Error('Workspace container is not running')
+    }
+
+    const container = docker.getContainer(workspace.containerId)
+    const dir = path.posix.dirname(filePath)
+    const filename = path.posix.basename(filePath)
+
+    // Ensure the target directory exists
+    await this._execInContainerDirect(
+      workspace.containerId,
+      `mkdir -p ${JSON.stringify(dir)} && chmod 777 ${JSON.stringify(dir)}`,
+      { timeout: 5 },
+    )
+
+    // Create a tar archive with the file
+    const tarPacker = pack()
+    tarPacker.entry({ name: filename, mode: 0o666 }, data)
+    tarPacker.finalize()
+
+    // Collect tar stream into a buffer
+    const chunks: Buffer[] = []
+    for await (const chunk of tarPacker) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+    }
+    const tarBuffer = Buffer.concat(chunks)
+
+    // Put the archive into the container
+    await container.putArchive(tarBuffer, { path: dir })
+
+    await prisma.workspace.update({
+      where: { id: workspaceId },
+      data: { containerLastActivityAt: new Date() },
+    })
+  },
+
+  /**
+   * Read a file directly from the workspace container using Docker getArchive.
+   * Bypasses stdout size limits — safe for large binary files (screenshots, etc.).
+   */
+  async readFileFromContainer(
+    workspaceId: string,
+    filePath: string,
+  ): Promise<Buffer> {
+    const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId } })
+    if (!workspace.containerId || workspace.containerStatus !== 'running') {
+      throw new Error('Workspace container is not running')
+    }
+
+    const container = docker.getContainer(workspace.containerId)
+
+    // getArchive returns a tar stream containing the requested file
+    const archiveStream = await container.getArchive({ path: filePath })
+
+    return new Promise<Buffer>((resolve, reject) => {
+      const extractor = extract()
+      const chunks: Buffer[] = []
+
+      extractor.on('entry', (_header, stream, next) => {
+        stream.on('data', (chunk: Buffer) => chunks.push(chunk))
+        stream.on('end', next)
+        stream.on('error', reject)
+      })
+
+      extractor.on('finish', () => {
+        resolve(Buffer.concat(chunks))
+      })
+
+      extractor.on('error', reject)
+
+      archiveStream.pipe(extractor)
     })
   },
 
