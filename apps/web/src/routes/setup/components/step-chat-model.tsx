@@ -1,4 +1,3 @@
-import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -14,7 +13,13 @@ import type { ProvidersData } from '@/hooks/use-providers'
 
 interface StepChatModelProps {
   providers: ProvidersData
+  advancedMode: boolean
+  models: Record<string, string>
+  roleProviders: Record<string, string>
   onUpdate: (data: Record<string, unknown>) => void
+  onAdvancedModeChange: (advancedMode: boolean) => void
+  onModelChange: (roleKey: string, modelId: string) => void
+  onRoleProviderChange: (roleKey: string, provider: string) => void
   isUpdating: boolean
   onBack: () => void
   onNext: () => void
@@ -46,71 +51,42 @@ const MODEL_FIELD_MAP: Record<string, string> = {
 
 export function StepChatModel({
   providers,
+  advancedMode,
+  models,
+  roleProviders,
   onUpdate,
+  onAdvancedModeChange,
+  onModelChange,
+  onRoleProviderChange,
   isUpdating,
   onBack,
   onNext,
 }: StepChatModelProps) {
-  const [advancedMode, setAdvancedMode] = useState(providers.active.advancedModelConfig ?? false)
-  const [models, setModels] = useState<Record<string, string>>({})
-  const [roleProviders, setRoleProviders] = useState<Record<string, string>>({})
-
   const roles = advancedMode ? ADVANCED_ROLES : SIMPLE_TIERS
   const availableProviders = providers.available.llm
-
-  // Initialize state from server data
-  useEffect(() => {
-    const active = providers.active
-    const serverModels: Record<string, string> = {}
-
-    const entries: [string, string | null][] = [
-      ['primary', active.llmModel],
-      ['medium', active.mediumModel],
-      ['light', active.lightModel],
-      ['explore', active.exploreModel],
-      ['execute', active.executeModel],
-      ['title', active.titleModel],
-      ['compact', active.compactModel],
-    ]
-
-    for (const [key, modelId] of entries) {
-      if (modelId) {
-        serverModels[key] = modelId
-      }
-    }
-
-    setModels(serverModels)
-    setRoleProviders(active.roleProviders ?? { primary: active.llm })
-    setAdvancedMode(active.advancedModelConfig ?? false)
-  }, [providers, availableProviders])
+  const canContinue = roles.every((role) => Boolean(models[role.key]?.trim()))
 
   const handleProviderChange = (roleKey: string, provider: string) => {
     const nextProviders = { ...roleProviders, [roleKey]: provider }
-    setRoleProviders(nextProviders)
-    const firstModel = providers.models.llm[provider]?.[0]
-    if (firstModel) {
-      setModels((prev) => ({ ...prev, [roleKey]: firstModel }))
-      const field = MODEL_FIELD_MAP[roleKey]
-      if (field)
-        onUpdate({
-          roleProviders: nextProviders,
-          [field]: firstModel,
-          ...(roleKey === 'primary' ? { llm: provider } : {}),
-        })
-      return
-    }
-    onUpdate({ roleProviders: nextProviders, ...(roleKey === 'primary' ? { llm: provider } : {}) })
+    onRoleProviderChange(roleKey, provider)
+    onModelChange(roleKey, '')
+    const field = MODEL_FIELD_MAP[roleKey]
+    onUpdate({
+      roleProviders: nextProviders,
+      ...(field ? { [field]: null } : {}),
+      ...(roleKey === 'primary' ? { llm: provider } : {}),
+    })
   }
 
   const handleModelChange = (roleKey: string, modelId: string) => {
-    setModels((prev) => ({ ...prev, [roleKey]: modelId }))
+    onModelChange(roleKey, modelId)
     const field = MODEL_FIELD_MAP[roleKey]
     if (field) onUpdate({ [field]: modelId })
   }
 
   const handleAdvancedToggle = () => {
     const next = !advancedMode
-    setAdvancedMode(next)
+    onAdvancedModeChange(next)
     onUpdate({ advancedModelConfig: next })
   }
 
@@ -192,7 +168,9 @@ export function StepChatModel({
                         disabled={isUpdating}
                         className="flex h-(--control) w-full items-center justify-between rounded-md border border-border/50 bg-transparent px-3 font-mono text-xs hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        <span className="truncate">{currentModel || 'Default'}</span>
+                        <span className={cn('truncate', !currentModel && 'text-muted-foreground')}>
+                          {currentModel || 'Select model'}
+                        </span>
                         <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" />
                       </button>
                     </DropdownMenuTrigger>
@@ -220,11 +198,16 @@ export function StepChatModel({
             <ChevronLeft className="size-4 mr-1" />
             Back
           </Button>
-          <Button onClick={onNext}>
+          <Button onClick={onNext} disabled={!canContinue || isUpdating}>
             Next
             <ChevronRight className="size-4 ml-1" />
           </Button>
         </div>
+        {!canContinue && (
+          <p className="text-center text-xs text-muted-foreground">
+            Select a model for each visible role to continue.
+          </p>
+        )}
       </div>
     </div>
   )

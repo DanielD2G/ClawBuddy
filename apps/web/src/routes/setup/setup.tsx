@@ -7,6 +7,7 @@ import {
   useSetupCapabilities,
 } from '@/hooks/use-setup'
 import { useActiveWorkspace } from '@/providers/workspace-provider'
+import { useTheme } from '@/providers/theme-provider'
 import { Spinner } from '@/components/ui/spinner'
 import {
   Sparkles,
@@ -51,6 +52,34 @@ const ALL_STEPS = [
   { label: 'Configure', icon: Settings },
 ]
 
+function buildChatModelDraft(
+  providers: NonNullable<ReturnType<typeof useSetupSettings>['query']['data']>['providers'],
+) {
+  const active = providers.active
+  const models: Record<string, string> = {}
+  const entries: [string, string | null][] = [
+    ['primary', active.llmModel],
+    ['medium', active.mediumModel],
+    ['light', active.lightModel],
+    ['explore', active.exploreModel],
+    ['execute', active.executeModel],
+    ['title', active.titleModel],
+    ['compact', active.compactModel],
+  ]
+
+  for (const [key, modelId] of entries) {
+    if (modelId) {
+      models[key] = modelId
+    }
+  }
+
+  return {
+    advancedMode: active.advancedModelConfig ?? false,
+    models,
+    roleProviders: active.roleProviders ?? { primary: active.llm },
+  }
+}
+
 export function SetupPage() {
   const queryClient = useQueryClient()
   const { onboardingComplete, isLoading: statusLoading } = useSetupStatus()
@@ -68,6 +97,12 @@ export function SetupPage() {
   const [telegramEnabled, setTelegramEnabled] = useState(false)
   const [telegramToken, setTelegramToken] = useState('')
   const [telegramTokenTested, setTelegramTokenTested] = useState(false)
+  const [chatModelDraft, setChatModelDraft] = useState<{
+    advancedMode: boolean
+    models: Record<string, string>
+    roleProviders: Record<string, string>
+  } | null>(null)
+  const { theme, setTheme } = useTheme()
   const { setActiveWorkspace } = useActiveWorkspace()
   // Sync picked workspace color to CSS --brand variable in real time
   useEffect(() => {
@@ -166,6 +201,7 @@ export function SetupPage() {
   if (!data) return null
 
   const { providers, browserGridFromEnv } = data
+  const effectiveChatModelDraft = chatModelDraft ?? buildChatModelDraft(providers)
   const hasEmbeddingProvider = providers.available.embedding.length > 0
 
   // Capabilities that need config and are selected (exclude OAuth capabilities — configured post-setup via OAuth flow)
@@ -261,7 +297,34 @@ export function SetupPage() {
         {step === 3 && (
           <StepChatModel
             providers={providers}
+            advancedMode={effectiveChatModelDraft.advancedMode}
+            models={effectiveChatModelDraft.models}
+            roleProviders={effectiveChatModelDraft.roleProviders}
             onUpdate={updateProviders.mutate}
+            onAdvancedModeChange={(advancedMode) =>
+              setChatModelDraft((prev) => ({
+                ...(prev ?? buildChatModelDraft(providers)),
+                advancedMode,
+              }))
+            }
+            onModelChange={(roleKey, modelId) =>
+              setChatModelDraft((prev) => ({
+                ...(prev ?? buildChatModelDraft(providers)),
+                models: {
+                  ...(prev?.models ?? buildChatModelDraft(providers).models),
+                  [roleKey]: modelId,
+                },
+              }))
+            }
+            onRoleProviderChange={(roleKey, provider) =>
+              setChatModelDraft((prev) => ({
+                ...(prev ?? buildChatModelDraft(providers)),
+                roleProviders: {
+                  ...(prev?.roleProviders ?? buildChatModelDraft(providers).roleProviders),
+                  [roleKey]: provider,
+                },
+              }))
+            }
             isUpdating={updateProviders.isPending}
             onBack={() => setStep(2)}
             onNext={() => setStep(4)}
@@ -272,9 +335,11 @@ export function SetupPage() {
             name={workspaceName}
             color={workspaceColor}
             timezone={timezone}
+            theme={theme}
             onNameChange={setWorkspaceName}
             onColorChange={setWorkspaceColor}
             onTimezoneChange={setTimezone}
+            onThemeChange={setTheme}
             onBack={() => setStep(3)}
             onNext={() => setStep(5)}
           />
