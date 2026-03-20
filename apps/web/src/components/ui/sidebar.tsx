@@ -114,7 +114,7 @@ function SidebarProvider({
             ...style,
           } as React.CSSProperties
         }
-        className={cn('group/sidebar-wrapper flex min-h-svh w-full', className)}
+        className={cn('group/sidebar-wrapper flex min-h-svh w-full bg-sidebar', className)}
         {...props}
       >
         {children}
@@ -201,7 +201,7 @@ function SidebarFooter({ className, ...props }: React.ComponentProps<'div'>) {
 function SidebarInset({ className, ...props }: React.ComponentProps<'main'>) {
   return (
     <main
-      className={cn('relative flex w-full flex-1 flex-col overflow-hidden rounded-[1.75rem] border border-border/50 bg-background shadow-sm', className)}
+      className={cn('relative my-2 mr-2 flex w-full flex-1 flex-col overflow-hidden rounded-[1.75rem] border border-border/50 bg-background shadow-sm', className)}
       {...props}
     />
   )
