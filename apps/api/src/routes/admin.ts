@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { settingsService } from '../services/settings.service.js'
 import { buildModelCatalogs, invalidateModelCache } from '../services/model-discovery.service.js'
+import { systemUpdateService } from '../services/system-update.service.js'
 import { prisma } from '../lib/prisma.js'
 import { parsePagination } from '../lib/pagination.js'
 import { ok, fail } from '../lib/responses.js'
@@ -191,6 +192,18 @@ app.patch('/admin/permissions', async (c) => {
     update: { autoApproveRules },
   })
   return ok(c, { autoApproveRules: (settings.autoApproveRules as string[]) ?? [] })
+})
+
+// ── System Update ───────────────────────────────────────
+
+app.get('/admin/system/update', async (c) => {
+  const status = await systemUpdateService.getStatus()
+  return ok(c, status)
+})
+
+app.post('/admin/system/update', async (c) => {
+  const status = await systemUpdateService.startUpdate()
+  return c.json({ success: true, data: status }, 202)
 })
 
 export default app

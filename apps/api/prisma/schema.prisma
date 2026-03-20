@@ -266,6 +266,7 @@ model ToolApproval {
 model GlobalSettings {
   id               String   @id @default("singleton")
   autoApproveRules Json?
+  systemUpdateState Json?
   updatedAt        DateTime @updatedAt
 }
 

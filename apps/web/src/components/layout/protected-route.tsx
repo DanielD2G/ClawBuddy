@@ -1,6 +1,7 @@
 import { Navigate, Outlet } from 'react-router-dom'
 import { useSetupStatus } from '@/hooks/use-setup'
 import { Spinner } from '@/components/ui/spinner'
+import { SystemUpdateWatcher } from '@/components/system-update-watcher'
 
 export function ProtectedRoute() {
   const { onboardingComplete, isLoading: setupLoading } = useSetupStatus()
@@ -18,5 +19,10 @@ export function ProtectedRoute() {
     return <Navigate to="/setup" replace />
   }
 
-  return <Outlet />
+  return (
+    <>
+      <SystemUpdateWatcher />
+      <Outlet />
+    </>
+  )
 }
