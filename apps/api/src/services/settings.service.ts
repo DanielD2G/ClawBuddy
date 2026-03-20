@@ -402,18 +402,18 @@ export const settingsService = {
 
   async update(data: {
     aiProvider?: string
-    aiModel?: string
-    mediumModel?: string
-    lightModel?: string
-    exploreModel?: string
-    executeModel?: string
-    titleModel?: string
-    compactModel?: string
+    aiModel?: string | null
+    mediumModel?: string | null
+    lightModel?: string | null
+    exploreModel?: string | null
+    executeModel?: string | null
+    titleModel?: string | null
+    compactModel?: string | null
     roleProviders?: Partial<Record<LLMRole, string>>
     useLightModel?: boolean
     advancedModelConfig?: boolean
     embeddingProvider?: string
-    embeddingModel?: string
+    embeddingModel?: string | null
     contextLimitTokens?: number
     browserGridUrl?: string
     browserGridBrowser?: string

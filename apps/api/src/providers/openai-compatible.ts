@@ -26,10 +26,26 @@ interface OpenAICompatibleEmbeddingOptions extends OpenAICompatibleClientOptions
   model: string
 }
 
+export function normalizeOpenAICompatibleBaseURL(baseURL: string): string {
+  const url = new URL(baseURL)
+  const path = url.pathname.replace(/\/+$/, '')
+
+  if (!path || path === '') {
+    url.pathname = '/v1'
+    return url.toString().replace(/\/$/, '')
+  }
+
+  if (path === '/v1') {
+    return url.toString().replace(/\/$/, '')
+  }
+
+  return url.toString().replace(/\/$/, '')
+}
+
 export function createOpenAICompatibleClient(options: OpenAICompatibleClientOptions): OpenAI {
   return new OpenAI({
     apiKey: options.apiKey || 'local',
-    ...(options.baseURL ? { baseURL: options.baseURL } : {}),
+    ...(options.baseURL ? { baseURL: normalizeOpenAICompatibleBaseURL(options.baseURL) } : {}),
   })
 }
 

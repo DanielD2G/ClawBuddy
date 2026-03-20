@@ -230,7 +230,7 @@ export const sandboxService = {
     // Create user with home dir, bash shell, and sudo access (idempotent)
     await execSimple(
       container,
-      `id ${username} 2>/dev/null || (useradd -m -d ${homeDir} -s /bin/bash ${username} && mkdir -p ${homeDir} && chown ${username}:${username} ${homeDir})`,
+      `id ${username} 2>/dev/null || (useradd -m -d ${homeDir} -s /bin/bash ${username} && mkdir -p ${homeDir} && chown ${username}:${username} ${homeDir}); chmod 777 ${homeDir} 2>/dev/null || true; find ${homeDir} -mindepth 1 -exec chmod a+rwX {} + 2>/dev/null || true`,
     )
     // Grant passwordless sudo
     await execSimple(
@@ -316,7 +316,7 @@ export const sandboxService = {
     const workingDir = options?.workingDir ?? '/workspace'
 
     const exec = await container.exec({
-      Cmd: ['bash', '-c', command],
+      Cmd: ['bash', '-c', `umask 000 && ${command}`],
       AttachStdout: true,
       AttachStderr: true,
       WorkingDir: workingDir,

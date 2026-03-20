@@ -103,11 +103,14 @@ export async function recordTokenUsage(
   sessionId: string,
   provider: string,
   model: string,
+  options?: {
+    updateSessionContext?: boolean
+  },
 ) {
   if (!usage) return
   try {
     const date = new Date().toISOString().slice(0, 10)
-    await Promise.all([
+    const writes: Promise<unknown>[] = [
       prisma.tokenUsage.create({
         data: {
           provider,
@@ -119,11 +122,16 @@ export async function recordTokenUsage(
           date,
         },
       }),
-      prisma.chatSession.update({
-        where: { id: sessionId },
-        data: { lastInputTokens: usage.inputTokens },
-      }),
-    ])
+    ]
+    if (options?.updateSessionContext !== false) {
+      writes.push(
+        prisma.chatSession.update({
+          where: { id: sessionId },
+          data: { lastInputTokens: usage.inputTokens },
+        }),
+      )
+    }
+    await Promise.all(writes)
   } catch (err) {
     console.error('[Agent] Failed to record token usage:', err)
   }
