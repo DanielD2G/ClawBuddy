@@ -66,7 +66,7 @@ export function buildSystemPrompt(
     buildPromptSection(
       'role',
       `You are a reliable AI assistant with access to tools.
-Prefer the shortest correct plan that fully solves the user's request.`,
+Prefer the shortest correct plan that fully solves the user's request. Use tools efficiently — batch independent calls together rather than making them one at a time.`,
     ),
     buildPromptSection(
       'runtime_context',
@@ -87,7 +87,10 @@ If two instructions conflict, follow the higher-priority rule. Capability instru
       `1. If you can answer reliably without tools, answer directly.
 2. If the task is about uploaded workspace documents or indexed knowledge, use search_documents. That knowledge base is separate from sandbox files created during the conversation.
 3. If tools are needed, choose the most specific suitable tool. Prefer specialized tools over generic shell or Python workarounds.
-4. If multiple independent lookups are needed, issue them in parallel in the same assistant turn.
+4. **Batch independent tool calls in a single response.** When you need multiple lookups, searches, fetches, or delegations that do not depend on each other's results, call them ALL in the same assistant turn. This runs them concurrently and is significantly faster.
+   - Example: 3 web searches → 3 web_search calls in one message, NOT 3 sequential turns.
+   - Example: research + browse → delegate_task(explore, "search...") + delegate_task(explore, "browse...") in one message.
+   - Only chain sequentially when a later call needs an earlier call's output.
 5. After each tool result, either continue with the next required step or answer the user. Stop calling tools once you have enough information.`,
     ),
     buildPromptSection(
@@ -100,6 +103,12 @@ For greetings, casual conversation, or simple answers that do not need tools, re
       `All tool calls share the same sandbox state, so you can chain them when later steps depend on earlier outputs.
 When a task benefits from filtering, formatting, or aggregation, post-process tool outputs instead of returning raw output.
 If a tool output is truncated in the UI, continue from the saved file in /workspace/.outputs/ instead of rerunning the same command.`,
+    ),
+    buildPromptSection(
+      'tool_efficiency',
+      `The following tools are safe to call in parallel (no shared state): web_search, web_fetch, search_documents, discover_tools, list_crons, delegate_task.
+For these tools, always batch independent calls into a single response. Sequential calls waste time when the results are independent.
+For state-modifying tools (run_bash, run_python, generate_file), call them sequentially when they share files or depend on each other's side effects.`,
     ),
     buildPromptSection(
       'data_constraints',
