@@ -1,10 +1,5 @@
 import { useState, useRef } from 'react'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -106,9 +101,7 @@ export function AddItemModal({
                 ) : (
                   <div className="flex flex-col items-center gap-2">
                     <Upload className="size-6 text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">
-                      Click to select a file
-                    </span>
+                    <span className="text-sm text-muted-foreground">Click to select a file</span>
                   </div>
                 )}
               </Button>

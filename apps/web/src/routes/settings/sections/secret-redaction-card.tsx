@@ -18,10 +18,9 @@ export function SecretRedactionCard() {
     updateWorkspace.mutate(
       {
         id: activeWorkspaceId,
-        settings: mergeWorkspaceSettings(
-          activeWorkspace?.settings,
-          { secretRedactionEnabled: checked },
-        ) ?? { secretRedactionEnabled: checked },
+        settings: mergeWorkspaceSettings(activeWorkspace?.settings, {
+          secretRedactionEnabled: checked,
+        }) ?? { secretRedactionEnabled: checked },
       },
       {
         onSuccess: () => {
@@ -43,7 +42,8 @@ export function SecretRedactionCard() {
             <div>
               <CardTitle>Secret Redaction</CardTitle>
               <CardDescription>
-                Mask secrets in agent responses, tool outputs, events, logs, and stored chat history for this workspace.
+                Mask secrets in agent responses, tool outputs, events, logs, and stored chat history
+                for this workspace.
               </CardDescription>
             </div>
           </div>
@@ -60,7 +60,8 @@ export function SecretRedactionCard() {
           <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3">
             <ShieldAlert className="mt-0.5 size-4 shrink-0 text-destructive" />
             <p className="text-sm text-destructive/90">
-              Disabling this exposes raw secrets to the agent, UI, SSE events, database records, approvals, and debug logs in this workspace.
+              Disabling this exposes raw secrets to the agent, UI, SSE events, database records,
+              approvals, and debug logs in this workspace.
             </p>
           </div>
         </CardContent>

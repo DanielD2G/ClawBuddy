@@ -1,20 +1,23 @@
 import { useState, useEffect } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Spinner } from '@/components/ui/spinner'
-import { ChevronLeft, Eye, EyeOff } from 'lucide-react'
+import { ChevronLeft, Check, ChevronsUpDown, Eye, EyeOff } from 'lucide-react'
 import type { ConfigFieldDefinition } from '@/types/capability-config'
 
 interface StepConfigureProps {
-  capsNeedingConfig: Array<{ slug: string; name: string; configSchema: ConfigFieldDefinition[] | null }>
+  capsNeedingConfig: Array<{
+    slug: string
+    name: string
+    configSchema: ConfigFieldDefinition[] | null
+  }>
   configs: Record<string, Record<string, unknown>>
   onConfigChange: (slug: string, config: Record<string, unknown>) => void
   onBack: () => void
@@ -63,14 +66,15 @@ export function StepConfigure({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Configure Credentials</CardTitle>
-        <CardDescription>
-          Enter credentials for the capabilities you selected. You can skip this and configure later in settings.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-6">
+    <div>
+      <div className="mb-6">
+        <h2 className="text-2xl font-semibold tracking-tight">Configure Credentials</h2>
+        <p className="text-muted-foreground mt-1">
+          Enter credentials for the capabilities you selected. You can skip this and configure later
+          in settings.
+        </p>
+      </div>
+      <div className="flex flex-col gap-6">
         {capsNeedingConfig.map((cap) => (
           <div key={cap.slug} className="flex flex-col gap-3">
             <h3 className="text-sm font-semibold">{cap.name}</h3>
@@ -86,21 +90,26 @@ export function StepConfigure({
                     <p className="text-xs text-muted-foreground">{field.description}</p>
                   )}
                   {field.type === 'select' && field.options ? (
-                    <Select
-                      value={getFieldValue(cap.slug, field.key)}
-                      onValueChange={(v) => setFieldValue(cap.slug, field.key, v)}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select..." />
-                      </SelectTrigger>
-                      <SelectContent>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button className="flex h-(--control) w-full items-center justify-between rounded-md border border-border bg-muted/40 px-3 text-sm hover:bg-muted/70 dark:bg-muted/20 dark:hover:bg-muted/40">
+                          <span>{field.options?.find((o) => o.value === getFieldValue(cap.slug, field.key))?.label || 'Select...'}</span>
+                          <ChevronsUpDown className="size-4 text-muted-foreground" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent>
                         {field.options.map((opt) => (
-                          <SelectItem key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </SelectItem>
+                          <DropdownMenuItem
+                            key={opt.value}
+                            onClick={() => setFieldValue(cap.slug, field.key, opt.value)}
+                            className="gap-2"
+                          >
+                            <span className="flex-1">{opt.label}</span>
+                            {getFieldValue(cap.slug, field.key) === opt.value && <Check className="size-3.5" />}
+                          </DropdownMenuItem>
                         ))}
-                      </SelectContent>
-                    </Select>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   ) : field.type === 'textarea' ? (
                     <textarea
                       id={fieldKey}
@@ -126,7 +135,11 @@ export function StepConfigure({
                         className="absolute top-1/2 right-1 -translate-y-1/2 size-7"
                         onClick={() => togglePassword(fieldKey)}
                       >
-                        {showPasswords[fieldKey] ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                        {showPasswords[fieldKey] ? (
+                          <EyeOff className="size-3.5" />
+                        ) : (
+                          <Eye className="size-3.5" />
+                        )}
                       </Button>
                     </div>
                   ) : (
@@ -146,8 +159,8 @@ export function StepConfigure({
             )}
           </div>
         ))}
-        <div className="flex justify-between mt-2">
-          <Button variant="outline" onClick={onBack}>
+        <div className="flex justify-between mt-8 pt-6 border-t border-border/50">
+          <Button variant="ghost" onClick={onBack}>
             <ChevronLeft className="size-4 mr-1" />
             Back
           </Button>
@@ -160,7 +173,7 @@ export function StepConfigure({
             Complete Setup
           </Button>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }

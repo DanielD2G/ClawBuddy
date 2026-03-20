@@ -80,10 +80,7 @@ function SidebarProvider({
   // Keyboard shortcut: Cmd+B / Ctrl+B
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (
-        event.key === SIDEBAR_KEYBOARD_SHORTCUT &&
-        (event.metaKey || event.ctrlKey)
-      ) {
+      if (event.key === SIDEBAR_KEYBOARD_SHORTCUT && (event.metaKey || event.ctrlKey)) {
         event.preventDefault()
         toggleSidebar()
       }
@@ -117,10 +114,7 @@ function SidebarProvider({
             ...style,
           } as React.CSSProperties
         }
-        className={cn(
-          'group/sidebar-wrapper flex min-h-svh w-full',
-          className,
-        )}
+        className={cn('group/sidebar-wrapper flex h-dvh w-full overflow-hidden bg-sidebar', className)}
         {...props}
       >
         {children}
@@ -131,11 +125,7 @@ function SidebarProvider({
 
 // ── Sidebar ─────────────────────────────────────────
 
-function Sidebar({
-  className,
-  children,
-  ...props
-}: React.ComponentProps<'div'>) {
+function Sidebar({ className, children, ...props }: React.ComponentProps<'div'>) {
   const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
 
   if (isMobile) {
@@ -173,15 +163,13 @@ function Sidebar({
       {/* Fixed sidebar panel */}
       <div
         className={cn(
-          'fixed inset-y-0 left-0 z-10 hidden h-svh w-(--sidebar-width) border-r transition-[left,width] duration-200 ease-linear md:flex',
+          'fixed inset-y-0 left-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,width] duration-200 ease-linear md:flex',
           'group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]',
           className,
         )}
         {...props}
       >
-        <div className="flex size-full flex-col bg-sidebar">
-          {children}
-        </div>
+        <div className="flex size-full flex-col bg-sidebar">{children}</div>
       </div>
     </div>
   )
@@ -213,17 +201,13 @@ function SidebarFooter({ className, ...props }: React.ComponentProps<'div'>) {
 function SidebarInset({ className, ...props }: React.ComponentProps<'main'>) {
   return (
     <main
-      className={cn('relative flex w-full flex-1 flex-col bg-background', className)}
+      className={cn('relative flex w-full flex-1 flex-col overflow-hidden bg-background md:my-2 md:mr-2 md:rounded-4xl md:border md:border-border/50 md:shadow-sm', className)}
       {...props}
     />
   )
 }
 
-function SidebarTrigger({
-  className,
-  onClick,
-  ...props
-}: React.ComponentProps<typeof Button>) {
+function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<typeof Button>) {
   const { toggleSidebar } = useSidebar()
 
   return (

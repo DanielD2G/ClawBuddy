@@ -1,5 +1,9 @@
 {
   "name": "@clawbuddy/tsconfig",
   "private": true,
-  "files": ["base.json", "react.json", "node.json"]
+  "files": [
+    "base.json",
+    "react.json",
+    "node.json"
+  ]
 }

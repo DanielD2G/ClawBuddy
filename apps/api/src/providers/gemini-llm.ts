@@ -1,4 +1,10 @@
-import { GoogleGenerativeAI, type Content, type FunctionDeclaration, type Part, SchemaType } from '@google/generative-ai'
+import {
+  GoogleGenerativeAI,
+  type Content,
+  type FunctionDeclaration,
+  type Part,
+  SchemaType,
+} from '@google/generative-ai'
 import type {
   LLMProvider,
   ChatMessage,
@@ -49,9 +55,7 @@ export class GeminiLLMProvider implements LLMProvider {
         temperature: options?.temperature ?? 0.7,
         maxOutputTokens: options?.maxTokens,
       },
-      ...(functionDeclarations?.length
-        ? { tools: [{ functionDeclarations }] }
-        : {}),
+      ...(functionDeclarations?.length ? { tools: [{ functionDeclarations }] } : {}),
     })
 
     // Build history (all messages except system and last user message)
@@ -68,12 +72,14 @@ export class GeminiLLMProvider implements LLMProvider {
           const msgs: Content[] = [
             {
               role: 'function',
-              parts: [{
-                functionResponse: {
-                  name: m.toolCallId ?? 'unknown',
-                  response: { result: textResult },
+              parts: [
+                {
+                  functionResponse: {
+                    name: m.toolCallId ?? 'unknown',
+                    response: { result: textResult },
+                  },
                 },
-              }],
+              ],
             },
           ]
           if (imageParts.length > 0) {
@@ -89,31 +95,41 @@ export class GeminiLLMProvider implements LLMProvider {
           }
           return msgs
         }
-        return [{
-          role: 'function' as const,
-          parts: [
-            {
-              functionResponse: {
-                name: m.toolCallId ?? 'unknown',
-                response: { result: m.content as string },
+        return [
+          {
+            role: 'function' as const,
+            parts: [
+              {
+                functionResponse: {
+                  name: m.toolCallId ?? 'unknown',
+                  response: { result: m.content as string },
+                },
               },
-            },
-          ],
-        }]
+            ],
+          },
+        ]
       }
       if (m.role === 'assistant' && m.toolCalls?.length) {
         // Use raw parts if available (preserves thought_signature for Gemini)
         const hasRawParts = m.toolCalls.some((tc) => tc._rawParts)
         const textContent = getTextContent(m.content)
         if (hasRawParts) {
-          const parts: Array<{ text: string } | { functionCall: { name: string; args: Record<string, unknown> } }> = []
+          const parts: Array<
+            { text: string } | { functionCall: { name: string; args: Record<string, unknown> } }
+          > = []
           if (textContent) parts.push({ text: textContent })
           for (const tc of m.toolCalls) {
-            parts.push((tc._rawParts ?? { functionCall: { name: tc.name, args: tc.arguments } }) as { functionCall: { name: string; args: Record<string, unknown> } })
+            parts.push(
+              (tc._rawParts ?? { functionCall: { name: tc.name, args: tc.arguments } }) as {
+                functionCall: { name: string; args: Record<string, unknown> }
+              },
+            )
           }
           return [{ role: 'model' as const, parts }]
         }
-        const parts: Array<{ text: string } | { functionCall: { name: string; args: Record<string, unknown> } }> = []
+        const parts: Array<
+          { text: string } | { functionCall: { name: string; args: Record<string, unknown> } }
+        > = []
         if (textContent) parts.push({ text: textContent })
         for (const tc of m.toolCalls) {
           parts.push({
@@ -132,35 +148,43 @@ export class GeminiLLMProvider implements LLMProvider {
             parts.push({ text: b.text })
           }
         }
-        return [{
-          role: m.role === 'assistant' ? ('model' as const) : ('user' as const),
-          parts,
-        }]
+        return [
+          {
+            role: m.role === 'assistant' ? ('model' as const) : ('user' as const),
+            parts,
+          },
+        ]
       }
-      return [{
-        role: m.role === 'assistant' ? ('model' as const) : ('user' as const),
-        parts: [{ text: m.content as string }],
-      }]
+      return [
+        {
+          role: m.role === 'assistant' ? ('model' as const) : ('user' as const),
+          parts: [{ text: m.content as string }],
+        },
+      ]
     })
 
     const lastMessage = nonSystemMessages[nonSystemMessages.length - 1]
     const chat = model.startChat({
       history,
       ...(systemMessage && {
-        systemInstruction: { role: 'user', parts: [{ text: getTextContent(systemMessage.content) }] },
+        systemInstruction: {
+          role: 'user',
+          parts: [{ text: getTextContent(systemMessage.content) }],
+        },
       }),
     })
 
-    const lastContent = lastMessage.role === 'tool'
-      ? [
-          {
-            functionResponse: {
-              name: lastMessage.toolCallId ?? 'unknown',
-              response: { result: getTextContent(lastMessage.content) },
+    const lastContent =
+      lastMessage.role === 'tool'
+        ? [
+            {
+              functionResponse: {
+                name: lastMessage.toolCallId ?? 'unknown',
+                response: { result: getTextContent(lastMessage.content) },
+              },
             },
-          },
-        ]
-      : getTextContent(lastMessage.content)
+          ]
+        : getTextContent(lastMessage.content)
 
     const result = await chat.sendMessage(lastContent)
     const response = result.response
@@ -180,9 +204,7 @@ export class GeminiLLMProvider implements LLMProvider {
       }
     }
 
-    const finishReason: LLMResponse['finishReason'] = toolCalls.length
-      ? 'tool_calls'
-      : 'stop'
+    const finishReason: LLMResponse['finishReason'] = toolCalls.length ? 'tool_calls' : 'stop'
 
     const usageMeta = response.usageMetadata
     return {
@@ -221,7 +243,10 @@ export class GeminiLLMProvider implements LLMProvider {
     const chat = model.startChat({
       history,
       ...(systemMessage && {
-        systemInstruction: { role: 'user', parts: [{ text: getTextContent(systemMessage.content) }] },
+        systemInstruction: {
+          role: 'user',
+          parts: [{ text: getTextContent(systemMessage.content) }],
+        },
       }),
     })
 

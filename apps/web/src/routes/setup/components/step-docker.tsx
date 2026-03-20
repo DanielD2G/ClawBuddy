@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { useState, useEffect, useCallback } from 'react'
+
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Spinner } from '@/components/ui/spinner'
@@ -19,15 +19,27 @@ function ImageRow({ label, state }: { label: string; state: ImageTaskState }) {
   const isError = state.status === 'error'
 
   return (
-    <div className="rounded-lg border p-4 space-y-3">
+    <div className="rounded-md border p-4 space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Container className="size-4" />
           <span className="text-sm font-medium">{label}</span>
         </div>
-        {isDone && <Badge variant="default"><CheckCircle2 className="mr-1 size-3" /> Ready</Badge>}
-        {isPulling && <Badge variant="secondary"><Loader2 className="mr-1 size-3 animate-spin" /> Building</Badge>}
-        {isError && <Badge variant="destructive"><XCircle className="mr-1 size-3" /> Error</Badge>}
+        {isDone && (
+          <Badge variant="default">
+            <CheckCircle2 className="mr-1 size-3" /> Ready
+          </Badge>
+        )}
+        {isPulling && (
+          <Badge variant="secondary">
+            <Loader2 className="mr-1 size-3 animate-spin" /> Building
+          </Badge>
+        )}
+        {isError && (
+          <Badge variant="destructive">
+            <XCircle className="mr-1 size-3" /> Error
+          </Badge>
+        )}
         {state.status === 'idle' && <Badge variant="secondary">Waiting</Badge>}
       </div>
 
@@ -40,13 +52,9 @@ function ImageRow({ label, state }: { label: string; state: ImageTaskState }) {
         </div>
       )}
 
-      {isDone && (
-        <p className="text-xs text-muted-foreground">{state.progress}</p>
-      )}
+      {isDone && <p className="text-xs text-muted-foreground">{state.progress}</p>}
 
-      {isError && (
-        <p className="text-xs text-destructive">{state.error}</p>
-      )}
+      {isError && <p className="text-xs text-destructive">{state.error}</p>}
     </div>
   )
 }
@@ -72,7 +80,7 @@ export function StepDockerImages({
     sandbox: { status: 'idle', progress: '' },
   })
 
-  const startPull = async () => {
+  const startPull = useCallback(async () => {
     try {
       const res = await apiClient.post<{
         status: string
@@ -85,7 +93,7 @@ export function StepDockerImages({
         sandbox: { status: 'error', progress: '', error: 'Failed to connect to Docker' },
       })
     }
-  }
+  }, [])
 
   // Poll for status while pulling
   useEffect(() => {
@@ -113,19 +121,19 @@ export function StepDockerImages({
   // Auto-start on mount
   useEffect(() => {
     startPull()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [startPull])
 
   const hasError = images.sandbox.status === 'error'
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Docker Images</CardTitle>
-        <CardDescription>
+    <div>
+      <div className="mb-6">
+        <h2 className="text-2xl font-semibold tracking-tight">Docker Images</h2>
+        <p className="text-muted-foreground mt-1">
           Preparing Docker images so everything is ready when you start.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+        </p>
+      </div>
+      <div className="flex flex-col gap-4">
         <ImageRow label="Sandbox Base" state={images.sandbox} />
 
         {hasError && (
@@ -138,8 +146,8 @@ export function StepDockerImages({
           You can skip this step — images will be pulled on first use.
         </p>
 
-        <div className="flex justify-between mt-2">
-          <Button variant="outline" onClick={onBack}>
+        <div className="flex justify-between mt-8 pt-6 border-t border-border/50">
+          <Button variant="ghost" onClick={onBack}>
             <ChevronLeft className="size-4 mr-1" />
             Back
           </Button>
@@ -159,7 +167,7 @@ export function StepDockerImages({
             )}
           </Button>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }

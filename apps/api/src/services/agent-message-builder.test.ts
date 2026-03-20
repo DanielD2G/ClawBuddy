@@ -5,9 +5,7 @@ describe('buildConversationMessages', () => {
   test('does not append the current user message twice when it is already in history', () => {
     const messages = buildConversationMessages({
       systemPrompt: 'system',
-      recentMessages: [
-        { role: 'user', content: 'Ejecuta `echo $GH_TOKEN`' },
-      ],
+      recentMessages: [{ role: 'user', content: 'Ejecuta `echo $GH_TOKEN`' }],
       currentUserContent: 'Ejecuta `echo $GH_TOKEN`',
       historyIncludesCurrentUserMessage: true,
     })
@@ -21,9 +19,7 @@ describe('buildConversationMessages', () => {
   test('still appends the current user message when history does not include it', () => {
     const messages = buildConversationMessages({
       systemPrompt: 'system',
-      recentMessages: [
-        { role: 'assistant', content: 'Respuesta previa' },
-      ],
+      recentMessages: [{ role: 'assistant', content: 'Respuesta previa' }],
       currentUserContent: 'Mensaje nuevo',
     })
 

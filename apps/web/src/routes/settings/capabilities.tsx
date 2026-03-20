@@ -28,8 +28,6 @@ import {
   Puzzle,
   Trash2,
   Settings,
-  ChevronDown,
-  ChevronRight,
   ShieldCheck,
   Plus,
   X,
@@ -41,11 +39,11 @@ import {
   Loader2,
   RefreshCw,
   Mail,
+  Clock,
   LogIn,
   Unplug,
   Info,
 } from 'lucide-react'
-import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip'
 import { CATEGORY_LABELS, EXAMPLE_PERMISSION_RULES } from '@/constants'
 
 const ICON_MAP: Record<string, React.ElementType> = {
@@ -58,6 +56,7 @@ const ICON_MAP: Record<string, React.ElementType> = {
   FileSearch,
   Puzzle,
   Mail,
+  Clock,
 }
 
 interface WorkspaceCapability {
@@ -77,6 +76,7 @@ interface WorkspaceCapability {
   configSchema: ConfigFieldDefinition[] | null
   authType: string | null
   enabled: boolean
+  alwaysOn: boolean
   config: Record<string, unknown> | null
   workspaceCapabilityId: string | null
 }
@@ -231,12 +231,13 @@ export function CapabilitiesSettingsPage() {
             </DialogTitle>
           </DialogHeader>
 
-          {rebuildState.error && (
-            <p className="text-sm text-destructive">{rebuildState.error}</p>
-          )}
+          {rebuildState.error && <p className="text-sm text-destructive">{rebuildState.error}</p>}
 
           {rebuildState.logs.length > 0 && (
-            <div ref={rebuildLogsRef} className="h-96 overflow-auto rounded-md border bg-muted/50 p-3">
+            <div
+              ref={rebuildLogsRef}
+              className="h-96 overflow-auto rounded-md border bg-muted/50 p-3"
+            >
               <pre className="text-xs font-mono whitespace-pre-wrap">
                 {rebuildState.logs.join('\n')}
               </pre>
@@ -280,7 +281,8 @@ function CapabilitiesGrid({ onCapabilityToggled }: { onCapabilityToggled: () => 
 
   const { data: capabilities, isLoading } = useQuery({
     queryKey: ['workspace-capabilities', activeWorkspaceId],
-    queryFn: () => apiClient.get<WorkspaceCapability[]>(`/workspaces/${activeWorkspaceId}/capabilities`),
+    queryFn: () =>
+      apiClient.get<WorkspaceCapability[]>(`/workspaces/${activeWorkspaceId}/capabilities`),
     enabled: !!activeWorkspaceId,
   })
 
@@ -318,7 +320,12 @@ function CapabilitiesGrid({ onCapabilityToggled }: { onCapabilityToggled: () => 
           </h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {caps.map((cap) => (
-              <CapabilityCard key={cap.id} capability={cap} googleOAuthConfigured={googleOAuthConfigured} onCapabilityToggled={onCapabilityToggled} />
+              <CapabilityCard
+                key={cap.id}
+                capability={cap}
+                googleOAuthConfigured={googleOAuthConfigured}
+                onCapabilityToggled={onCapabilityToggled}
+              />
             ))}
           </div>
         </div>
@@ -327,7 +334,15 @@ function CapabilitiesGrid({ onCapabilityToggled }: { onCapabilityToggled: () => 
   )
 }
 
-function CapabilityCard({ capability, googleOAuthConfigured, onCapabilityToggled }: { capability: WorkspaceCapability; googleOAuthConfigured: boolean; onCapabilityToggled: () => void }) {
+function CapabilityCard({
+  capability,
+  googleOAuthConfigured,
+  onCapabilityToggled,
+}: {
+  capability: WorkspaceCapability
+  googleOAuthConfigured: boolean
+  onCapabilityToggled: () => void
+}) {
   const [expanded, setExpanded] = useState(false)
   const [configOpen, setConfigOpen] = useState(false)
   const queryClient = useQueryClient()
@@ -337,7 +352,8 @@ function CapabilityCard({ capability, googleOAuthConfigured, onCapabilityToggled
   const isOAuth = capability.authType === 'oauth-google'
   const isOAuthBlocked = isOAuth && !googleOAuthConfigured
   const hasConfig = capability.configSchema && capability.configSchema.length > 0
-  const isConfigured = capability.enabled && capability.config && Object.keys(capability.config).length > 0
+  const isConfigured =
+    capability.enabled && capability.config && Object.keys(capability.config).length > 0
   const oauthEmail = isOAuth && capability.config?.email ? String(capability.config.email) : null
 
   const toggleMutation = useMutation({
@@ -369,7 +385,8 @@ function CapabilityCard({ capability, googleOAuthConfigured, onCapabilityToggled
       })
       if (!res.ok) throw new Error('Failed to disconnect')
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['workspace-capabilities', activeWorkspaceId] }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ['workspace-capabilities', activeWorkspaceId] }),
   })
 
   const handleToggle = (checked: boolean) => {
@@ -395,86 +412,98 @@ function CapabilityCard({ capability, googleOAuthConfigured, onCapabilityToggled
   }
 
   const handleDisconnect = () => {
-    if (confirm('Disconnect Google account? This will remove credentials and disable the capability.')) {
+    if (
+      confirm('Disconnect Google account? This will remove credentials and disable the capability.')
+    ) {
       disconnectMutation.mutate()
     }
   }
 
   return (
     <>
-      <Card className={`${capability.enabled ? 'ring-1 ring-brand/30' : ''} ${isOAuthBlocked ? 'opacity-60' : ''}`}>
-        <CardHeader className="pb-3">
+      <Card
+        className={`flex flex-col ${capability.enabled ? 'ring-1 ring-brand/30' : ''} ${isOAuthBlocked ? 'opacity-60' : ''}`}
+      >
+        <CardHeader className="pb-2">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-2">
-              <div className={`flex size-8 items-center justify-center rounded-md ${capability.enabled ? 'bg-brand/10' : 'bg-muted'}`}>
+              <div
+                className={`flex size-8 items-center justify-center rounded-md shrink-0 ${capability.enabled ? 'bg-brand/10' : 'bg-muted'}`}
+              >
                 <Icon className="size-4" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <CardTitle className="text-sm">{capability.name}</CardTitle>
                 <code className="text-xs text-muted-foreground">@{capability.slug}</code>
               </div>
             </div>
-            {!isOAuth && (
-              <Switch
-                checked={capability.enabled}
-                onCheckedChange={handleToggle}
-                disabled={toggleMutation.isPending}
-              />
-            )}
+            <div className="flex items-center gap-1.5 shrink-0">
+              {capability.networkAccess && (
+                <Badge variant="outline" className="text-[10px]">
+                  Network
+                </Badge>
+              )}
+              {!isOAuth && (
+                <div className="relative group">
+                  <Switch
+                    checked={capability.alwaysOn || capability.enabled}
+                    onCheckedChange={handleToggle}
+                    disabled={capability.alwaysOn || toggleMutation.isPending}
+                  />
+                  {capability.alwaysOn && (
+                    <span className="absolute -bottom-6 right-0 text-[10px] text-muted-foreground bg-popover border rounded px-1.5 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
+                      Always on
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </CardHeader>
-        <CardContent className="pt-0 space-y-2">
-          <CardDescription className="text-xs">{capability.description}</CardDescription>
+        <CardContent className="pt-0 flex flex-col flex-1">
+          <CardDescription className="text-xs line-clamp-2 mb-auto">
+            {capability.description}
+          </CardDescription>
 
           {/* Blocked OAuth message */}
           {isOAuthBlocked && (
-            <div className="flex items-start gap-2 rounded-md border border-muted bg-muted/30 p-2">
+            <div className="flex items-start gap-2 rounded-md border border-muted bg-muted/30 p-2 mt-3">
               <Info className="size-3.5 text-muted-foreground mt-0.5 shrink-0" />
               <p className="text-[11px] text-muted-foreground">
                 Add <code className="bg-muted px-1 rounded">GOOGLE_CLIENT_ID</code> and{' '}
-                <code className="bg-muted px-1 rounded">GOOGLE_CLIENT_SECRET</code> to your environment to enable this capability.
+                <code className="bg-muted px-1 rounded">GOOGLE_CLIENT_SECRET</code> to your
+                environment to enable this capability.
               </p>
             </div>
           )}
 
           {!isOAuthBlocked && (
-            <>
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <div className="flex items-center gap-1.5">
-                  {capability.enabled && (
-                    <Badge variant="default" className="text-[10px] bg-brand">
-                      Enabled
-                    </Badge>
-                  )}
-                  {oauthEmail && (
-                    <Badge variant="secondary" className="text-[10px]">
-                      {oauthEmail}
-                    </Badge>
-                  )}
-                  {!isOAuth && hasConfig && isConfigured && (
-                    <Badge variant="secondary" className="text-[10px]">
-                      Configured
-                    </Badge>
-                  )}
-                  {!isOAuth && hasConfig && capability.enabled && !isConfigured && (
+            <div className="mt-3 space-y-2">
+              {/* Status badges */}
+              <div className="flex items-center flex-wrap gap-1.5 text-xs">
+                {capability.enabled && (
+                  !isOAuth && hasConfig && !isConfigured ? (
                     <Badge variant="destructive" className="text-[10px]">
                       Config required
                     </Badge>
-                  )}
-                </div>
-                <div className="flex items-center gap-1.5">
-                  {capability.networkAccess && (
-                    <Badge variant="outline" className="text-[10px]">
-                      Network
+                  ) : (
+                    <Badge variant="default" className="text-[10px] bg-brand">
+                      Enabled
                     </Badge>
-                  )}
-                </div>
+                  )
+                )}
+                {oauthEmail && (
+                  <Badge variant="secondary" className="text-[10px]">
+                    {oauthEmail}
+                  </Badge>
+                )}
               </div>
 
-              {/* OAuth connect/disconnect buttons */}
-              {isOAuth && (
-                <div className="flex items-center gap-2">
-                  {oauthEmail ? (
+              {/* Actions row */}
+              <div className="flex items-center gap-2 pt-1">
+                {/* OAuth connect/disconnect */}
+                {isOAuth && (
+                  oauthEmail ? (
                     <Button
                       variant="outline"
                       size="sm"
@@ -496,11 +525,8 @@ function CapabilityCard({ capability, googleOAuthConfigured, onCapabilityToggled
                       <LogIn className="size-3 mr-1" />
                       Connect Google Account
                     </Button>
-                  )}
-                </div>
-              )}
-
-              <div className="flex items-center gap-2">
+                  )
+                )}
                 {!isOAuth && hasConfig && capability.enabled && (
                   <Button
                     variant="outline"
@@ -514,39 +540,59 @@ function CapabilityCard({ capability, googleOAuthConfigured, onCapabilityToggled
                 )}
                 <button
                   type="button"
-                  onClick={() => setExpanded(!expanded)}
-                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={() => setExpanded(true)}
+                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors ml-auto"
                 >
-                  {expanded ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+                  <Info className="size-3" />
                   Details
                 </button>
               </div>
-
-              {expanded && (
-                <div className="space-y-2 pt-2 border-t text-xs">
-                  <div>
-                    <span className="font-medium">Tools:</span>
-                    <div className="mt-1 space-y-1">
-                      {(capability.toolDefinitions as Array<{ name: string; description: string }>).map((t) => (
-                        <div key={t.name} className="flex items-center gap-1">
-                          <code className="bg-muted px-1 rounded">{t.name}</code>
-                          <span className="text-muted-foreground truncate">{t.description}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  {capability.packages.length > 0 && (
-                    <div>
-                      <span className="font-medium">Packages: </span>
-                      <span className="text-muted-foreground">{capability.packages.join(', ')}</span>
-                    </div>
-                  )}
-                </div>
-              )}
-            </>
+            </div>
           )}
         </CardContent>
       </Card>
+
+      {/* Details dialog */}
+      <Dialog open={expanded} onOpenChange={setExpanded}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <div
+                className={`flex size-6 items-center justify-center rounded-md ${capability.enabled ? 'bg-brand/10' : 'bg-muted'}`}
+              >
+                <Icon className="size-3.5" />
+              </div>
+              {capability.name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 text-sm">
+            <p className="text-muted-foreground">{capability.description}</p>
+            <div>
+              <span className="font-medium text-xs uppercase tracking-wide text-muted-foreground">Tools</span>
+              <div className="mt-2 space-y-1.5">
+                {(
+                  capability.toolDefinitions as Array<{ name: string; description: string }>
+                ).map((t) => (
+                  <div key={t.name} className="flex items-start gap-2">
+                    <code className="bg-muted px-1.5 py-0.5 rounded text-xs shrink-0">{t.name}</code>
+                    <span className="text-xs text-muted-foreground">{t.description}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {capability.packages.length > 0 && (
+              <div>
+                <span className="font-medium text-xs uppercase tracking-wide text-muted-foreground">Packages</span>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {capability.packages.map((pkg) => (
+                    <code key={pkg} className="bg-muted px-1.5 py-0.5 rounded text-xs">{pkg}</code>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {hasConfig && !isOAuth && (
         <CapabilityConfigDialog
@@ -641,8 +687,8 @@ function GlobalPermissions() {
               value={newRule}
               onChange={(e) => setNewRule(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && addRule()}
-              placeholder='e.g. Bash(aws s3 ls *)'
-              className="flex-1 rounded-md border bg-background px-3 py-1.5 text-sm font-mono placeholder:text-muted-foreground/50"
+              placeholder="e.g. Bash(aws s3 ls *)"
+              className="flex-1 h-(--control-sm) rounded-md border bg-background px-3 text-sm font-mono placeholder:text-muted-foreground/50"
             />
             <Button variant="outline" size="sm" onClick={addRule} disabled={!newRule.trim()}>
               <Plus className="size-4" />
@@ -652,16 +698,18 @@ function GlobalPermissions() {
 
           {/* Quick add examples */}
           <div className="flex flex-wrap gap-1.5">
-            {EXAMPLE_PERMISSION_RULES.filter((r) => !rules.includes(r)).slice(0, 4).map((rule) => (
-              <button
-                key={rule}
-                type="button"
-                onClick={() => setLocalRules([...rules, rule])}
-                className="rounded-full border px-2.5 py-0.5 text-[11px] font-mono text-muted-foreground hover:bg-muted transition-colors"
-              >
-                + {rule}
-              </button>
-            ))}
+            {EXAMPLE_PERMISSION_RULES.filter((r) => !rules.includes(r))
+              .slice(0, 4)
+              .map((rule) => (
+                <button
+                  key={rule}
+                  type="button"
+                  onClick={() => setLocalRules([...rules, rule])}
+                  className="rounded-full border px-2.5 py-0.5 text-[11px] font-mono text-muted-foreground hover:bg-muted transition-colors"
+                >
+                  + {rule}
+                </button>
+              ))}
           </div>
 
           {/* Save */}
@@ -683,7 +731,13 @@ function GlobalPermissions() {
   )
 }
 
-function InstalledSkills({ onRebuild, rebuildStatus }: { onRebuild: () => void; rebuildStatus: string }) {
+function InstalledSkills({
+  onRebuild,
+  rebuildStatus,
+}: {
+  onRebuild: () => void
+  rebuildStatus: string
+}) {
   const queryClient = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploadState, setUploadState] = useState<{
@@ -703,120 +757,123 @@ function InstalledSkills({ onRebuild, rebuildStatus }: { onRebuild: () => void; 
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-skills'] }),
   })
 
-  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+  const handleFileSelect = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0]
+      if (!file) return
 
-    // Reset input
-    if (fileInputRef.current) fileInputRef.current.value = ''
+      // Reset input
+      if (fileInputRef.current) fileInputRef.current.value = ''
 
-    let skillData: Record<string, unknown>
-    try {
-      const text = await file.text()
-      skillData = JSON.parse(text)
-    } catch {
-      setUploadState({ status: 'error', logs: [], error: 'Invalid JSON file' })
-      setShowUploadDialog(true)
-      return
-    }
-
-    setUploadState({ status: 'uploading', logs: [] })
-    setShowUploadDialog(true)
-
-    // If skill has installation, use SSE for streaming logs
-    if (skillData.installation) {
-      setUploadState((s) => ({ ...s, status: 'building' }))
-
+      let skillData: Record<string, unknown>
       try {
-        const res = await fetch('/api/skills/upload', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(skillData),
-        })
+        const text = await file.text()
+        skillData = JSON.parse(text)
+      } catch {
+        setUploadState({ status: 'error', logs: [], error: 'Invalid JSON file' })
+        setShowUploadDialog(true)
+        return
+      }
 
-        if (!res.ok && !res.headers.get('content-type')?.includes('text/event-stream')) {
-          const err = await res.json().catch(() => ({ error: 'Upload failed' }))
-          setUploadState({
-            status: 'error',
-            logs: err.logs ? err.logs.split('\n') : [],
-            error: err.error || 'Upload failed',
+      setUploadState({ status: 'uploading', logs: [] })
+      setShowUploadDialog(true)
+
+      // If skill has installation, use SSE for streaming logs
+      if (skillData.installation) {
+        setUploadState((s) => ({ ...s, status: 'building' }))
+
+        try {
+          const res = await fetch('/api/skills/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(skillData),
           })
-          return
-        }
 
-        const reader = res.body?.getReader()
-        const decoder = new TextDecoder()
-        if (!reader) {
-          setUploadState({ status: 'error', logs: [], error: 'No response stream' })
-          return
-        }
+          if (!res.ok && !res.headers.get('content-type')?.includes('text/event-stream')) {
+            const err = await res.json().catch(() => ({ error: 'Upload failed' }))
+            setUploadState({
+              status: 'error',
+              logs: err.logs ? err.logs.split('\n') : [],
+              error: err.error || 'Upload failed',
+            })
+            return
+          }
 
-        let buffer = ''
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
+          const reader = res.body?.getReader()
+          const decoder = new TextDecoder()
+          if (!reader) {
+            setUploadState({ status: 'error', logs: [], error: 'No response stream' })
+            return
+          }
 
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
-          buffer = lines.pop() || ''
+          let buffer = ''
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
 
-          for (const line of lines) {
-            if (line.startsWith('data:')) {
-              const data = line.slice(5).trim()
+            buffer += decoder.decode(value, { stream: true })
+            const lines = buffer.split('\n')
+            buffer = lines.pop() || ''
 
-              // Check for event type from previous line
-              if (data) {
-                try {
-                  const parsed = JSON.parse(data)
-                  if (parsed.success === true) {
+            for (const line of lines) {
+              if (line.startsWith('data:')) {
+                const data = line.slice(5).trim()
+
+                // Check for event type from previous line
+                if (data) {
+                  try {
+                    const parsed = JSON.parse(data)
+                    if (parsed.success === true) {
+                      setUploadState((s) => ({
+                        ...s,
+                        status: 'success',
+                        logs: [...s.logs, 'Skill installed successfully!'],
+                      }))
+                      queryClient.invalidateQueries({ queryKey: ['admin-skills'] })
+                    } else if (parsed.success === false) {
+                      setUploadState((s) => ({
+                        ...s,
+                        status: 'error',
+                        error: parsed.error,
+                        logs: parsed.logs ? [...s.logs, ...parsed.logs.split('\n')] : s.logs,
+                      }))
+                    }
+                  } catch {
+                    // Plain text log line
                     setUploadState((s) => ({
                       ...s,
-                      status: 'success',
-                      logs: [...s.logs, 'Skill installed successfully!'],
-                    }))
-                    queryClient.invalidateQueries({ queryKey: ['admin-skills'] })
-                  } else if (parsed.success === false) {
-                    setUploadState((s) => ({
-                      ...s,
-                      status: 'error',
-                      error: parsed.error,
-                      logs: parsed.logs ? [...s.logs, ...parsed.logs.split('\n')] : s.logs,
+                      logs: [...s.logs, data],
                     }))
                   }
-                } catch {
-                  // Plain text log line
-                  setUploadState((s) => ({
-                    ...s,
-                    logs: [...s.logs, data],
-                  }))
                 }
               }
             }
           }
+        } catch (err) {
+          setUploadState({
+            status: 'error',
+            logs: [],
+            error: err instanceof Error ? err.message : 'Upload failed',
+          })
         }
-      } catch (err) {
-        setUploadState({
-          status: 'error',
-          logs: [],
-          error: err instanceof Error ? err.message : 'Upload failed',
-        })
+      } else {
+        // No installation script — simple upload
+        try {
+          await apiClient.post('/skills/upload', skillData)
+          setUploadState({ status: 'success', logs: ['Skill installed successfully!'] })
+          queryClient.invalidateQueries({ queryKey: ['admin-skills'] })
+        } catch (err) {
+          setUploadState({
+            status: 'error',
+            logs: [],
+            error: err instanceof Error ? err.message : 'Upload failed',
+          })
+        }
       }
-    } else {
-      // No installation script — simple upload
-      try {
-        await apiClient.post('/skills/upload', skillData)
-        setUploadState({ status: 'success', logs: ['Skill installed successfully!'] })
-        queryClient.invalidateQueries({ queryKey: ['admin-skills'] })
-      } catch (err) {
-        setUploadState({
-          status: 'error',
-          logs: [],
-          error: err instanceof Error ? err.message : 'Upload failed',
-        })
-      }
-    }
-  }, [queryClient])
+    },
+    [queryClient],
+  )
 
   const closeDialog = () => {
     setShowUploadDialog(false)
@@ -915,9 +972,7 @@ function InstalledSkills({ onRebuild, rebuildStatus }: { onRebuild: () => void; 
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-2">
-                  <p className="text-sm text-muted-foreground line-clamp-2">
-                    {skill.description}
-                  </p>
+                  <p className="text-sm text-muted-foreground line-clamp-2">{skill.description}</p>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Badge variant="secondary" className="text-[10px]">
                       v{skill.version}
@@ -931,9 +986,7 @@ function InstalledSkills({ onRebuild, rebuildStatus }: { onRebuild: () => void; 
                       </Badge>
                     )}
                     {skill.enabled && (
-                      <Badge className="text-[10px] bg-green-500/10 text-green-500">
-                        enabled
-                      </Badge>
+                      <Badge className="text-[10px] bg-green-500/10 text-green-500">enabled</Badge>
                     )}
                   </div>
                 </CardContent>
@@ -975,9 +1028,7 @@ function InstalledSkills({ onRebuild, rebuildStatus }: { onRebuild: () => void; 
             </DialogTitle>
           </DialogHeader>
 
-          {uploadState.error && (
-            <p className="text-sm text-destructive">{uploadState.error}</p>
-          )}
+          {uploadState.error && <p className="text-sm text-destructive">{uploadState.error}</p>}
 
           {uploadState.logs.length > 0 && (
             <div className="h-96 overflow-auto rounded-md border bg-muted/50 p-3">

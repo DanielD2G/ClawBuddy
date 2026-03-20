@@ -82,7 +82,6 @@ export function ChatPage() {
     retryLastMessage,
     loadSession,
     clearMessages,
-    getSessionId,
     isCompressing,
   } = useChat(workspaceId ?? '', (sid) => {
     // Navigate to session URL immediately when session is created
@@ -142,7 +141,7 @@ export function ChatPage() {
       navigatedRef.current = false
       clearMessages()
     }
-  }, [sessionId, loadSession, clearMessages])
+  }, [sessionId, loadSession, clearMessages, queryClient])
 
   // Auto-send initial message from landing page
   useEffect(() => {
@@ -158,7 +157,7 @@ export function ChatPage() {
     if (!showScrollDown) {
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
-  }, [messages, isPending, thinkingMessage, pendingApprovals])
+  }, [messages, isPending, thinkingMessage, pendingApprovals, showScrollDown])
 
   const handleScroll = () => {
     const el = scrollContainerRef.current
@@ -208,21 +207,15 @@ export function ChatPage() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] -m-6">
+    <div className="absolute inset-0 flex flex-col">
+      {/* Top fade */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-col">
+        <div className="h-2 w-full bg-background" />
+        <div className="h-16 w-full bg-gradient-to-b from-background to-transparent" />
+      </div>
       {/* Messages */}
       <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl px-4 py-6">
-          {messages.length === 0 && !isPending && (
-            <div className="flex flex-col items-center justify-center py-32">
-              <p className="text-lg font-medium text-foreground">
-                Ask anything about your documents
-              </p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Your questions will be answered using your workspace knowledge base.
-              </p>
-            </div>
-          )}
-
+        <div className="mx-auto max-w-3xl px-4 pt-16 pb-36">
           <div className="flex flex-col">
             {messages.map((msg, idx) => {
               const prevMsg = idx > 0 ? messages[idx - 1] : null
@@ -257,7 +250,7 @@ export function ChatPage() {
                   ) : msg.role === 'user' ? (
                     <div className="flex justify-end">
                       <div className="max-w-[85%]">
-                        <div className="rounded-3xl bg-muted/80 px-5 py-3 text-[15px] text-foreground">
+                        <div className="rounded-xl bg-muted/80 px-5 py-3 text-[15px] text-foreground">
                           {msg.content}
                         </div>
                         {msg.attachments && msg.attachments.length > 0 && (
@@ -324,7 +317,9 @@ export function ChatPage() {
                                       )
                                     }
                                     const Renderer = richBlockRenderers[segment.type]
-                                    return Renderer ? <Renderer key={`rich-${j}`} {...segment} /> : null
+                                    return Renderer ? (
+                                      <Renderer key={`rich-${j}`} {...segment} />
+                                    ) : null
                                   })
                                 )}
                               </div>
@@ -426,22 +421,21 @@ export function ChatPage() {
         </div>
       </div>
 
-      {/* Scroll-to-bottom */}
-      {showScrollDown && (
-        <div className="relative">
-          <button
-            onClick={scrollToBottom}
-            aria-label="Scroll to bottom"
-            className="absolute -top-12 left-1/2 -translate-x-1/2 flex size-8 items-center justify-center rounded-full border bg-background shadow-md transition-colors hover:bg-muted"
-          >
-            <ArrowDown className="size-4" />
-          </button>
-        </div>
-      )}
-
-      {/* Input */}
-      <div className="border-t bg-background px-4 py-3">
-        <div className="mx-auto max-w-3xl">
+        {/* Input */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex flex-col items-center">
+          {/* Scroll-to-bottom */}
+          {showScrollDown && (
+            <button
+              onClick={scrollToBottom}
+              aria-label="Scroll to bottom"
+              className="pointer-events-auto -mb-4 flex size-8 items-center justify-center rounded-full border bg-background shadow-md transition-colors hover:bg-muted"
+            >
+              <ArrowDown className="size-4" />
+            </button>
+          )}
+          <div className="h-10 w-full bg-gradient-to-t from-background to-transparent" />
+          <div className="w-full bg-background px-4 pb-6">
+            <div className="pointer-events-auto mx-auto w-full max-w-3xl">
           {pendingApprovals.length > 0 ? (
             <ApprovalInputBar approvals={pendingApprovals} onDecision={approveToolCall} />
           ) : (
@@ -476,11 +470,9 @@ export function ChatPage() {
               >
                 <div
                   className={`
-                    flex flex-col rounded-2xl
-                    bg-muted/60 px-5 py-3
-                    border border-border/40
+                    flex flex-col rounded-3xl border border-border/40 bg-background px-5 py-3 shadow-2xl
                     transition-all duration-200
-                    ${focused ? 'border-border/80 bg-muted/80 shadow-lg shadow-black/5' : ''}
+                    ${focused ? 'shadow-[0_-8px_40px_rgba(0,0,0,0.25)]' : ''}
                   `}
                 >
                   <MentionInput
@@ -503,28 +495,6 @@ export function ChatPage() {
                       capabilities={enabledCapabilities}
                       documents={allDocsForMenu}
                     />
-
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      multiple
-                      className="hidden"
-                      onChange={handleFileSelect}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={uploading}
-                      className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground transition-colors"
-                      title="Attach file"
-                      aria-label="Attach files"
-                    >
-                      {uploading ? (
-                        <Loader2 className="size-4 animate-spin" />
-                      ) : (
-                        <Paperclip className="size-4" strokeWidth={1.5} />
-                      )}
-                    </button>
 
                     <div className="flex-1" />
 
@@ -601,7 +571,7 @@ export function ChatPage() {
                       <button
                         type="button"
                         onClick={abortAgent}
-                        className="flex size-8 shrink-0 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow-md hover:opacity-90 transition-all duration-200"
+                        className="flex size-8 shrink-0 items-center justify-center rounded-full bg-brand text-brand-foreground shadow-md transition-all duration-200 hover:opacity-90"
                         title="Stop generation"
                       >
                         <Square className="size-3.5" strokeWidth={2.5} />
@@ -609,9 +579,7 @@ export function ChatPage() {
                     ) : (
                       <button
                         type="submit"
-                        disabled={
-                          (!input.trim() && !pendingFiles.length) || isCompressing
-                        }
+                        disabled={(!input.trim() && !pendingFiles.length) || isCompressing}
                         className={`
                           flex size-8 shrink-0 items-center justify-center rounded-full
                           transition-all duration-200
@@ -630,6 +598,7 @@ export function ChatPage() {
               </form>
             </>
           )}
+          </div>
         </div>
       </div>
     </div>

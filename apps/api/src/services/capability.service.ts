@@ -191,6 +191,7 @@ export const capabilityService = {
         return {
           ...cap,
           enabled: wc?.enabled ?? false,
+          alwaysOn: ALWAYS_ON_CAPABILITY_SLUGS.includes(cap.slug),
           config: maskedConfig,
           workspaceCapabilityId: wc?.id ?? null,
         }

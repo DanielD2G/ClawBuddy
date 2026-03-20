@@ -12,7 +12,7 @@ export const folderService = {
     const folder = await prisma.folder.findUnique({ where: { id } })
     if (!folder) return null
 
-    const ancestors: typeof folder[] = []
+    const ancestors: (typeof folder)[] = []
     let current = folder
     while (current.parentId) {
       const parent = await prisma.folder.findUnique({ where: { id: current.parentId } })

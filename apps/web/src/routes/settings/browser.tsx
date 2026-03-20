@@ -4,15 +4,14 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
-import { Globe, Loader2, CheckCircle2, XCircle, Trash2 } from 'lucide-react'
+import { Globe, Loader2, CheckCircle2, XCircle, Trash2, ChevronsUpDown, Check } from 'lucide-react'
 import { POLL_BROWSER_HEALTH_MS, POLL_BROWSER_SESSIONS_MS } from '@/constants'
 
 interface BrowserConfig {
@@ -50,8 +49,7 @@ export function BrowserSettingsPage() {
   })
 
   const updateConfig = useMutation({
-    mutationFn: (data: Record<string, unknown>) =>
-      apiClient.patch('/browser/config', data),
+    mutationFn: (data: Record<string, unknown>) => apiClient.patch('/browser/config', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['browser-config'] })
       queryClient.invalidateQueries({ queryKey: ['browser-health'] })
@@ -98,9 +96,13 @@ export function BrowserSettingsPage() {
             </div>
             <Badge variant={health?.healthy ? 'default' : 'secondary'}>
               {health?.healthy ? (
-                <><CheckCircle2 className="mr-1 h-3 w-3" /> Connected</>
+                <>
+                  <CheckCircle2 className="mr-1 h-3 w-3" /> Connected
+                </>
               ) : (
-                <><XCircle className="mr-1 h-3 w-3" /> Disconnected</>
+                <>
+                  <XCircle className="mr-1 h-3 w-3" /> Disconnected
+                </>
               )}
             </Badge>
           </div>
@@ -142,11 +144,7 @@ export function BrowserSettingsPage() {
                 onChange={(e) => setApiKey(e.target.value)}
                 placeholder={config?.hasApiKey ? '••••••••' : 'No API key set'}
               />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowApiKey(!showApiKey)}
-              >
+              <Button variant="outline" size="sm" onClick={() => setShowApiKey(!showApiKey)}>
                 {showApiKey ? 'Hide' : 'Show'}
               </Button>
               <Button
@@ -182,19 +180,30 @@ export function BrowserSettingsPage() {
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <label className="text-sm font-medium">Browser Engine</label>
-            <Select
-              value={config?.browser ?? 'chromium'}
-              onValueChange={(value) => updateConfig.mutate({ browser: value })}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="chromium">Chromium</SelectItem>
-                <SelectItem value="firefox">Firefox</SelectItem>
-                <SelectItem value="camoufox">Camoufox (anti-detection)</SelectItem>
-              </SelectContent>
-            </Select>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="flex w-full items-center justify-between rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm hover:bg-muted/70 dark:bg-muted/20 dark:hover:bg-muted/40">
+                  <span>{config?.browser === 'firefox' ? 'Firefox' : config?.browser === 'camoufox' ? 'Camoufox (anti-detection)' : 'Chromium'}</span>
+                  <ChevronsUpDown className="size-4 text-muted-foreground" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                {[
+                  { value: 'chromium', label: 'Chromium' },
+                  { value: 'firefox', label: 'Firefox' },
+                  { value: 'camoufox', label: 'Camoufox (anti-detection)' },
+                ].map((opt) => (
+                  <DropdownMenuItem
+                    key={opt.value}
+                    onClick={() => updateConfig.mutate({ browser: opt.value })}
+                    className="gap-2"
+                  >
+                    <span className="flex-1">{opt.label}</span>
+                    {(config?.browser ?? 'chromium') === opt.value && <Check className="size-3.5" />}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
           {/* Test Connection */}
@@ -221,9 +230,7 @@ export function BrowserSettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Active Sessions</CardTitle>
-          <CardDescription>
-            Browser sessions tied to active chat conversations.
-          </CardDescription>
+          <CardDescription>Browser sessions tied to active chat conversations.</CardDescription>
         </CardHeader>
         <CardContent>
           {sessions.length === 0 ? (

@@ -29,9 +29,10 @@ export function formatTimezone(tz: string): string {
   const city = tz.includes('/') ? tz.split('/').slice(1).join('/').replace(/_/g, ' ') : tz
   let label: string
   try {
-    const offset = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'shortOffset' })
-      .formatToParts(new Date())
-      .find(p => p.type === 'timeZoneName')?.value ?? ''
+    const offset =
+      new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'shortOffset' })
+        .formatToParts(new Date())
+        .find((p) => p.type === 'timeZoneName')?.value ?? ''
     label = `${city} (${offset})`
   } catch {
     label = city

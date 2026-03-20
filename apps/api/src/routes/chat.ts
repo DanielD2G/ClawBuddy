@@ -8,7 +8,12 @@ import { storageService } from '../services/storage.service.js'
 import { MAX_FILE_UPLOAD_BYTES } from '../constants.js'
 import { sanitizeFileName } from '../lib/sanitize.js'
 import { secretRedactionService } from '../services/secret-redaction.service.js'
-import { abortAgentLoop, isAbortError, registerAgentLoop, unregisterAgentLoop } from '../lib/agent-abort.js'
+import {
+  abortAgentLoop,
+  isAbortError,
+  registerAgentLoop,
+  unregisterAgentLoop,
+} from '../lib/agent-abort.js'
 import { sendChatMessageSchema, createChatSessionSchema } from '@clawbuddy/shared'
 import { validateBody } from '../lib/validate.js'
 import { ValidationError } from '../lib/errors.js'
@@ -42,18 +47,13 @@ app.post('/chat', async (c) => {
   return createSSEStream(async (emit) => {
     const redactedEmit = secretRedactionService.createRedactedEmit(emit, inventory)
     redactedEmit('session', { sessionId: currentSessionId })
-    await chatService.sendMessage(
-      currentSessionId,
-      validated.content,
-      redactedEmit,
-      {
-        documentIds: validated.documentIds ?? undefined,
-        mentionedSlugs,
-        attachments,
-        inventory,
-        llmContent: cleanedContent || undefined,
-      },
-    )
+    await chatService.sendMessage(currentSessionId, validated.content, redactedEmit, {
+      documentIds: validated.documentIds ?? undefined,
+      mentionedSlugs,
+      attachments,
+      inventory,
+      llmContent: cleanedContent || undefined,
+    })
   })
 })
 
@@ -124,7 +124,12 @@ app.post('/chat/sessions/:sessionId/approve', async (c) => {
     try {
       const redactedEmit = secretRedactionService.createRedactedEmit(emit, inventory)
       // Agent loop now saves ChatMessages per-iteration directly
-      const result = await agentService.resumeAgentLoop(sessionId, redactedEmit, inventory, ac.signal)
+      const result = await agentService.resumeAgentLoop(
+        sessionId,
+        redactedEmit,
+        inventory,
+        ac.signal,
+      )
 
       if (!result.paused) {
         redactedEmit('done', { messageId: result.lastMessageId, sessionId })
@@ -146,7 +151,10 @@ app.post('/chat/sessions/:sessionId/approve', async (c) => {
     } catch (err) {
       if (isAbortError(err)) {
         await prisma.chatSession
-          .update({ where: { id: sessionId }, data: { agentStatus: 'idle', agentStateEncrypted: null } })
+          .update({
+            where: { id: sessionId },
+            data: { agentStatus: 'idle', agentStateEncrypted: null },
+          })
           .catch(() => {})
         emit('aborted', { sessionId })
         emit('done', { sessionId })

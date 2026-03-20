@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -14,7 +13,13 @@ import type { ConfigFieldDefinition } from '@/types/capability-config'
 const ALWAYS_ON_SLUGS = ALWAYS_ON_CAPABILITY_SLUGS
 
 interface StepCapabilitiesProps {
-  capabilities: Array<{ slug: string; name: string; description: string; category: string; configSchema: ConfigFieldDefinition[] | null }>
+  capabilities: Array<{
+    slug: string
+    name: string
+    description: string
+    category: string
+    configSchema: ConfigFieldDefinition[] | null
+  }>
   selected: string[]
   googleOAuthConfigured: boolean
   onToggle: (slug: string) => void
@@ -46,7 +51,8 @@ export function StepCapabilities({
   // Browser health detection
   const { data: browserHealth } = useQuery({
     queryKey: ['browser-health-check'],
-    queryFn: () => apiClient.get<{ status: string }>('/browser/health').catch(() => ({ status: 'error' })),
+    queryFn: () =>
+      apiClient.get<{ status: string }>('/browser/health').catch(() => ({ status: 'error' })),
     retry: false,
   })
 
@@ -64,14 +70,14 @@ export function StepCapabilities({
   }, [browserHealth, browserAutoDetected]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Capabilities</CardTitle>
-        <CardDescription>
+    <div>
+      <div className="mb-6">
+        <h2 className="text-2xl font-semibold tracking-tight">Capabilities</h2>
+        <p className="text-muted-foreground mt-1">
           Select which agent capabilities to enable. You can change these later in settings.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
+        </p>
+      </div>
+      <div className="flex flex-col gap-3">
         {capabilities.map((cap) => {
           const isSelected = selected.includes(cap.slug)
           const isAlwaysOn = ALWAYS_ON_SLUGS.includes(cap.slug)
@@ -84,7 +90,7 @@ export function StepCapabilities({
           return (
             <TooltipProvider key={cap.slug}>
               <div
-                className={`flex items-center gap-3 rounded-lg border p-3 transition-colors ${
+                className={`flex items-center gap-3 rounded-md border p-3 transition-colors ${
                   isOAuthBlocked
                     ? 'opacity-50 cursor-not-allowed'
                     : isActive
@@ -129,7 +135,8 @@ export function StepCapabilities({
                     <TooltipContent side="left" className="max-w-[240px]">
                       <p className="text-xs">
                         Add <code className="bg-muted px-1 rounded">GOOGLE_CLIENT_ID</code> and{' '}
-                        <code className="bg-muted px-1 rounded">GOOGLE_CLIENT_SECRET</code> to your environment to enable this capability.
+                        <code className="bg-muted px-1 rounded">GOOGLE_CLIENT_SECRET</code> to your
+                        environment to enable this capability.
                       </p>
                     </TooltipContent>
                   </Tooltip>
@@ -138,8 +145,8 @@ export function StepCapabilities({
             </TooltipProvider>
           )
         })}
-        <div className="flex justify-between mt-4">
-          <Button variant="outline" onClick={onBack}>
+        <div className="flex justify-between mt-8 pt-6 border-t border-border/50">
+          <Button variant="ghost" onClick={onBack}>
             <ChevronLeft className="size-4 mr-1" />
             Back
           </Button>
@@ -159,7 +166,7 @@ export function StepCapabilities({
             )}
           </Button>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }

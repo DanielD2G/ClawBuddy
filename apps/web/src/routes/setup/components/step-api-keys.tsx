@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -24,26 +23,25 @@ export function StepApiKeys({
   onNext,
 }: StepApiKeysProps) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>API Keys</CardTitle>
-        <CardDescription>
+    <div>
+      <div className="mb-6">
+        <h2 className="text-2xl font-semibold tracking-tight">API Keys</h2>
+        <p className="text-muted-foreground mt-1">
           Add at least one API key for an embedding-capable provider (OpenAI or Gemini).
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
+        </p>
+      </div>
+      <div className="flex flex-col gap-3">
         {['openai', 'gemini', 'claude'].map((provider) => (
           <ApiKeyInput
             key={provider}
-            provider={provider}
             label={PROVIDER_LABELS[provider] ?? provider}
             info={apiKeys[provider]}
             onSave={(key) => onSaveKey(provider, key)}
             isSaving={isSaving}
           />
         ))}
-        <div className="flex justify-between mt-4">
-          <Button variant="outline" onClick={onBack}>
+        <div className="flex justify-between mt-8 pt-6 border-t border-border/50">
+          <Button variant="ghost" onClick={onBack}>
             <ChevronLeft className="size-4 mr-1" />
             Back
           </Button>
@@ -57,19 +55,17 @@ export function StepApiKeys({
             Add an OpenAI or Gemini key to continue
           </p>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }
 
 function ApiKeyInput({
-  provider,
   label,
   info,
   onSave,
   isSaving,
 }: {
-  provider: string
   label: string
   info: { source: 'env' | 'db' | null; masked: string | null }
   onSave: (key: string) => void
@@ -80,7 +76,7 @@ function ApiKeyInput({
 
   if (isSet) {
     return (
-      <div className="flex items-center justify-between rounded-lg border p-3">
+      <div className="flex items-center justify-between rounded-md border p-3">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium">{label}</span>
           <Badge variant="secondary" className="text-xs">
@@ -93,7 +89,7 @@ function ApiKeyInput({
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border p-3">
+    <div className="flex flex-col gap-2 rounded-md border p-3">
       <span className="text-sm font-medium">{label}</span>
       <div className="flex gap-2">
         <Input
@@ -105,7 +101,10 @@ function ApiKeyInput({
         />
         <Button
           size="sm"
-          onClick={() => { onSave(value.trim()); setValue('') }}
+          onClick={() => {
+            onSave(value.trim())
+            setValue('')
+          }}
           disabled={isSaving || !value.trim()}
         >
           Save

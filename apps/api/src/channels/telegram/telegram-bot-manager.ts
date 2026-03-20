@@ -80,19 +80,19 @@ class TelegramBotManager {
     bot.command('help', async (ctx) => {
       await ctx.reply(
         'Available commands:\n' +
-        '/new — Start a new conversation\n' +
-        '/help — Show this help message\n\n' +
-        'Just send any message to chat with the assistant.'
+          '/new — Start a new conversation\n' +
+          '/help — Show this help message\n\n' +
+          'Just send any message to chat with the assistant.',
       )
     })
 
     // /start — welcome message (Telegram sends this when user first opens bot)
     bot.command('start', async (ctx) => {
       await ctx.reply(
-        'Welcome! I\'m your AI assistant.\n\n' +
-        'Just send me a message and I\'ll help you.\n' +
-        'Use /new to start a fresh conversation.\n' +
-        'Use /help for more commands.'
+        "Welcome! I'm your AI assistant.\n\n" +
+          "Just send me a message and I'll help you.\n" +
+          'Use /new to start a fresh conversation.\n' +
+          'Use /help for more commands.',
       )
     })
 

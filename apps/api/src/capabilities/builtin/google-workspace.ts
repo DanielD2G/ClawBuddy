@@ -10,7 +10,8 @@ export const googleWorkspace: CapabilityDefinition = {
   version: '1.1.0',
   authType: 'oauth-google',
   skillType: 'bash',
-  installationScript: 'curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y nodejs && npm install -g @googleworkspace/cli',
+  installationScript:
+    'curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y nodejs && npm install -g @googleworkspace/cli',
   sandbox: { networkAccess: true },
   tools: [
     {
@@ -21,7 +22,7 @@ export const googleWorkspace: CapabilityDefinition = {
         '- Inbox summary: gmail +triage --format table\n' +
         '- Send email: gmail +send --to user@example.com --subject "Hello" --body "Hi!"\n' +
         '- Reply: gmail +reply --message-id MSG_ID --body "Thanks!"\n' +
-        '- Today\'s agenda: calendar +agenda --today --format table\n' +
+        "- Today's agenda: calendar +agenda --today --format table\n" +
         '- This week: calendar +agenda --week --format table\n' +
         '- Create event: calendar +insert --summary "Meeting" --start 2026-03-14T10:00:00-03:00 --end 2026-03-14T11:00:00-03:00\n' +
         '- Upload file: drive +upload ./file.pdf\n' +

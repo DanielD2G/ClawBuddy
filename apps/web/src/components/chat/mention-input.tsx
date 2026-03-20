@@ -30,10 +30,13 @@ export function MentionInput({
   documents,
   folders,
 }: MentionInputProps) {
-  const fileItems = useMemo<FileItem[]>(() => [
-    ...folders.map((f) => ({ kind: 'folder' as const, id: f.id, label: f.name })),
-    ...documents.map((d) => ({ kind: 'document' as const, id: d.id, label: d.title })),
-  ], [folders, documents])
+  const fileItems = useMemo<FileItem[]>(
+    () => [
+      ...folders.map((f) => ({ kind: 'folder' as const, id: f.id, label: f.name })),
+      ...documents.map((d) => ({ kind: 'document' as const, id: d.id, label: d.title })),
+    ],
+    [folders, documents],
+  )
 
   const [showPopover, setShowPopover] = useState(false)
   const [filter, setFilter] = useState('')
@@ -62,17 +65,18 @@ export function MentionInput({
     })
   }, [value, documents])
 
-  const filteredTools = useMemo(() =>
-    capabilities.filter(
-      (c) =>
-        c.slug.includes(filter.toLowerCase()) ||
-        c.name.toLowerCase().includes(filter.toLowerCase()),
-    ),
+  const filteredTools = useMemo(
+    () =>
+      capabilities.filter(
+        (c) =>
+          c.slug.includes(filter.toLowerCase()) ||
+          c.name.toLowerCase().includes(filter.toLowerCase()),
+      ),
     [capabilities, filter],
   )
 
-  const filteredFiles = useMemo(() =>
-    fileItems.filter((f) => f.label.toLowerCase().includes(filter.toLowerCase())),
+  const filteredFiles = useMemo(
+    () => fileItems.filter((f) => f.label.toLowerCase().includes(filter.toLowerCase())),
     [fileItems, filter],
   )
 
@@ -173,7 +177,15 @@ export function MentionInput({
         setMentionType(null)
       }
     },
-    [showPopover, filteredCount, filteredTools, filteredFiles, selectedIndex, insertMention, mentionType],
+    [
+      showPopover,
+      filteredCount,
+      filteredTools,
+      filteredFiles,
+      selectedIndex,
+      insertMention,
+      mentionType,
+    ],
   )
 
   // Close popover on outside click
@@ -203,7 +215,8 @@ export function MentionInput({
     // Build a regex that matches /slug or @label
     const patterns: string[] = []
     for (const slug of toolSlugs) patterns.push(`/${slug}(?=\\s|$)`)
-    for (const label of fileLabels) patterns.push(`@${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=\\s|$)`)
+    for (const label of fileLabels)
+      patterns.push(`@${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=\\s|$)`)
 
     if (!patterns.length) return null
 
@@ -240,14 +253,13 @@ export function MentionInput({
         >
           {highlightedSegments.map((seg, i) =>
             seg.highlighted ? (
-              <span
-                key={i}
-                className="text-brand"
-              >
+              <span key={i} className="text-brand">
                 {seg.text}
               </span>
             ) : (
-              <span key={i} className="text-foreground">{seg.text}</span>
+              <span key={i} className="text-foreground">
+                {seg.text}
+              </span>
             ),
           )}
         </div>
@@ -279,7 +291,7 @@ export function MentionInput({
       {showPopover && filteredCount > 0 && (
         <div
           ref={popoverRef}
-          className="absolute bottom-full left-0 mb-2 w-72 max-h-64 overflow-y-auto rounded-2xl border bg-popover p-1 shadow-lg"
+          className="absolute bottom-full left-0 mb-2 w-72 max-h-64 overflow-y-auto rounded-lg border bg-popover p-1 shadow-lg"
         >
           {mentionType === 'tool' &&
             filteredTools.map((cap, i) => (

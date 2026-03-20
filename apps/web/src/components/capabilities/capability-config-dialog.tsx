@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Eye, EyeOff } from 'lucide-react'
+import { Check, ChevronsUpDown, Eye, EyeOff } from 'lucide-react'
 import type { ConfigFieldDefinition } from '@/types/capability-config'
 import {
   Dialog,
@@ -12,12 +12,11 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 interface CapabilityConfigDialogProps {
   open: boolean
@@ -42,8 +41,7 @@ export function CapabilityConfigDialog({
     const initial: Record<string, string> = {}
     for (const field of schema) {
       const existing = initialValues?.[field.key]
-      initial[field.key] =
-        existing != null ? String(existing) : field.default ?? ''
+      initial[field.key] = existing != null ? String(existing) : (field.default ?? '')
     }
     return initial
   })
@@ -78,45 +76,39 @@ export function CapabilityConfigDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Configure {capabilityName}</DialogTitle>
-          <DialogDescription>
-            Enter the required credentials and settings.
-          </DialogDescription>
+          <DialogDescription>Enter the required credentials and settings.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           {schema.map((field) => (
             <div key={field.key} className="flex flex-col gap-1.5">
-              <label
-                htmlFor={field.key}
-                className="text-sm font-medium leading-none"
-              >
+              <label htmlFor={field.key} className="text-sm font-medium leading-none">
                 {field.label}
-                {field.required && (
-                  <span className="ml-0.5 text-destructive">*</span>
-                )}
+                {field.required && <span className="ml-0.5 text-destructive">*</span>}
               </label>
               {field.description && (
-                <p className="text-xs text-muted-foreground">
-                  {field.description}
-                </p>
+                <p className="text-xs text-muted-foreground">{field.description}</p>
               )}
               {field.type === 'select' && field.options ? (
-                <Select
-                  value={values[field.key]}
-                  onValueChange={(v) =>
-                    setValues((prev) => ({ ...prev, [field.key]: v }))
-                  }
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select..." />
-                  </SelectTrigger>
-                  <SelectContent>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button className="flex w-full items-center justify-between rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm hover:bg-muted/70 dark:bg-muted/20 dark:hover:bg-muted/40">
+                      <span>{field.options?.find((o) => o.value === values[field.key])?.label || 'Select...'}</span>
+                      <ChevronsUpDown className="size-4 text-muted-foreground" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
                     {field.options.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
+                      <DropdownMenuItem
+                        key={opt.value}
+                        onClick={() => setValues((prev) => ({ ...prev, [field.key]: opt.value }))}
+                        className="gap-2"
+                      >
+                        <span className="flex-1">{opt.label}</span>
+                        {values[field.key] === opt.value && <Check className="size-3.5" />}
+                      </DropdownMenuItem>
                     ))}
-                  </SelectContent>
-                </Select>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               ) : field.type === 'textarea' ? (
                 <textarea
                   id={field.key}
@@ -181,17 +173,11 @@ export function CapabilityConfigDialog({
                   aria-invalid={!!errors[field.key]}
                 />
               )}
-              {errors[field.key] && (
-                <p className="text-xs text-destructive">{errors[field.key]}</p>
-              )}
+              {errors[field.key] && <p className="text-xs text-destructive">{errors[field.key]}</p>}
             </div>
           ))}
           <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-            >
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
             <Button type="submit" disabled={isLoading}>
