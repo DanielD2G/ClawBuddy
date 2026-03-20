@@ -207,10 +207,9 @@ export function ChatPage() {
   }
 
   return (
-    <div className="h-[calc(100vh-4rem)] -m-6 p-4 md:p-6">
-      <div className="mx-auto flex h-full w-full max-w-5xl flex-col overflow-hidden rounded-[1.75rem] border border-border/50 bg-background shadow-sm">
-        {/* Messages */}
-        <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
+    <div className="flex flex-col h-[calc(100vh-4rem)] -m-6">
+      {/* Messages */}
+      <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-4 py-6">
           {messages.length === 0 && !isPending && (
             <div className="flex flex-col items-center justify-center py-32">
@@ -628,7 +627,6 @@ export function ChatPage() {
               </form>
             </>
           )}
-        </div>
         </div>
       </div>
     </div>

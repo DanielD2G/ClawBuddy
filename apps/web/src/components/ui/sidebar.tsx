@@ -201,7 +201,7 @@ function SidebarFooter({ className, ...props }: React.ComponentProps<'div'>) {
 function SidebarInset({ className, ...props }: React.ComponentProps<'main'>) {
   return (
     <main
-      className={cn('relative flex w-full flex-1 flex-col bg-background', className)}
+      className={cn('relative flex w-full flex-1 flex-col overflow-hidden rounded-[1.75rem] border border-border/50 bg-background shadow-sm', className)}
       {...props}
     />
   )
