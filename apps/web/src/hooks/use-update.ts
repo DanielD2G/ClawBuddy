@@ -66,6 +66,7 @@ export interface UpdateOverview {
     createdAt: string
     updatedAt: string
   } | null
+  forceUpdate: boolean
 }
 
 export function hasAvailableUpdate(data: UpdateOverview | undefined | null) {

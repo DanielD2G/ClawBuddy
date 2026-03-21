@@ -156,21 +156,19 @@ export function GoogleOAuthCard() {
         {data && (
           <div className="space-y-3">
             <div className="flex items-center gap-2 flex-wrap">
-              <Badge variant={data.configured ? 'default' : 'secondary'} className="h-7 text-xs">
+              <Badge variant={data.configured ? 'default' : 'secondary'} className="h-9 text-sm px-3">
                 {data.configured ? 'Configured' : 'Not configured'}
               </Badge>
               {data.configured && (
                 <Button
                   variant="outline"
-                  size="sm"
-                  className="h-7 text-xs"
                   onClick={() => testMutation.mutate()}
                   disabled={testMutation.isPending}
                 >
                   {testMutation.isPending ? (
-                    <Loader2 className="size-3 mr-1 animate-spin" />
+                    <Loader2 className="size-4 mr-1 animate-spin" />
                   ) : (
-                    <Zap className="size-3 mr-1" />
+                    <Zap className="size-4 mr-1" />
                   )}
                   Test Connection
                 </Button>

@@ -1,8 +1,11 @@
 import Docker from 'dockerode'
 import type { Prisma } from '@prisma/client'
 import { prisma } from '../lib/prisma.js'
+import { env } from '../env.js'
 import { getBuildInfo } from '../lib/build-info.js'
 import { settingsService } from './settings.service.js'
+
+const UPDATE_FORCE = ['true', '1', 'yes'].includes(env.UPDATE_FORCE.toLowerCase())
 
 type UpdateRunRecord = Awaited<ReturnType<typeof prisma.appUpdateRun.findUniqueOrThrow>>
 type StepStatus = 'pending' | 'running' | 'done' | 'error'
@@ -53,6 +56,7 @@ interface UpdateOverview {
   latestRelease: LatestReleaseInfo | null
   dismissedVersion: string | null
   activeRun: ReturnType<typeof serializeRun> | null
+  forceUpdate: boolean
 }
 
 interface SwarmServiceInfo {
@@ -801,13 +805,14 @@ export const updateService = {
 
     const support = await getInstallSupport()
     return {
-      supported: support.supported,
-      supportReason: support.reason,
+      supported: support.supported || UPDATE_FORCE,
+      supportReason: support.supported || UPDATE_FORCE ? null : support.reason,
       currentVersion: await getCurrentInstalledVersion(),
       currentBuild: getBuildInfo(),
       latestRelease,
       dismissedVersion: await settingsService.getDismissedUpdateVersion(),
       activeRun: serializeRun(activeRun),
+      forceUpdate: UPDATE_FORCE,
     }
   },
 

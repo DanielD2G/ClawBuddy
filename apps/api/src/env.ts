@@ -33,6 +33,7 @@ const envSchema = z.object({
 
   // Debug flags
   DEBUG_AGENT: z.string().default(''),
+  UPDATE_FORCE: z.string().default(''),
 
   // Build metadata
   CLAWBUDDY_VERSION: z.string().default('dev'),

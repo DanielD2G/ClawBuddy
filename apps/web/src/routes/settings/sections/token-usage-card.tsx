@@ -74,7 +74,6 @@ export function TokenUsageCard() {
           {data && data.totals.requests > 0 && (
             <Button
               variant="outline"
-              size="sm"
               onClick={() => resetMutation.mutate()}
               disabled={resetMutation.isPending}
             >

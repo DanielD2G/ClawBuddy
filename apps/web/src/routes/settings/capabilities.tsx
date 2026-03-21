@@ -505,34 +505,28 @@ function CapabilityCard({
                   (oauthEmail ? (
                     <Button
                       variant="outline"
-                      size="sm"
-                      className="h-7 text-xs"
                       onClick={handleDisconnect}
                       disabled={disconnectMutation.isPending}
                     >
-                      <Unplug className="size-3 mr-1" />
+                      <Unplug className="size-4 mr-1" />
                       Disconnect
                     </Button>
                   ) : (
                     <Button
-                      size="sm"
-                      className="h-7 text-xs"
                       onClick={() => {
                         window.location.href = `/api/oauth/google/authorize?workspaceId=${activeWorkspaceId}&capabilitySlug=${capability.slug}`
                       }}
                     >
-                      <LogIn className="size-3 mr-1" />
+                      <LogIn className="size-4 mr-1" />
                       Connect Google Account
                     </Button>
                   ))}
                 {!isOAuth && hasConfig && capability.enabled && (
                   <Button
                     variant="outline"
-                    size="sm"
-                    className="h-7 text-xs"
                     onClick={() => setConfigOpen(true)}
                   >
-                    <Settings className="size-3 mr-1" />
+                    <Settings className="size-4 mr-1" />
                     Settings
                   </Button>
                 )}
@@ -696,7 +690,7 @@ function GlobalPermissions() {
               placeholder="e.g. Bash(aws s3 ls *)"
               className="flex-1 h-(--control-sm) rounded-md border bg-background px-3 text-sm font-mono placeholder:text-muted-foreground/50"
             />
-            <Button variant="outline" size="sm" onClick={addRule} disabled={!newRule.trim()}>
+            <Button variant="outline" onClick={addRule} disabled={!newRule.trim()}>
               <Plus className="size-4" />
               Add
             </Button>

@@ -45,7 +45,7 @@ export function UpdateCard() {
               Track the installed version and jump into the standalone rollout page.
             </CardDescription>
           </div>
-          <Badge variant={hasUpdate ? 'default' : 'outline'} className="text-sm px-3 py-1">
+          <Badge variant={hasUpdate ? 'default' : 'outline'}>
             {hasUpdate ? 'Update available' : 'Stable channel'}
           </Badge>
         </div>
@@ -89,7 +89,7 @@ export function UpdateCard() {
             <RefreshCw className="mr-1 size-4" />
             {checkForUpdates.isPending ? 'Checking...' : 'Check now'}
           </Button>
-          <Button onClick={() => navigate('/update')} disabled={!hasUpdate || !data?.supported}>
+          <Button onClick={() => navigate('/update')} disabled={(!hasUpdate || !data?.supported) && !data?.forceUpdate}>
             <Rocket className="mr-1 size-4" />
             Open updater
           </Button>

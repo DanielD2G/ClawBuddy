@@ -20,21 +20,21 @@ export function AppearanceCard({ theme, setTheme }: AppearanceCardProps) {
           <div className="flex gap-2">
             <Button
               variant={theme === 'light' ? 'default' : 'outline'}
-              size="sm"
+
               onClick={() => setTheme('light')}
             >
               <Sun data-icon="inline-start" /> Light
             </Button>
             <Button
               variant={theme === 'dark' ? 'default' : 'outline'}
-              size="sm"
+
               onClick={() => setTheme('dark')}
             >
               <Moon data-icon="inline-start" /> Dark
             </Button>
             <Button
               variant={theme === 'system' ? 'default' : 'outline'}
-              size="sm"
+
               onClick={() => setTheme('system')}
             >
               <Monitor data-icon="inline-start" /> System

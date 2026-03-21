@@ -35,8 +35,6 @@ import {
 } from '@/components/ui/dialog'
 import { Spinner } from '@/components/ui/spinner'
 
-const UPDATE_RELOAD_KEY = 'clawbuddy:update:reload-target'
-
 interface ProbeState {
   reachable: boolean
   version: string | null
@@ -140,7 +138,7 @@ function ProgressLine({
         <span className="text-sm font-medium">{label}</span>
         <StepBadge status={status} />
       </div>
-      <p className="text-xs text-muted-foreground break-words">{progress}</p>
+      <p className="text-xs text-muted-foreground truncate">{progress}</p>
       {error ? <p className="text-xs text-destructive break-words">{error}</p> : null}
     </div>
   )
@@ -183,11 +181,15 @@ export function UpdatePage() {
     }
   }, [])
 
+  const forceUpdate = overview?.forceUpdate ?? false
   const activeRun = overview?.activeRun ?? null
   const latestRelease = overview?.latestRelease ?? null
   const targetVersion =
     rolloutTargetVersion ?? activeRun?.targetVersion ?? latestRelease?.version ?? null
   const isRunning = !!activeRun && activeRun.status !== 'failed'
+  const [forceModal, setForceModal] = useState(false)
+  const [updateReady, setUpdateReady] = useState(false)
+  const showModal = isRunning || updateReady || (forceUpdate && forceModal)
 
   useEffect(() => {
     void loadOverview(false)
@@ -200,17 +202,6 @@ export function UpdatePage() {
 
     return () => window.clearInterval(interval)
   }, [loadOverview])
-
-  useEffect(() => {
-    const reloadTarget = window.sessionStorage.getItem(UPDATE_RELOAD_KEY)
-    if (!reloadTarget || !overview) return
-
-    if (!overview.activeRun && overview.currentVersion === reloadTarget) {
-      window.sessionStorage.removeItem(UPDATE_RELOAD_KEY)
-      toast.success(`ClawBuddy ${reloadTarget} is ready`)
-      navigate('/settings/general', { replace: true })
-    }
-  }, [navigate, overview])
 
   useEffect(() => {
     if (activeRun?.targetVersion) {
@@ -289,12 +280,8 @@ export function UpdatePage() {
             })
           }
 
-          if (res.ok && payload.version === targetVersion) {
-            const alreadyReloading = window.sessionStorage.getItem(UPDATE_RELOAD_KEY)
-            if (!alreadyReloading) {
-              window.sessionStorage.setItem(UPDATE_RELOAD_KEY, targetVersion)
-              window.location.reload()
-            }
+          if (res.ok && payload.version === targetVersion && !cancelled) {
+            setUpdateReady(true)
           }
         } catch {
           if (!cancelled) {
@@ -423,6 +410,12 @@ export function UpdatePage() {
               <RefreshCw className="mr-1 size-4" />
               {checkForUpdates.isPending ? 'Checking...' : 'Check now'}
             </Button>
+            {forceUpdate && (
+              <Button variant="outline" onClick={() => setForceModal(true)}>
+                <Rocket className="mr-1 size-4" />
+                Preview modal
+              </Button>
+            )}
           </div>
         </div>
 
@@ -562,22 +555,29 @@ export function UpdatePage() {
           </Card>
         ) : null}
 
-        <Dialog open={isRunning} onOpenChange={() => {}}>
+        <Dialog open={showModal} onOpenChange={(open) => { if (!isRunning && !updateReady) setForceModal(open) }}>
           <DialogContent
-            showCloseButton={false}
-            onEscapeKeyDown={(e) => e.preventDefault()}
-            onPointerDownOutside={(e) => e.preventDefault()}
-            onInteractOutside={(e) => e.preventDefault()}
-            className="sm:max-w-lg"
+            showCloseButton={forceUpdate && !isRunning && !updateReady}
+            onEscapeKeyDown={(e) => { if (isRunning || updateReady) e.preventDefault() }}
+            onPointerDownOutside={(e) => { if (isRunning || updateReady) e.preventDefault() }}
+            onInteractOutside={(e) => { if (isRunning || updateReady) e.preventDefault() }}
+            className="sm:max-w-lg max-h-[85vh] overflow-y-auto"
           >
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
-                <Loader2 className="size-5 animate-spin" />
-                Updating to {activeRun?.targetVersion}
+                {updateReady ? (
+                  <CheckCircle2 className="size-5 text-green-500" />
+                ) : (
+                  <Loader2 className="size-5 animate-spin" />
+                )}
+                {updateReady
+                  ? `ClawBuddy ${targetVersion} is ready`
+                  : `Updating to ${activeRun?.targetVersion ?? latestRelease?.version ?? 'vX.X.X'}`}
               </DialogTitle>
               <DialogDescription>
-                {activeRun?.phaseMessage ?? 'Preparing update'}. This dialog will close automatically
-                when the new version is ready.
+                {updateReady
+                  ? 'The new version has been deployed successfully. Reload to start using it.'
+                  : `${activeRun?.phaseMessage ?? 'Preparing update'}. Please wait while the update completes.`}
               </DialogDescription>
             </DialogHeader>
 
@@ -585,15 +585,15 @@ export function UpdatePage() {
               <ProgressLine
                 label="Pull API image"
                 {...(activeRun?.progress.pullApi ?? {
-                  status: 'pending',
-                  progress: 'Waiting',
+                  status: forceUpdate ? 'done' : 'pending',
+                  progress: forceUpdate ? 'API image ready (v0.1.8)' : 'Waiting',
                 })}
               />
               <ProgressLine
                 label="Pull Web image"
                 {...(activeRun?.progress.pullWeb ?? {
-                  status: 'pending',
-                  progress: 'Waiting',
+                  status: forceUpdate ? 'running' : 'pending',
+                  progress: forceUpdate ? 'Downloading layer (abc123) 74%' : 'Waiting',
                 })}
               />
               <ProgressLine
@@ -606,13 +606,18 @@ export function UpdatePage() {
               <ProgressLine
                 label="Deploy Frontend"
                 {...(activeRun?.progress.webDeploy ?? {
-                  status: 'pending',
-                  progress: 'Waiting for API',
+                  status: updateReady ? 'done' : 'pending',
+                  progress: updateReady ? `Frontend ${targetVersion} is deployed` : 'Waiting for API',
                 })}
               />
             </div>
 
-            {requestError ? (
+            {updateReady ? (
+              <Button className="w-full" onClick={() => window.location.href = '/'}>
+                <RefreshCw className="mr-1 size-4" />
+                Reload and go to home
+              </Button>
+            ) : requestError ? (
               <p className="text-xs text-muted-foreground">
                 {requestError} — the rollout may still be progressing while the API restarts.
               </p>

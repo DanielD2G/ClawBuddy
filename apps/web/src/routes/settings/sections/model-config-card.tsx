@@ -342,11 +342,10 @@ export function ModelConfigCard() {
             {/* Save */}
             {dirty && (
               <Button
-                size="sm"
                 onClick={() => saveMutation.mutate()}
                 disabled={saveMutation.isPending}
               >
-                {saveMutation.isPending && <Loader2 className="size-3.5 mr-1 animate-spin" />}
+                {saveMutation.isPending && <Loader2 className="size-4 mr-1 animate-spin" />}
                 Save changes
               </Button>
             )}

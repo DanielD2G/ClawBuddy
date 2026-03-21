@@ -209,7 +209,7 @@ export function ChannelsSettingsPage() {
                     value={telegramChannel.config.botToken}
                     readOnly
                   />
-                  <Button variant="outline" size="sm" onClick={() => setShowToken(!showToken)}>
+                  <Button variant="outline" onClick={() => setShowToken(!showToken)}>
                     {showToken ? 'Hide' : 'Show'}
                   </Button>
                 </div>
@@ -227,7 +227,6 @@ export function ChannelsSettingsPage() {
                   />
                   <Button
                     variant="outline"
-                    size="sm"
                     onClick={handleUpdateToken}
                     disabled={!newBotToken.trim() || updateChannel.isPending}
                   >
