@@ -42,6 +42,8 @@ services:
     image: ghcr.io/danield2g/clawbuddy-web:latest
     ports:
       - "4321:80"
+    networks:
+      - shared
     deploy:
       replicas: 1
       restart_policy:
