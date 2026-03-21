@@ -602,7 +602,12 @@ step_docker_check() {
   # Initialize Docker Swarm if not already active
   if ! docker info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null | grep -q "active"; then
     info "Initializing Docker Swarm..."
-    docker swarm init 2>/dev/null || docker swarm init --advertise-addr 127.0.0.1
+    if ! docker swarm init 2>/dev/null && ! docker swarm init --advertise-addr 127.0.0.1 2>/dev/null; then
+      warn "Retrying with sudo..."
+      if ! sudo docker swarm init 2>/dev/null && ! sudo docker swarm init --advertise-addr 127.0.0.1 2>/dev/null; then
+        fail "Could not initialize Docker Swarm. Try running: sudo docker swarm init"
+      fi
+    fi
     ok "Docker Swarm initialized"
   else
     ok "Docker Swarm is active"
@@ -960,7 +965,13 @@ step_start_services() {
   # Ensure Docker Swarm is active (may have been missed if Step 1 was interrupted)
   if ! docker info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null | grep -q "active"; then
     info "Initializing Docker Swarm..."
-    docker swarm init 2>/dev/null || docker swarm init --advertise-addr 127.0.0.1
+    if ! docker swarm init 2>/dev/null && ! docker swarm init --advertise-addr 127.0.0.1 2>/dev/null; then
+      # Retry with sudo in case user hasn't re-logged after group addition
+      warn "Retrying with sudo..."
+      if ! sudo docker swarm init 2>/dev/null && ! sudo docker swarm init --advertise-addr 127.0.0.1 2>/dev/null; then
+        fail "Could not initialize Docker Swarm. Try running: sudo docker swarm init"
+      fi
+    fi
     ok "Docker Swarm initialized"
   fi
 
