@@ -45,7 +45,7 @@ export function UpdateCard() {
               Track the installed version and jump into the standalone rollout page.
             </CardDescription>
           </div>
-          <Badge variant={hasUpdate ? 'default' : 'outline'}>
+          <Badge variant={hasUpdate ? 'default' : 'outline'} className="text-sm px-3 py-1">
             {hasUpdate ? 'Update available' : 'Stable channel'}
           </Badge>
         </div>
