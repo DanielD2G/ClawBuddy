@@ -84,28 +84,72 @@ read_secret() {
   echo ""
 }
 
-# Numbered menu → sets MENU_RESULT to the value
+# Interactive arrow-key selector → sets MENU_RESULT to the index
 prompt_choice() {
   local prompt="$1"
   shift
   local options=("$@")
   local count=${#options[@]}
+  local selected=0
 
   echo -e "  ${BOLD}$prompt${NC}"
-  echo ""
-  for i in "${!options[@]}"; do
-    echo -e "    ${CYAN}$((i + 1)))${NC} ${options[$i]}"
-  done
+  echo -e "  ${DIM}Use ↑/↓ arrows to move, Enter to select${NC}"
   echo ""
 
-  while true; do
-    local choice
-    read_input "Enter choice [1-$count]:" choice
-    if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= count )); then
-      MENU_RESULT=$((choice - 1))
-      return
+  # Hide cursor
+  tput civis 2>/dev/null || true
+
+  # Draw menu
+  _draw_menu() {
+    # Move cursor up to redraw
+    if [[ "${1:-}" == "redraw" ]]; then
+      printf "\033[%dA" "$count"
     fi
-    echo -e "  ${RED}Invalid choice. Please enter a number between 1 and $count.${NC}"
+    for i in "${!options[@]}"; do
+      if [[ $i -eq $selected ]]; then
+        echo -e "    ${CYAN}▸${NC} ${BOLD}${options[$i]}${NC}"
+      else
+        echo -e "      ${DIM}${options[$i]}${NC}"
+      fi
+    done
+  }
+
+  _draw_menu
+
+  while true; do
+    # Read single keypress
+    local key
+    IFS= read -rsn1 key
+    case "$key" in
+      $'\x1b')
+        read -rsn2 key
+        case "$key" in
+          '[A') # Up arrow
+            (( selected > 0 )) && (( selected-- ))
+            _draw_menu redraw
+            ;;
+          '[B') # Down arrow
+            (( selected < count - 1 )) && (( selected++ ))
+            _draw_menu redraw
+            ;;
+        esac
+        ;;
+      '') # Enter
+        tput cnorm 2>/dev/null || true
+        MENU_RESULT=$selected
+        return
+        ;;
+      [1-9]) # Number key fallback
+        local num=$((key - 1))
+        if (( num >= 0 && num < count )); then
+          selected=$num
+          _draw_menu redraw
+          tput cnorm 2>/dev/null || true
+          MENU_RESULT=$selected
+          return
+        fi
+        ;;
+    esac
   done
 }
 
@@ -703,9 +747,7 @@ step_api_keys() {
   fi
 
   # ── Choose AI Provider ──
-  echo -e "  ${BOLD}Choose your AI provider for chat:${NC}"
-  echo ""
-  prompt_choice "Which AI provider do you want to use?" \
+  prompt_choice "Which AI provider do you want to use for chat?" \
     "OpenAI    - GPT-5.4, GPT-5, GPT-4.1, O3" \
     "Gemini    - Gemini 3.1 Pro, 3 Flash, 2.5 Pro" \
     "Claude    - Opus 4.6, Sonnet 4.6, Haiku 4.5" \
@@ -717,20 +759,25 @@ step_api_keys() {
   echo ""
 
   # ── Choose Embedding Provider ──
-  if [[ "$AI_PROVIDER" == "claude" ]]; then
+  # Auto-select if the chat provider supports embeddings
+  if [[ "$AI_PROVIDER" == "openai" || "$AI_PROVIDER" == "gemini" || "$AI_PROVIDER" == "local" ]]; then
+    EMBEDDING_PROVIDER="$AI_PROVIDER"
+    ok "Embedding provider: ${BOLD}$EMBEDDING_PROVIDER${NC} (same as chat provider)"
+  else
+    # Claude doesn't have embeddings — ask the user
     echo -e "  ${YELLOW}Note:${NC} Claude does not provide an embeddings API."
-    echo -e "  You need either ${BOLD}OpenAI${NC} or ${BOLD}Gemini${NC} for embeddings."
+    echo -e "  ${DIM}Pick a provider for embeddings (document search, RAG):${NC}"
     echo ""
+
+    prompt_choice "Which provider for embeddings?" \
+      "OpenAI  - text-embedding-3-small/large" \
+      "Gemini  - gemini-embedding-001/002" \
+      "Local   - Local OpenAI-compatible embeddings endpoint"
+
+    local embed_providers=("openai" "gemini" "local")
+    EMBEDDING_PROVIDER="${embed_providers[$MENU_RESULT]}"
+    ok "Embedding provider: ${BOLD}$EMBEDDING_PROVIDER${NC}"
   fi
-
-  prompt_choice "Which provider for embeddings?" \
-    "OpenAI  - text-embedding-3-small/large" \
-    "Gemini  - gemini-embedding-001/002" \
-    "Local   - Local OpenAI-compatible embeddings endpoint"
-
-  local embed_providers=("openai" "gemini" "local")
-  EMBEDDING_PROVIDER="${embed_providers[$MENU_RESULT]}"
-  ok "Embedding provider: ${BOLD}$EMBEDDING_PROVIDER${NC}"
   echo ""
 
   # ── Determine which connections we need ──
