@@ -368,6 +368,16 @@ async function getActiveRun() {
   })
 }
 
+async function getLatestVisibleRun() {
+  const active = await getActiveRun()
+  if (active) return active
+
+  return prisma.appUpdateRun.findFirst({
+    where: { status: 'failed' },
+    orderBy: { createdAt: 'desc' },
+  })
+}
+
 async function updateRun(
   id: string,
   data: Partial<{
@@ -782,8 +792,8 @@ export const updateService = {
       console.error('[Update] Failed to fetch latest release:', toProgressError(error))
     }
 
-    let activeRun = await getActiveRun()
-    if (activeRun) {
+    let activeRun = await getLatestVisibleRun()
+    if (activeRun && (activeRun.status === 'pending' || activeRun.status === 'running')) {
       activeRun = await this.reconcileActiveRun(activeRun.id)
     }
 
@@ -827,6 +837,12 @@ export const updateService = {
 
       return existingRun
     }
+
+    // Mark any previous failed run for this version so it doesn't block retry
+    await prisma.appUpdateRun.updateMany({
+      where: { status: 'failed', targetVersion: latestRelease.version },
+      data: { status: 'completed', phaseMessage: 'Superseded by retry' },
+    })
 
     const currentVersion = await getCurrentInstalledVersion()
 

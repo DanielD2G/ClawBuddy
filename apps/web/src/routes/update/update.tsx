@@ -7,8 +7,6 @@ import {
   ArrowLeft,
   CheckCircle2,
   ChevronRight,
-  Container,
-  Download,
   Loader2,
   RefreshCw,
   Rocket,
@@ -28,6 +26,13 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Spinner } from '@/components/ui/spinner'
 
 const UPDATE_RELOAD_KEY = 'clawbuddy:update:reload-target'
@@ -325,34 +330,11 @@ export function UpdatePage() {
 
   const decisionStatus = useMemo(() => {
     if (!overview?.supported) return 'error'
+    if (activeRun && activeRun.status === 'failed') return 'error'
     if (activeRun) return 'done'
     if (latestRelease && overview.currentVersion !== latestRelease.version) return 'running'
     return 'done'
   }, [activeRun, latestRelease, overview?.currentVersion, overview?.supported])
-
-  const pullStatus = activeRun
-    ? activeRun.phase === 'pulling-images' || activeRun.progress.pullApi.status !== 'pending'
-      ? activeRun.progress.pullApi.status === 'error' ||
-        activeRun.progress.pullWeb.status === 'error'
-        ? 'error'
-        : activeRun.progress.pullApi.status === 'done' &&
-            activeRun.progress.pullWeb.status === 'done'
-          ? 'done'
-          : 'running'
-      : 'pending'
-    : 'pending'
-
-  const apiStatus = activeRun
-    ? activeRun.progress.apiDeploy.status
-    : overview?.currentVersion === latestRelease?.version
-      ? 'done'
-      : 'pending'
-
-  const webStatus = activeRun
-    ? activeRun.progress.webDeploy.status
-    : overview?.currentVersion === latestRelease?.version
-      ? 'done'
-      : 'pending'
 
   async function handleCheckNow() {
     try {
@@ -459,17 +441,6 @@ export function UpdatePage() {
           </Card>
         ) : null}
 
-        {requestError && isRunning ? (
-          <Card className="border-border/70">
-            <CardHeader>
-              <CardTitle className="text-base">Reconnecting to the updater</CardTitle>
-              <CardDescription>
-                {requestError}. The rollout can still be progressing while the API is restarting.
-              </CardDescription>
-            </CardHeader>
-          </Card>
-        ) : null}
-
         <div className="grid gap-4 xl:grid-cols-[1.1fr,0.9fr]">
           <UpdateStepCard
             title="Check New Version"
@@ -553,7 +524,7 @@ export function UpdatePage() {
                     !latestRelease ||
                     !overview.supported ||
                     acceptUpdate.isPending ||
-                    !!activeRun ||
+                    (!!activeRun && activeRun.status !== 'failed') ||
                     overview.currentVersion === latestRelease.version
                   }
                 >
@@ -563,7 +534,7 @@ export function UpdatePage() {
                 <Button
                   variant="outline"
                   onClick={handleDecline}
-                  disabled={!latestRelease || declineUpdate.isPending || !!activeRun}
+                  disabled={!latestRelease || declineUpdate.isPending || (!!activeRun && activeRun.status !== 'failed')}
                 >
                   {declineUpdate.isPending ? 'Saving...' : 'Decline for now'}
                 </Button>
@@ -579,77 +550,6 @@ export function UpdatePage() {
           </UpdateStepCard>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-3">
-          <UpdateStepCard
-            title="Pull Images"
-            description="Pull the release images first so the actual rollout starts with both artifacts locally available."
-            icon={Download}
-            status={pullStatus}
-          >
-            <div className="space-y-3">
-              <ProgressLine
-                {...(activeRun?.progress.pullApi ?? {
-                  status: 'pending',
-                  progress: 'Waiting for acceptance',
-                })}
-                label="API image"
-              />
-              <ProgressLine
-                {...(activeRun?.progress.pullWeb ?? {
-                  status: 'pending',
-                  progress: 'Waiting for acceptance',
-                })}
-                label="Web image"
-              />
-            </div>
-          </UpdateStepCard>
-
-          <UpdateStepCard
-            title="Deploying API"
-            description="Wait for the new API container to answer health checks before moving on."
-            icon={Container}
-            status={apiStatus}
-          >
-            <div className="space-y-3">
-              <ProgressLine
-                label="Swarm rollout"
-                {...(activeRun?.progress.apiDeploy ?? {
-                  status: 'pending',
-                  progress: 'Waiting for the image pull step',
-                })}
-              />
-              <div className="rounded-md border p-4 text-xs text-muted-foreground space-y-1">
-                <p>Reachable: {apiProbe.reachable ? 'yes' : 'no'}</p>
-                <p>Reported version: {apiProbe.version ?? 'unknown'}</p>
-                <p>Startup phase: {apiProbe.phase ?? 'unknown'}</p>
-                <p>{apiProbe.message}</p>
-              </div>
-            </div>
-          </UpdateStepCard>
-
-          <UpdateStepCard
-            title="Deploying Front"
-            description="Wait until the new frontend responds with the target version, then reload the browser."
-            icon={RefreshCw}
-            status={webStatus}
-          >
-            <div className="space-y-3">
-              <ProgressLine
-                label="Swarm rollout"
-                {...(activeRun?.progress.webDeploy ?? {
-                  status: 'pending',
-                  progress: 'Waiting for the API rollout',
-                })}
-              />
-              <div className="rounded-md border p-4 text-xs text-muted-foreground space-y-1">
-                <p>Reachable: {webProbe.reachable ? 'yes' : 'no'}</p>
-                <p>Reported version: {webProbe.version ?? 'unknown'}</p>
-                <p>{webProbe.message}</p>
-              </div>
-            </div>
-          </UpdateStepCard>
-        </div>
-
         {activeRun?.error ? (
           <Card className="border-destructive/50">
             <CardHeader>
@@ -661,6 +561,64 @@ export function UpdatePage() {
             </CardHeader>
           </Card>
         ) : null}
+
+        <Dialog open={isRunning} onOpenChange={() => {}}>
+          <DialogContent
+            showCloseButton={false}
+            onEscapeKeyDown={(e) => e.preventDefault()}
+            onPointerDownOutside={(e) => e.preventDefault()}
+            onInteractOutside={(e) => e.preventDefault()}
+            className="sm:max-w-lg"
+          >
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Loader2 className="size-5 animate-spin" />
+                Updating to {activeRun?.targetVersion}
+              </DialogTitle>
+              <DialogDescription>
+                {activeRun?.phaseMessage ?? 'Preparing update'}. This dialog will close automatically
+                when the new version is ready.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3">
+              <ProgressLine
+                label="Pull API image"
+                {...(activeRun?.progress.pullApi ?? {
+                  status: 'pending',
+                  progress: 'Waiting',
+                })}
+              />
+              <ProgressLine
+                label="Pull Web image"
+                {...(activeRun?.progress.pullWeb ?? {
+                  status: 'pending',
+                  progress: 'Waiting',
+                })}
+              />
+              <ProgressLine
+                label="Deploy API"
+                {...(activeRun?.progress.apiDeploy ?? {
+                  status: 'pending',
+                  progress: 'Waiting for images',
+                })}
+              />
+              <ProgressLine
+                label="Deploy Frontend"
+                {...(activeRun?.progress.webDeploy ?? {
+                  status: 'pending',
+                  progress: 'Waiting for API',
+                })}
+              />
+            </div>
+
+            {requestError ? (
+              <p className="text-xs text-muted-foreground">
+                {requestError} — the rollout may still be progressing while the API restarts.
+              </p>
+            ) : null}
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   )

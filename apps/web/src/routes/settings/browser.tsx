@@ -144,12 +144,11 @@ export function BrowserSettingsPage() {
                 onChange={(e) => setApiKey(e.target.value)}
                 placeholder={config?.hasApiKey ? '••••••••' : 'No API key set'}
               />
-              <Button variant="outline" size="sm" onClick={() => setShowApiKey(!showApiKey)}>
+              <Button variant="outline" onClick={() => setShowApiKey(!showApiKey)}>
                 {showApiKey ? 'Hide' : 'Show'}
               </Button>
               <Button
                 variant="outline"
-                size="sm"
                 onClick={() => {
                   updateConfig.mutate({ apiKey })
                   setApiKey('')
@@ -161,7 +160,7 @@ export function BrowserSettingsPage() {
               {config?.hasApiKey && (
                 <Button
                   variant="outline"
-                  size="sm"
+                  size="icon"
                   onClick={() => updateConfig.mutate({ apiKey: '' })}
                 >
                   <Trash2 className="h-4 w-4" />
