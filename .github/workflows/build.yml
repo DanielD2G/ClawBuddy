@@ -10,6 +10,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      version: ${{ github.ref_name }}
     strategy:
       matrix:
         include:
@@ -52,3 +54,45 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          PREV_TAG=$(git tag --sort=-v:refname | sed -n '2p')
+          if [ -z "$PREV_TAG" ]; then
+            COMMITS=$(git log --oneline)
+          else
+            COMMITS=$(git log "${PREV_TAG}..HEAD" --oneline --no-merges)
+          fi
+          {
+            echo 'body<<EOF'
+            echo "## Docker Images"
+            echo ""
+            echo '```'
+            echo "docker pull ghcr.io/danield2g/clawbuddy-api:${{ needs.build.outputs.version }}"
+            echo "docker pull ghcr.io/danield2g/clawbuddy-web:${{ needs.build.outputs.version }}"
+            echo '```'
+            echo ""
+            echo "## Changes"
+            echo ""
+            echo "$COMMITS" | while read -r line; do echo "- $line"; done
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.build.outputs.version }}
+          name: ${{ needs.build.outputs.version }}
+          body: ${{ steps.changelog.outputs.body }}
+          generate_release_notes: false
