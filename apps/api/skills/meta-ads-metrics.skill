@@ -13,7 +13,7 @@
       "description": "Meta Graph API access token with ads_read permission. Generate at https://developers.facebook.com/tools/explorer. Expires every ~60 days."
     },
     "meta_ad_account_id": {
-      "type": "string",
+      "type": "var",
       "description": "Meta Ad Account ID (numeric, without the 'act_' prefix). Found in Meta Business Suite > Ad Account Settings.",
       "placeholder": "123456789012345"
     }

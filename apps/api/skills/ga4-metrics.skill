@@ -13,7 +13,7 @@
       "description": "Google Cloud service account credentials JSON (full file content). Must have Viewer role on the GA4 property."
     },
     "ga4_property_id": {
-      "type": "string",
+      "type": "var",
       "description": "GA4 Property ID (numeric only, not the G- Measurement ID). Found in GA4 Admin > Property Settings.",
       "placeholder": "123456789"
     }
