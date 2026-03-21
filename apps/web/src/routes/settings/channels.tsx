@@ -250,7 +250,6 @@ export function ChannelsSettingsPage() {
                 </Button>
                 <Button
                   variant="destructive"
-                  size="sm"
                   onClick={handleDelete}
                   disabled={deleteChannel.isPending}
                 >
