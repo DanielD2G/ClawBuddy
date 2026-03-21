@@ -600,7 +600,7 @@ step_docker_check() {
   ok "Docker Compose $(docker compose version --short)"
 
   # Initialize Docker Swarm if not already active
-  if ! docker info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null | grep -q "active"; then
+  if ! docker info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null | grep -qx "active"; then
     info "Initializing Docker Swarm..."
     if ! docker swarm init 2>/dev/null && ! docker swarm init --advertise-addr 127.0.0.1 2>/dev/null; then
       warn "Retrying with sudo..."
@@ -963,7 +963,7 @@ step_start_services() {
   validate_stack_env_file .env
 
   # Ensure Docker Swarm is active (may have been missed if Step 1 was interrupted)
-  if ! docker info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null | grep -q "active"; then
+  if ! docker info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null | grep -qx "active"; then
     info "Initializing Docker Swarm..."
     if ! docker swarm init 2>/dev/null && ! docker swarm init --advertise-addr 127.0.0.1 2>/dev/null; then
       # Retry with sudo in case user hasn't re-logged after group addition
@@ -1054,7 +1054,7 @@ do_update() {
   command -v docker &>/dev/null || fail "Docker is required to run updates."
   docker info &>/dev/null || fail "Docker daemon is not running."
   docker compose version &>/dev/null || fail "Docker Compose plugin is required to detect legacy installs."
-  docker info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null | grep -q "active" || \
+  docker info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null | grep -qx "active" || \
     fail "Docker Swarm must be active to update this installation."
 
   preflight_browsergrid_arm64
