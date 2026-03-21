@@ -205,7 +205,7 @@ function SidebarInset({ className, ...props }: React.ComponentProps<'main'>) {
   return (
     <main
       className={cn(
-        'relative flex w-full flex-1 flex-col overflow-hidden bg-background md:my-2 md:mr-2 md:rounded-4xl md:border md:border-border/50 md:shadow-sm',
+        'relative flex w-full flex-1 flex-col overflow-hidden bg-background md:my-2 md:mr-2 md:rounded-4xl md:border md:border-border/50 md:shadow-sm peer-data-[collapsible=offcanvas]:md:ml-2',
         className,
       )}
       {...props}
