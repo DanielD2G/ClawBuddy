@@ -1,16 +1,15 @@
+import type { Prisma } from '@prisma/client'
 import { ValidationError, ConfigurationError } from '../lib/errors.js'
 import { prisma } from '../lib/prisma.js'
 import { env } from '../env.js'
 import { encrypt, decrypt } from './crypto.service.js'
 import {
-  MODEL_CATALOG,
-  DEFAULT_LLM_MODELS,
-  DEFAULT_EMBEDDING_MODELS,
-  DEFAULT_MEDIUM_MODELS,
-  DEFAULT_LIGHT_MODELS,
+  LLM_PROVIDERS,
+  EMBEDDING_PROVIDERS,
   ENV_KEYS,
+  ENV_BASE_URLS,
   DB_KEY_FIELDS,
-  inferProviderFromModel,
+  PROVIDER_METADATA,
 } from '../config.js'
 import { discoverLLMModels, discoverEmbeddingModels } from './model-discovery.service.js'
 import {
@@ -25,9 +24,17 @@ import {
   SUB_AGENT_ANALYZE_MAX_ITERATIONS,
   SUB_AGENT_EXECUTE_MAX_ITERATIONS,
 } from '../constants.js'
-import type { AppSettings } from '@prisma/client'
+import {
+  buildResolvedRoleProviders,
+  mergeLLMProviderOverrides,
+  resolveAllLLMRoles,
+  resolveLLMRole,
+  type LLMRole,
+} from '../lib/llm-resolver.js'
 
-let _cache: AppSettings | null = null
+type AppSettingsRecord = NonNullable<Awaited<ReturnType<typeof prisma.appSettings.findUnique>>>
+
+let _cache: AppSettingsRecord | null = null
 let _cacheTime = 0
 const CACHE_TTL_MS = 30_000
 
@@ -67,23 +74,31 @@ export const settingsService = {
 
   async getAIModel(): Promise<string> {
     const s = await this.get()
-    return s.aiModel ?? DEFAULT_LLM_MODELS[s.aiProvider] ?? DEFAULT_LLM_MODELS.openai
+    return s.aiModel!
+  },
+
+  async getResolvedLLMRole(role: LLMRole): Promise<{ provider: string; model: string | null }> {
+    return resolveLLMRole(await this.get(), role)
+  },
+
+  async getResolvedRoleProviders(): Promise<Record<LLMRole, string>> {
+    return buildResolvedRoleProviders(await this.get())
   },
 
   async getLightModel(): Promise<string> {
-    return this._resolveModel('lightModel', null, DEFAULT_LIGHT_MODELS)
+    return this._resolveModel('lightModel', null)
   },
 
   async getTitleModel(): Promise<string> {
-    return this._resolveModel('titleModel', 'lightModel', DEFAULT_LIGHT_MODELS)
+    return this._resolveModel('titleModel', 'lightModel')
   },
 
   async getCompactModel(): Promise<string> {
-    return this._resolveModel('compactModel', 'mediumModel', DEFAULT_MEDIUM_MODELS)
+    return this._resolveModel('compactModel', 'mediumModel')
   },
 
   async getMediumModel(): Promise<string> {
-    return this._resolveModel('mediumModel', null, DEFAULT_MEDIUM_MODELS)
+    return this._resolveModel('mediumModel', null)
   },
 
   async getAdvancedModelConfig(): Promise<boolean> {
@@ -91,23 +106,18 @@ export const settingsService = {
   },
 
   async getExploreModel(): Promise<string> {
-    return this._resolveModel('exploreModel', 'lightModel', DEFAULT_LIGHT_MODELS)
+    return this._resolveModel('exploreModel', 'lightModel')
   },
 
   async getExecuteModel(): Promise<string> {
-    return this._resolveModel('executeModel', 'mediumModel', DEFAULT_MEDIUM_MODELS)
+    return this._resolveModel('executeModel', 'mediumModel')
   },
 
   /**
    * Resolve a model by key with optional advanced-mode override and tier fallback.
-   * - If advancedModelConfig is on and the model key has a value, use it directly.
-   * - Otherwise, fall back to the tier's model → provider default → openai default.
+   * Falls back to the main AI model if the specific tier model is not set.
    */
-  async _resolveModel(
-    modelKey: string,
-    fallbackTierKey: string | null,
-    defaults: Record<string, string>,
-  ): Promise<string> {
+  async _resolveModel(modelKey: string, fallbackTierKey: string | null): Promise<string> {
     const s = await this.get()
     const settings = s as Record<string, unknown>
     if (fallbackTierKey && s.advancedModelConfig && settings[modelKey]) {
@@ -115,16 +125,12 @@ export const settingsService = {
     }
     const tierKey = fallbackTierKey ?? modelKey
     const tierValue = settings[tierKey] as string | null | undefined
-    return tierValue ?? defaults[s.aiProvider] ?? defaults.openai
+    return tierValue ?? s.aiModel!
   },
 
   async getEmbeddingModel(): Promise<string> {
     const s = await this.get()
-    return (
-      s.embeddingModel ??
-      DEFAULT_EMBEDDING_MODELS[s.embeddingProvider] ??
-      DEFAULT_EMBEDDING_MODELS.openai
-    )
+    return s.embeddingModel!
   },
 
   async getContextLimitTokens(): Promise<number> {
@@ -203,6 +209,45 @@ export const settingsService = {
     }
   },
 
+  async getLocalBaseUrl(): Promise<string | null> {
+    const envBaseUrl = ENV_BASE_URLS.local?.trim()
+    if (envBaseUrl) return envBaseUrl
+    const s = await this.get()
+    return s.localBaseUrl?.trim() || null
+  },
+
+  async getProviderConnectionValue(provider: string): Promise<string | null> {
+    if (provider === 'local') return this.getLocalBaseUrl()
+    return this.getApiKey(provider)
+  },
+
+  async isProviderConfigured(provider: string): Promise<boolean> {
+    const value = await this.getProviderConnectionValue(provider)
+    return !!value?.trim()
+  },
+
+  async getConfiguredProviders() {
+    const [llmChecks, embeddingChecks] = await Promise.all([
+      Promise.all(
+        LLM_PROVIDERS.map(async (provider) => ({
+          provider,
+          configured: await this.isProviderConfigured(provider),
+        })),
+      ),
+      Promise.all(
+        EMBEDDING_PROVIDERS.map(async (provider) => ({
+          provider,
+          configured: await this.isProviderConfigured(provider),
+        })),
+      ),
+    ])
+
+    return {
+      llm: llmChecks.filter((entry) => entry.configured).map((entry) => entry.provider),
+      embedding: embeddingChecks.filter((entry) => entry.configured).map((entry) => entry.provider),
+    }
+  },
+
   async setApiKey(provider: string, plaintext: string) {
     const field = DB_KEY_FIELDS[provider]
     if (!field) throw new ConfigurationError(`Unknown provider: ${provider}`)
@@ -216,6 +261,23 @@ export const settingsService = {
     return result
   },
 
+  async setProviderConnection(provider: string, plaintext: string) {
+    const trimmed = plaintext.trim()
+    if (!trimmed) throw new ValidationError('Connection value cannot be empty')
+
+    if (provider === 'local') {
+      await this.get()
+      const result = await prisma.appSettings.update({
+        where: { id: 'singleton' },
+        data: { localBaseUrl: trimmed },
+      })
+      this._invalidateCache()
+      return result
+    }
+
+    return this.setApiKey(provider, trimmed)
+  },
+
   async removeApiKey(provider: string) {
     const field = DB_KEY_FIELDS[provider]
     if (!field) throw new ConfigurationError(`Unknown provider: ${provider}`)
@@ -227,40 +289,84 @@ export const settingsService = {
     return result
   },
 
-  async getAvailableProviders() {
-    const s = await this.get()
-    const checkKey = (provider: string) => {
-      if (ENV_KEYS[provider]) return true
-      const field = DB_KEY_FIELDS[provider]
-      return field ? !!s[field] : false
+  async removeProviderConnection(provider: string) {
+    if (provider === 'local') {
+      const result = await prisma.appSettings.update({
+        where: { id: 'singleton' },
+        data: { localBaseUrl: null },
+      })
+      this._invalidateCache()
+      return result
     }
+
+    return this.removeApiKey(provider)
+  },
+
+  async getAvailableProviders() {
+    const configured = await this.getConfiguredProviders()
+    const [llmChecks, embeddingChecks] = await Promise.all([
+      Promise.all(
+        configured.llm.map(async (provider) => ({
+          provider,
+          models: await discoverLLMModels(provider),
+        })),
+      ),
+      Promise.all(
+        configured.embedding.map(async (provider) => ({
+          provider,
+          models: await discoverEmbeddingModels(provider),
+        })),
+      ),
+    ])
+
     return {
-      llm: Object.keys(MODEL_CATALOG.llm).filter(checkKey),
-      embedding: Object.keys(MODEL_CATALOG.embedding).filter(checkKey),
+      llm: llmChecks.filter((entry) => entry.models.length > 0).map((entry) => entry.provider),
+      embedding: embeddingChecks
+        .filter((entry) => entry.models.length > 0)
+        .map((entry) => entry.provider),
     }
   },
 
-  async getMaskedKeys() {
+  getProviderMetadata() {
+    return PROVIDER_METADATA
+  },
+
+  async getProviderConnections() {
     const s = await this.get()
-    const result: Record<string, { source: 'env' | 'db' | null; masked: string | null }> = {}
-    for (const provider of ['openai', 'gemini', 'claude']) {
+    const result: Record<string, { source: 'env' | 'db' | null; value: string | null }> = {}
+
+    for (const provider of Object.keys(PROVIDER_METADATA)) {
       const envKey = ENV_KEYS[provider]
       if (envKey) {
-        result[provider] = { source: 'env', masked: mask(envKey) }
-      } else {
-        const field = DB_KEY_FIELDS[provider]
-        const encrypted = field ? s[field] : null
-        if (encrypted) {
-          try {
-            result[provider] = { source: 'db', masked: mask(decrypt(encrypted)) }
-          } catch {
-            result[provider] = { source: null, masked: null }
-          }
-        } else {
-          result[provider] = { source: null, masked: null }
-        }
+        result[provider] = { source: 'env', value: mask(envKey) }
+        continue
       }
+
+      const envBaseUrl = ENV_BASE_URLS[provider]
+      if (envBaseUrl) {
+        result[provider] = { source: 'env', value: envBaseUrl }
+        continue
+      }
+
+      const field = DB_KEY_FIELDS[provider]
+      const encrypted = field ? s[field] : null
+      if (encrypted) {
+        try {
+          result[provider] = { source: 'db', value: mask(decrypt(encrypted)) }
+        } catch {
+          result[provider] = { source: null, value: null }
+        }
+        continue
+      }
+
+      if (provider === 'local' && s.localBaseUrl) {
+        result[provider] = { source: 'db', value: s.localBaseUrl }
+        continue
+      }
+
+      result[provider] = { source: null, value: null }
     }
+
     return result
   },
 
@@ -296,17 +402,18 @@ export const settingsService = {
 
   async update(data: {
     aiProvider?: string
-    aiModel?: string
-    mediumModel?: string
-    lightModel?: string
-    exploreModel?: string
-    executeModel?: string
-    titleModel?: string
-    compactModel?: string
+    aiModel?: string | null
+    mediumModel?: string | null
+    lightModel?: string | null
+    exploreModel?: string | null
+    executeModel?: string | null
+    titleModel?: string | null
+    compactModel?: string | null
+    roleProviders?: Partial<Record<LLMRole, string>>
     useLightModel?: boolean
     advancedModelConfig?: boolean
     embeddingProvider?: string
-    embeddingModel?: string
+    embeddingModel?: string | null
     contextLimitTokens?: number
     browserGridUrl?: string
     browserGridBrowser?: string
@@ -319,53 +426,83 @@ export const settingsService = {
   }) {
     const settings = await this.get()
     const available = await this.getAvailableProviders()
+    const nextSettings: AppSettingsRecord = {
+      ...settings,
+      ...(data.aiProvider !== undefined ? { aiProvider: data.aiProvider } : {}),
+      ...(data.aiModel !== undefined ? { aiModel: data.aiModel } : {}),
+      ...(data.mediumModel !== undefined ? { mediumModel: data.mediumModel } : {}),
+      ...(data.lightModel !== undefined ? { lightModel: data.lightModel } : {}),
+      ...(data.exploreModel !== undefined ? { exploreModel: data.exploreModel } : {}),
+      ...(data.executeModel !== undefined ? { executeModel: data.executeModel } : {}),
+      ...(data.titleModel !== undefined ? { titleModel: data.titleModel } : {}),
+      ...(data.compactModel !== undefined ? { compactModel: data.compactModel } : {}),
+      ...(data.advancedModelConfig !== undefined
+        ? { advancedModelConfig: data.advancedModelConfig }
+        : {}),
+      ...(data.embeddingProvider !== undefined
+        ? { embeddingProvider: data.embeddingProvider }
+        : {}),
+      ...(data.embeddingModel !== undefined ? { embeddingModel: data.embeddingModel } : {}),
+      llmProviderOverrides: data.roleProviders
+        ? mergeLLMProviderOverrides(settings.llmProviderOverrides, data.roleProviders)
+        : settings.llmProviderOverrides,
+    }
 
     // Lock embedding settings after onboarding
     if (settings.onboardingComplete && (data.embeddingProvider || data.embeddingModel)) {
       throw new ValidationError('Embedding model cannot be changed after initial setup')
     }
 
-    if (data.aiProvider && !available.llm.includes(data.aiProvider)) {
-      throw new ValidationError(`AI provider "${data.aiProvider}" is not available (no API key)`)
-    }
-    if (data.embeddingProvider && !available.embedding.includes(data.embeddingProvider)) {
+    if (
+      nextSettings.aiProvider &&
+      !available.llm.includes(nextSettings.aiProvider as (typeof LLM_PROVIDERS)[number])
+    ) {
       throw new ValidationError(
-        `Embedding provider "${data.embeddingProvider}" is not available (no API key)`,
+        `AI provider "${nextSettings.aiProvider}" is not available (missing catalog or connection)`,
+      )
+    }
+    if (
+      nextSettings.embeddingProvider &&
+      !available.embedding.includes(
+        nextSettings.embeddingProvider as (typeof EMBEDDING_PROVIDERS)[number],
+      )
+    ) {
+      throw new ValidationError(
+        `Embedding provider "${nextSettings.embeddingProvider}" is not available (missing catalog or connection)`,
       )
     }
 
-    // Validate each model against its inferred provider (supports mixed providers per role)
-    const defaultProvider = data.aiProvider ?? settings.aiProvider
-    for (const field of [
-      'aiModel',
-      'mediumModel',
-      'lightModel',
-      'exploreModel',
-      'executeModel',
-      'titleModel',
-      'compactModel',
-    ] as const) {
-      const modelId = data[field]
-      if (!modelId) continue
-      const modelProvider = inferProviderFromModel(modelId) ?? defaultProvider
-      // Verify the provider has an API key
-      const hasKey = available.llm.includes(modelProvider)
-      if (!hasKey) {
-        throw new Error(
-          `No API key configured for provider "${modelProvider}" (model "${modelId}")`,
+    const resolvedRoles = resolveAllLLMRoles(nextSettings)
+    for (const [role, selection] of Object.entries(resolvedRoles)) {
+      if (!selection.model) continue
+      if (!available.llm.includes(selection.provider as (typeof LLM_PROVIDERS)[number])) {
+        throw new ValidationError(
+          `Provider "${selection.provider}" is not available for role "${role}"`,
         )
       }
-      const llmModels = await discoverLLMModels(modelProvider)
-      if (llmModels.length && !llmModels.includes(modelId)) {
-        throw new Error(`Model "${modelId}" is not available for provider "${modelProvider}"`)
+      const llmModels = await discoverLLMModels(selection.provider)
+      if (!llmModels.length) {
+        throw new ValidationError(
+          `Provider "${selection.provider}" has no available catalog for role "${role}"`,
+        )
+      }
+      if (!llmModels.includes(selection.model)) {
+        throw new ValidationError(
+          `Model "${selection.model}" is not available for provider "${selection.provider}"`,
+        )
       }
     }
 
-    if (data.embeddingModel && data.embeddingProvider) {
-      const models = await discoverEmbeddingModels(data.embeddingProvider)
-      if (models.length && !models.includes(data.embeddingModel)) {
-        throw new Error(
-          `Model "${data.embeddingModel}" is not available for provider "${data.embeddingProvider}"`,
+    if (nextSettings.embeddingModel && nextSettings.embeddingProvider) {
+      const models = await discoverEmbeddingModels(nextSettings.embeddingProvider)
+      if (!models.length) {
+        throw new ValidationError(
+          `Embedding provider "${nextSettings.embeddingProvider}" has no available catalog`,
+        )
+      }
+      if (!models.includes(nextSettings.embeddingModel)) {
+        throw new ValidationError(
+          `Model "${nextSettings.embeddingModel}" is not available for provider "${nextSettings.embeddingProvider}"`,
         )
       }
     }
@@ -382,9 +519,16 @@ export const settingsService = {
     }
 
     await this.get() // ensure row exists
+    const { roleProviders, ...persistedData } = data
+    const updatePayload = {
+      ...persistedData,
+      ...(roleProviders
+        ? { llmProviderOverrides: nextSettings.llmProviderOverrides as Record<string, unknown> }
+        : {}),
+    }
     const result = await prisma.appSettings.update({
       where: { id: 'singleton' },
-      data,
+      data: updatePayload as Prisma.AppSettingsUpdateInput,
     })
     this._invalidateCache()
     return result

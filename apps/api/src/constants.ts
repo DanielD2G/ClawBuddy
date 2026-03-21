@@ -125,6 +125,7 @@ export const ALWAYS_ALLOWED_TOOLS = new Set([
   'web_search',
   'web_fetch',
   'discover_tools',
+  'read_file',
 ])
 
 // ── Parallel tool execution ─────────────────────
@@ -135,6 +136,7 @@ export const PARALLEL_SAFE_TOOLS = new Set([
   'discover_tools',
   'list_crons',
   'delegate_task',
+  'read_file',
 ])
 
 // ── API key masking ─────────────────────────────

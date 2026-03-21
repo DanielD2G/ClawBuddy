@@ -92,7 +92,10 @@ export function CapabilityConfigDialog({
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button className="flex w-full items-center justify-between rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm hover:bg-muted/70 dark:bg-muted/20 dark:hover:bg-muted/40">
-                      <span>{field.options?.find((o) => o.value === values[field.key])?.label || 'Select...'}</span>
+                      <span>
+                        {field.options?.find((o) => o.value === values[field.key])?.label ||
+                          'Select...'}
+                      </span>
                       <ChevronsUpDown className="size-4 text-muted-foreground" />
                     </button>
                   </DropdownMenuTrigger>

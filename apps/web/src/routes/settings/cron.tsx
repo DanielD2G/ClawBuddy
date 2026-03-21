@@ -33,7 +33,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Plus, Play, Trash2, CheckCircle, XCircle, Clock, ChevronsUpDown, Check } from 'lucide-react'
+import {
+  Plus,
+  Play,
+  Trash2,
+  CheckCircle,
+  XCircle,
+  Clock,
+  ChevronsUpDown,
+  Check,
+} from 'lucide-react'
 
 export function CronSettingsPage() {
   const [createOpen, setCreateOpen] = useState(false)

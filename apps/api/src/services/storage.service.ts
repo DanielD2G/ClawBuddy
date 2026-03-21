@@ -3,11 +3,37 @@ import {
   GetObjectCommand,
   ListObjectsV2Command,
   DeleteObjectCommand,
+  CreateBucketCommand,
 } from '@aws-sdk/client-s3'
 import { s3 } from '../lib/s3.js'
 import { env } from '../env.js'
 
+function isBucketAlreadyPresentError(error: unknown) {
+  const err = error as { name?: string; Code?: string; $metadata?: { httpStatusCode?: number } }
+  return (
+    err?.name === 'BucketAlreadyOwnedByYou' ||
+    err?.Code === 'BucketAlreadyOwnedByYou' ||
+    err?.name === 'BucketAlreadyExists' ||
+    err?.Code === 'BucketAlreadyExists' ||
+    err?.$metadata?.httpStatusCode === 409
+  )
+}
+
 export const storageService = {
+  async ensureBucketExists() {
+    try {
+      await s3.send(
+        new CreateBucketCommand({
+          Bucket: env.MINIO_BUCKET,
+        }),
+      )
+    } catch (error) {
+      if (!isBucketAlreadyPresentError(error)) {
+        throw error
+      }
+    }
+  },
+
   async upload(key: string, body: Buffer, contentType: string) {
     await s3.send(
       new PutObjectCommand({

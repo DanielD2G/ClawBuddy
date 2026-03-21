@@ -1,4 +1,5 @@
 import { BrowserGrid } from 'browsergrid-sdk'
+import { randomUUID } from 'node:crypto'
 import type { Page, BrowserContext } from 'playwright-core'
 import { settingsService } from './settings.service.js'
 import {
@@ -36,19 +37,53 @@ interface ScriptResult {
 
 const sessions = new Map<string, BrowserSession>()
 
+interface SaveScreenshotResult {
+  __saveScreenshot: true
+  screenshot: string
+  description: string | null
+  filename: string
+  __screenshotFullPage: boolean
+}
+
 /**
  * Capture a JPEG screenshot optimized for LLM consumption.
  */
-async function captureOptimizedScreenshot(page: Page): Promise<string | undefined> {
+export async function captureOptimizedScreenshot(
+  page: Pick<Page, 'screenshot'>,
+  options?: { fullPage?: boolean },
+): Promise<string | undefined> {
   try {
     const buf = await page.screenshot({
       type: 'jpeg',
       quality: SCREENSHOT_JPEG_QUALITY,
       scale: 'css',
+      fullPage: options?.fullPage ?? false,
     })
     return buf.toString('base64')
   } catch {
     return undefined
+  }
+}
+
+async function buildSavedScreenshotResult(
+  page: Page,
+  options?: { description?: string; filename?: string; fullPage?: boolean },
+): Promise<SaveScreenshotResult> {
+  const filenameBase = options?.filename?.trim() || `browser-screenshot-${randomUUID()}`
+  const normalizedBase = filenameBase.replace(/\.[^.]+$/i, '')
+  const buf = await page.screenshot({
+    type: 'jpeg',
+    quality: SCREENSHOT_JPEG_QUALITY,
+    scale: 'css',
+    fullPage: options?.fullPage ?? true,
+  })
+
+  return {
+    __saveScreenshot: true,
+    screenshot: buf.toString('base64'),
+    description: options?.description?.trim() || null,
+    filename: `${normalizedBase}.jpg`,
+    __screenshotFullPage: options?.fullPage ?? true,
   }
 }
 
@@ -170,6 +205,31 @@ async function getInteractiveElements(page: Page): Promise<InteractiveElement[]>
       return results;
     })()
   `) as Promise<InteractiveElement[]>
+}
+
+/**
+ * Helper injected into script scope: capture a visual screenshot for the LLM
+ * without saving anything to disk. Returns a JSON object with base64 screenshot
+ * that the agent pipeline will convert into a vision content block.
+ */
+async function getVisualSnapshot(
+  page: Page,
+  options?: { description?: string; fullPage?: boolean },
+): Promise<{ screenshot: string; description: string; __screenshotFullPage: boolean }> {
+  const title = await page.title()
+  const url = page.url()
+  const buf = await page.screenshot({
+    type: 'jpeg',
+    quality: SCREENSHOT_JPEG_QUALITY,
+    scale: 'css',
+    fullPage: options?.fullPage ?? false,
+  })
+  const desc = options?.description?.trim() || `Visual snapshot of "${title}" (${url})`
+  return {
+    screenshot: buf.toString('base64'),
+    description: desc,
+    __screenshotFullPage: options?.fullPage ?? false,
+  }
 }
 
 /**
@@ -298,6 +358,13 @@ export const browserService = {
     const boundGetLinks = () => getLinks(page)
     const boundGetInteractiveElements = () => getInteractiveElements(page)
     const boundGetPageSnapshot = () => getPageSnapshot(page)
+    const boundGetVisualSnapshot = (options?: { description?: string; fullPage?: boolean }) =>
+      getVisualSnapshot(page, options)
+    const boundSaveScreenshot = (options?: {
+      description?: string
+      filename?: string
+      fullPage?: boolean
+    }) => buildSavedScreenshotResult(page, options)
 
     try {
       // Execute the script with page and helpers available
@@ -308,6 +375,8 @@ export const browserService = {
         'getLinks',
         'getInteractiveElements',
         'getPageSnapshot',
+        'getVisualSnapshot',
+        'saveScreenshot',
         script,
       )
 
@@ -318,6 +387,8 @@ export const browserService = {
           boundGetLinks,
           boundGetInteractiveElements,
           boundGetPageSnapshot,
+          boundGetVisualSnapshot,
+          boundSaveScreenshot,
         ),
         new Promise((_, reject) =>
           setTimeout(
@@ -340,7 +411,8 @@ export const browserService = {
           result !== null &&
           (Buffer.isBuffer(result.screenshot) || typeof result.screenshot === 'string')
         ) {
-          const resized = await captureOptimizedScreenshot(page)
+          const fullPage = result.__screenshotFullPage === true
+          const resized = await captureOptimizedScreenshot(page, { fullPage })
           if (resized) {
             result.screenshot = resized
           } else if (Buffer.isBuffer(result.screenshot)) {
@@ -349,6 +421,7 @@ export const browserService = {
         }
         // Convert any remaining Buffer fields to base64
         if (typeof result === 'object' && result !== null) {
+          delete result.__screenshotFullPage
           for (const key of Object.keys(result)) {
             if (Buffer.isBuffer(result[key])) {
               result[key] = result[key].toString('base64')

@@ -5,8 +5,7 @@ import { storageService } from '../services/storage.service.js'
 import { chunkingService } from '../services/chunking.service.js'
 import { embeddingService } from '../services/embedding.service.js'
 import { searchService } from '../services/search.service.js'
-import { CHUNK_SIZE, CHUNK_OVERLAP, EMBEDDING_DIMENSIONS } from '@clawbuddy/shared'
-import { settingsService } from '../services/settings.service.js'
+import { CHUNK_SIZE, CHUNK_OVERLAP } from '@clawbuddy/shared'
 import { randomUUID } from 'crypto'
 import { sanitizeSurrogates } from '../lib/sanitize.js'
 
@@ -66,8 +65,7 @@ const worker = new Worker<IngestionJobData>(
       console.log(`[Ingestion] Document ${documentId}: ${chunks.length} chunks`)
 
       // 3. Ensure Qdrant collection exists
-      const embeddingModel = await settingsService.getEmbeddingModel()
-      const dimensions = EMBEDDING_DIMENSIONS[embeddingModel] ?? 1536
+      const dimensions = await embeddingService.getEmbeddingDimensions()
       await searchService.ensureCollection(dimensions)
 
       // 4. Generate embeddings and store

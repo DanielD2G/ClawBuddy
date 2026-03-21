@@ -15,6 +15,7 @@ export const ALWAYS_ON_CAPABILITY_SLUGS = [
   'bash',
   'python',
   'web-fetch',
+  'read-file',
   'sub-agent-delegation',
   'tool-discovery',
 ]

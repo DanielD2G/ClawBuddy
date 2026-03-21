@@ -1,7 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
+import type { ProviderConnectionInfo, ProviderMetadata } from './use-settings-base'
 
 export interface ProvidersData {
+  metadata: Record<string, ProviderMetadata>
+  connections: Record<string, ProviderConnectionInfo>
   available: { llm: string[]; embedding: string[] }
   active: {
     llm: string
@@ -13,8 +16,10 @@ export interface ProvidersData {
     titleModel: string | null
     compactModel: string | null
     advancedModelConfig: boolean
+    roleProviders: Record<string, string>
     embedding: string
     embeddingModel: string | null
+    localBaseUrl: string | null
   }
   models: {
     llm: Record<string, string[]>

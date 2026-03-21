@@ -8,7 +8,7 @@ import {
   MIN_PRUNE_SIZE,
   TOKEN_ESTIMATION_DIVISOR,
 } from '../constants.js'
-import { VISION_MODELS } from '../config.js'
+import { supportsVision } from '../config.js'
 
 /**
  * Build a multimodal tool result message if the output contains a base64 screenshot.
@@ -18,7 +18,7 @@ export function buildToolResultContent(output: string, modelId: string): Message
   const { screenshotB64, description } = extractScreenshotBase64(output)
 
   if (screenshotB64) {
-    if (VISION_MODELS.has(modelId)) {
+    if (supportsVision(modelId)) {
       const blocks: ContentBlock[] = []
       if (description) {
         blocks.push({ type: 'text', text: String(description) })
@@ -41,7 +41,6 @@ export async function maybeTruncateOutput(
   output: string,
   toolCallId: string,
   workspaceId: string,
-  linuxUser: string,
 ): Promise<string> {
   if (output.length <= OUTPUT_TRUNCATE_THRESHOLD) return output
 
@@ -52,7 +51,6 @@ export async function maybeTruncateOutput(
     await sandboxService.execInWorkspace(
       workspaceId,
       `echo '${b64}' | base64 -d > ${filename}`,
-      linuxUser,
       { timeout: 10 },
     )
   } catch {

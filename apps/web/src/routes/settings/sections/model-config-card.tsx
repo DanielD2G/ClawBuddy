@@ -20,7 +20,6 @@ import {
   DEFAULT_SUB_AGENT_ANALYZE_MAX_ITERATIONS,
   DEFAULT_SUB_AGENT_EXECUTE_MAX_ITERATIONS,
   PROVIDER_LABELS,
-  inferProvider,
 } from '@/constants'
 
 interface ModelConfigData {
@@ -42,6 +41,7 @@ interface ModelConfigData {
   subAgentExecuteMaxIterations: number
   availableProviders: string[]
   catalogs: Record<string, string[]>
+  roleProviders: Record<string, string>
 }
 
 const SIMPLE_ROLES = [
@@ -111,13 +111,7 @@ export function ModelConfigCard() {
   useEffect(() => {
     if (data) {
       setModels(data.models)
-      const providers: Record<string, string> = {}
-      for (const [key, modelId] of Object.entries(data.models)) {
-        if (modelId) {
-          providers[key] = inferProvider(modelId, data.availableProviders)
-        }
-      }
-      setRoleProviders(providers)
+      setRoleProviders(data.roleProviders)
       setAdvancedMode(data.advancedModelConfig)
       setContextLimitTokens(data.contextLimitTokens)
       setMaxAgentIterations(data.maxAgentIterations)
@@ -131,7 +125,9 @@ export function ModelConfigCard() {
   const saveMutation = useMutation({
     mutationFn: () =>
       apiClient.patch('/settings/models', {
+        provider: roleProviders.primary,
         ...models,
+        roleProviders,
         advancedModelConfig: advancedMode,
         contextLimitTokens,
         maxAgentIterations,
@@ -223,7 +219,9 @@ export function ModelConfigCard() {
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <button className="flex w-[140px] shrink-0 items-center justify-between rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm hover:bg-muted/70 dark:bg-muted/20 dark:hover:bg-muted/40">
-                            <span className="truncate">{PROVIDER_LABELS[currentProvider] ?? currentProvider}</span>
+                            <span className="truncate">
+                              {PROVIDER_LABELS[currentProvider] ?? currentProvider}
+                            </span>
                             <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" />
                           </button>
                         </DropdownMenuTrigger>

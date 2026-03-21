@@ -183,7 +183,13 @@ export function BrowserSettingsPage() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className="flex w-full items-center justify-between rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm hover:bg-muted/70 dark:bg-muted/20 dark:hover:bg-muted/40">
-                  <span>{config?.browser === 'firefox' ? 'Firefox' : config?.browser === 'camoufox' ? 'Camoufox (anti-detection)' : 'Chromium'}</span>
+                  <span>
+                    {config?.browser === 'firefox'
+                      ? 'Firefox'
+                      : config?.browser === 'camoufox'
+                        ? 'Camoufox (anti-detection)'
+                        : 'Chromium'}
+                  </span>
                   <ChevronsUpDown className="size-4 text-muted-foreground" />
                 </button>
               </DropdownMenuTrigger>
@@ -199,7 +205,9 @@ export function BrowserSettingsPage() {
                     className="gap-2"
                   >
                     <span className="flex-1">{opt.label}</span>
-                    {(config?.browser ?? 'chromium') === opt.value && <Check className="size-3.5" />}
+                    {(config?.browser ?? 'chromium') === opt.value && (
+                      <Check className="size-3.5" />
+                    )}
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuContent>
