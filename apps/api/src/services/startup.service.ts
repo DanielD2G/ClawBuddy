@@ -11,6 +11,7 @@ import { storageService } from './storage.service.js'
 import { channelService } from './channel.service.js'
 import { telegramBotManager } from '../channels/telegram/telegram-bot-manager.js'
 import { decrypt } from './crypto.service.js'
+import { updateService } from './update.service.js'
 
 const STARTUP_RETRY_DELAY_MS = 5_000
 const REDIS_TIMEOUT_MS = 5_000
@@ -200,6 +201,9 @@ export const startupService = {
         state.lastError = null
 
         void this.bootTelegramChannels()
+        void updateService.reconcileActiveRun().catch((error) => {
+          console.error('[Update] Failed to reconcile active run:', getErrorMessage(error))
+        })
         return
       } catch (error) {
         const startupError =

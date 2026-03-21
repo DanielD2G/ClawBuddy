@@ -31,7 +31,7 @@ services:
         parallelism: 1
         delay: 10s
         failure_action: rollback
-        order: stop-first
+        order: start-first
       rollback_config:
         parallelism: 1
       placement:
@@ -42,6 +42,14 @@ services:
     image: ghcr.io/danield2g/clawbuddy-web:latest
     ports:
       - "4321:80"
+    networks:
+      - shared
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost/version.json >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
     deploy:
       replicas: 1
       restart_policy:
@@ -53,6 +61,7 @@ services:
         parallelism: 1
         delay: 10s
         failure_action: rollback
+        order: start-first
       rollback_config:
         parallelism: 1
 

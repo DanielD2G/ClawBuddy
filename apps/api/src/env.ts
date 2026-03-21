@@ -33,6 +33,11 @@ const envSchema = z.object({
 
   // Debug flags
   DEBUG_AGENT: z.string().default(''),
+
+  // Build metadata
+  CLAWBUDDY_VERSION: z.string().default('dev'),
+  CLAWBUDDY_COMMIT_SHA: z.string().default('local'),
+  CLAWBUDDY_BUILD_TIME: z.string().default(''),
 })
 
 export const env = envSchema.parse(process.env)

@@ -779,7 +779,7 @@ step_api_keys() {
     has_embedding_key=true
   elif [[ "$EMBEDDING_PROVIDER" == "gemini" && -n "$GEMINI_KEY" ]]; then
     has_embedding_key=true
-  elif [[ "$EMBEDDING_PROVIDER" == "local" && -n "$LOCAL_PROVIDER_BASE_URL" ]]; then
+  elif [[ "$EMBEDDING_PROVIDER" == "local" && -n "${LOCAL_PROVIDER_BASE_URL:-}" ]]; then
     has_embedding_key=true
   fi
 
@@ -864,10 +864,10 @@ step_generate_env() {
   [[ -n "$OPENAI_KEY" ]]       && set_env_var "OPENAI_API_KEY" "$OPENAI_KEY"
   [[ -n "$ANTHROPIC_KEY" ]]    && set_env_var "ANTHROPIC_API_KEY" "$ANTHROPIC_KEY"
   [[ -n "$GEMINI_KEY" ]]       && set_env_var "GEMINI_API_KEY" "$GEMINI_KEY"
-  [[ -n "$LOCAL_PROVIDER_BASE_URL" ]] && set_env_var "LOCAL_PROVIDER_BASE_URL" "$LOCAL_PROVIDER_BASE_URL"
-  [[ -n "$GOOGLE_CLIENT_ID" ]] && set_env_var "GOOGLE_CLIENT_ID" "$GOOGLE_CLIENT_ID"
-  [[ -n "$GOOGLE_CLIENT_SECRET" ]] && set_env_var "GOOGLE_CLIENT_SECRET" "$GOOGLE_CLIENT_SECRET"
-  [[ -n "$APP_URL" ]]          && set_env_var "APP_URL" "$APP_URL"
+  [[ -n "${LOCAL_PROVIDER_BASE_URL:-}" ]] && set_env_var "LOCAL_PROVIDER_BASE_URL" "$LOCAL_PROVIDER_BASE_URL"
+  [[ -n "${GOOGLE_CLIENT_ID:-}" ]] && set_env_var "GOOGLE_CLIENT_ID" "$GOOGLE_CLIENT_ID"
+  [[ -n "${GOOGLE_CLIENT_SECRET:-}" ]] && set_env_var "GOOGLE_CLIENT_SECRET" "$GOOGLE_CLIENT_SECRET"
+  [[ -n "${APP_URL:-}" ]]          && set_env_var "APP_URL" "$APP_URL"
 
   # Generate ENCRYPTION_SECRET
   local secret
@@ -886,9 +886,9 @@ step_generate_env() {
   [[ -n "$OPENAI_KEY" ]]       && echo -e "    OpenAI Key:         ${GREEN}set${NC}"
   [[ -n "$ANTHROPIC_KEY" ]]    && echo -e "    Anthropic Key:      ${GREEN}set${NC}"
   [[ -n "$GEMINI_KEY" ]]       && echo -e "    Gemini Key:         ${GREEN}set${NC}"
-  [[ -n "$LOCAL_PROVIDER_BASE_URL" ]] && echo -e "    Local Base URL:     ${CYAN}$LOCAL_PROVIDER_BASE_URL${NC}"
-  [[ -n "$GOOGLE_CLIENT_ID" ]] && echo -e "    Google OAuth:       ${GREEN}configured${NC}"
-  [[ -n "$APP_URL" ]]          && echo -e "    App URL:            ${CYAN}$APP_URL${NC}"
+  [[ -n "${LOCAL_PROVIDER_BASE_URL:-}" ]] && echo -e "    Local Base URL:     ${CYAN}$LOCAL_PROVIDER_BASE_URL${NC}"
+  [[ -n "${GOOGLE_CLIENT_ID:-}" ]] && echo -e "    Google OAuth:       ${GREEN}configured${NC}"
+  [[ -n "${APP_URL:-}" ]]          && echo -e "    App URL:            ${CYAN}$APP_URL${NC}"
   echo ""
 }
 

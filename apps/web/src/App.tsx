@@ -14,6 +14,7 @@ import { CronSettingsPage } from '@/routes/settings/cron'
 import { DataSettingsPage } from '@/routes/settings/data'
 import { BrowserSettingsPage } from '@/routes/settings/browser'
 import { ChannelsSettingsPage } from '@/routes/settings/channels'
+import { UpdatePage } from '@/routes/update/update'
 
 export function App() {
   return (
@@ -21,6 +22,7 @@ export function App() {
       <Route path="/setup" element={<SetupPage />} />
 
       <Route element={<ProtectedRoute />}>
+        <Route path="/update" element={<UpdatePage />} />
         <Route path="/" element={<DashboardLayout />}>
           <Route index element={<DashboardPage />} />
           <Route path="workspaces" element={<WorkspacesPage />} />
