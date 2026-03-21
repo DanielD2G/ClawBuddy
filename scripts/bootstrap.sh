@@ -910,6 +910,13 @@ step_start_services() {
 
   validate_stack_env_file .env
 
+  # Ensure Docker Swarm is active (may have been missed if Step 1 was interrupted)
+  if ! docker info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null | grep -q "active"; then
+    info "Initializing Docker Swarm..."
+    docker swarm init 2>/dev/null || docker swarm init --advertise-addr 127.0.0.1
+    ok "Docker Swarm initialized"
+  fi
+
   info "Deploying infrastructure stack..."
   deploy_stack "$INFRA_STACK_NAME" "$INFRA_COMPOSE_FILE"
   wait_for_shared_network
