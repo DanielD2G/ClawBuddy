@@ -21,6 +21,8 @@ import oauthRoutes from './routes/oauth.js'
 import browserRoutes from './routes/browser.js'
 import channelRoutes from './routes/channels.js'
 import { startupService } from './services/startup.service.js'
+import updateRoutes from './routes/update.js'
+import { getBuildInfo } from './lib/build-info.js'
 
 const app = new OpenAPIHono()
 
@@ -41,11 +43,15 @@ app.onError(errorHandler)
 app.get('/api/health', (c) => {
   const startup = startupService.getState()
   const status = startup.ready ? 200 : 503
+  const build = getBuildInfo()
 
   return c.json(
     {
       success: startup.ready,
       data: {
+        version: build.version,
+        commitSha: build.commitSha,
+        builtAt: build.builtAt,
         status: startup.ready ? 'ok' : 'starting',
         phase: startup.phase,
         attempt: startup.attempt,
@@ -86,5 +92,6 @@ app.route('/api', cronRoutes)
 app.route('/api/oauth', oauthRoutes)
 app.route('/api/browser', browserRoutes)
 app.route('/api/channels', channelRoutes)
+app.route('/api', updateRoutes)
 
 export default app

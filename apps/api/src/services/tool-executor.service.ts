@@ -591,11 +591,7 @@ async function executeSandboxCommand(
     workingDir: (args.workingDir as string) ?? userHome,
   }
 
-  const result = await sandboxService.execInWorkspace(
-    context.workspaceId,
-    command,
-    execOptions,
-  )
+  const result = await sandboxService.execInWorkspace(context.workspaceId, command, execOptions)
 
   // Sanitize output to strip null bytes that break PostgreSQL and JSON
   const stdout = result.stdout ? stripNullBytes(result.stdout) : ''
@@ -804,11 +800,7 @@ async function executeBrowserScript(
         const resolvedPath = `/workspace/screenshots/${baseName}-${randomUUID()}.jpg`
         try {
           const imageBuffer = Buffer.from(screenshotB64, 'base64')
-          await sandboxService.writeFileToContainer(
-            context.workspaceId,
-            resolvedPath,
-            imageBuffer,
-          )
+          await sandboxService.writeFileToContainer(context.workspaceId, resolvedPath, imageBuffer)
         } catch (writeErr) {
           return {
             output: '',
@@ -1084,17 +1076,10 @@ async function executeReadFile(
   ].join('\n')
 
   // 4. Execute inside the sandbox
-  let result = await sandboxService.execInWorkspace(
-    context.workspaceId,
-    script,
-    { timeout: 15 },
-  )
+  let result = await sandboxService.execInWorkspace(context.workspaceId, script, { timeout: 15 })
 
   // 5. Fallback: try basename in workspace dir (same pattern as executeGenerateFile)
-  if (
-    result.exitCode !== 0 &&
-    resolvedPath !== `${userHome}/${filePath.split('/').pop()}`
-  ) {
+  if (result.exitCode !== 0 && resolvedPath !== `${userHome}/${filePath.split('/').pop()}`) {
     const fallbackPath = `${userHome}/${filePath.split('/').pop()}`
     const fallbackScript = script.replace(
       `FILE=${JSON.stringify(resolvedPath)}`,

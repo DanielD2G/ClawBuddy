@@ -3,10 +3,12 @@ import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar'
 import { AppSidebar } from '@/components/layout/app-sidebar'
 import { Header } from '@/components/layout/header'
 import { ErrorBoundary } from '@/components/error-boundary'
+import { UpdateNotifier } from '@/components/update/update-notifier'
 
 export function DashboardLayout() {
   return (
     <SidebarProvider>
+      <UpdateNotifier />
       <AppSidebar />
       <SidebarInset>
         <Header />

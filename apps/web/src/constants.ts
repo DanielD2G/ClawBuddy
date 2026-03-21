@@ -9,6 +9,8 @@ export const POLL_CONTAINER_STATUS_MS = 10000
 export const POLL_CRON_JOBS_MS = 15_000
 export const POLL_DOCUMENT_STATUS_MS = 2000
 export const POLL_DOCKER_IMAGES_MS = 1500
+export const POLL_UPDATE_STATUS_MS = 2000
+export const POLL_UPDATE_CHECK_MS = 5 * 60_000
 
 // ── Cache staleness (ms) ─────────────────────────
 export const DEFAULT_STALE_TIME_MS = 60_000
