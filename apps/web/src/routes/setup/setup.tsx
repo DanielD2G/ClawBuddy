@@ -227,12 +227,24 @@ export function SetupPage() {
           BROWSER_GRID_URL: browserGridUrl,
         }
       }
+      const draft = effectiveChatModelDraft
       const result = await completeSetup.mutateAsync({
         capabilities: selectedCapabilities,
         capabilityConfigs: configs,
         workspaceName,
         workspaceColor,
         timezone,
+        // Chat model config (deferred from Step 3)
+        llm: draft.roleProviders.primary ?? providers.active.llm,
+        llmModel: draft.models.primary ?? null,
+        mediumModel: draft.models.medium ?? null,
+        lightModel: draft.models.light ?? null,
+        exploreModel: draft.models.explore ?? null,
+        executeModel: draft.models.execute ?? null,
+        titleModel: draft.models.title ?? null,
+        compactModel: draft.models.compact ?? null,
+        advancedModelConfig: draft.advancedMode,
+        roleProviders: draft.roleProviders,
         ...(telegramEnabled && telegramToken.trim()
           ? { telegramBotToken: telegramToken.trim(), telegramTokenTested }
           : {}),
@@ -300,7 +312,6 @@ export function SetupPage() {
             advancedMode={effectiveChatModelDraft.advancedMode}
             models={effectiveChatModelDraft.models}
             roleProviders={effectiveChatModelDraft.roleProviders}
-            onUpdate={updateProviders.mutate}
             onAdvancedModeChange={(advancedMode) =>
               setChatModelDraft((prev) => ({
                 ...(prev ?? buildChatModelDraft(providers)),
@@ -325,7 +336,6 @@ export function SetupPage() {
                 },
               }))
             }
-            isUpdating={updateProviders.isPending}
             onBack={() => setStep(2)}
             onNext={() => setStep(4)}
           />
