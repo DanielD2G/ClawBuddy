@@ -436,9 +436,20 @@ step_docker_check() {
     case "$OS_TYPE" in
       linux-apt|wsl)
         if prompt_yes_no "Install Docker automatically via apt?" "y"; then
-          info "Installing Docker..."
+          info "Installing Docker from official Docker repository..."
           sudo apt-get update -qq
-          sudo apt-get install -y -qq docker.io docker-compose-plugin
+          sudo apt-get install -y -qq ca-certificates curl
+          sudo install -m 0755 -d /etc/apt/keyrings
+          local distro_id
+          distro_id=$(. /etc/os-release && echo "$ID")
+          local codename
+          codename=$(. /etc/os-release && echo "$VERSION_CODENAME")
+          sudo curl -fsSL "https://download.docker.com/linux/${distro_id}/gpg" -o /etc/apt/keyrings/docker.asc
+          sudo chmod a+r /etc/apt/keyrings/docker.asc
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/${distro_id} ${codename} stable" | \
+            sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-compose-plugin
           sudo systemctl enable --now docker
           sudo usermod -aG docker "$USER"
           ok "Docker installed"
