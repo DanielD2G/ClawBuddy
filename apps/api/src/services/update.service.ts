@@ -292,20 +292,22 @@ function buildTargetImage(
   version: string,
   fallbackImage: string,
 ) {
+  // Docker image tags use semver without 'v' prefix (e.g. 0.1.6, not v0.1.6)
+  const imageTag = version.replace(/^v/, '')
   const currentImage = service?.Spec?.TaskTemplate?.ContainerSpec?.Image ?? ''
   const withoutDigest = currentImage.split('@')[0] ?? currentImage
   const lastSlash = withoutDigest.lastIndexOf('/')
   const lastColon = withoutDigest.lastIndexOf(':')
 
   if (lastColon > lastSlash) {
-    return `${withoutDigest.slice(0, lastColon)}:${version}`
+    return `${withoutDigest.slice(0, lastColon)}:${imageTag}`
   }
 
   if (withoutDigest) {
-    return `${withoutDigest}:${version}`
+    return `${withoutDigest}:${imageTag}`
   }
 
-  return `${fallbackImage}:${version}`
+  return `${fallbackImage}:${imageTag}`
 }
 
 async function fetchLatestRelease(force = false): Promise<LatestReleaseInfo | null> {
