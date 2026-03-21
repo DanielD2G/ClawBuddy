@@ -1,5 +1,7 @@
 import { createEmbeddingProvider } from '../providers/index.js'
 
+let dimensionsCache: number | null = null
+
 export const embeddingService = {
   async embed(text: string): Promise<number[]> {
     const provider = await createEmbeddingProvider()
@@ -11,12 +13,10 @@ export const embeddingService = {
     return provider.embedBatch(texts)
   },
 
-  _dimensionsCache: null as number | null,
-
   async getEmbeddingDimensions(): Promise<number> {
-    if (this._dimensionsCache != null) return this._dimensionsCache
+    if (dimensionsCache != null) return dimensionsCache
     const vector = await this.embed('dimension probe')
-    this._dimensionsCache = vector.length
+    dimensionsCache = vector.length
     return vector.length
   },
 }

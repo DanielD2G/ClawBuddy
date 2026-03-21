@@ -30,13 +30,8 @@ export function normalizeOpenAICompatibleBaseURL(baseURL: string): string {
   const url = new URL(baseURL)
   const path = url.pathname.replace(/\/+$/, '')
 
-  if (!path || path === '') {
+  if (!path) {
     url.pathname = '/v1'
-    return url.toString().replace(/\/$/, '')
-  }
-
-  if (path === '/v1') {
-    return url.toString().replace(/\/$/, '')
   }
 
   return url.toString().replace(/\/$/, '')

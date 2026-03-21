@@ -44,7 +44,6 @@ export function ProviderConnectionRow({
   const isLocal = provider === 'local'
   const isConfigured = !!info.source
   const setupButtonSize = variant === 'setup' ? 'default' : 'sm'
-  const setupActionButtonSize = variant === 'setup' ? 'default' : 'sm'
   const placeholder =
     metadata.connectionType === 'baseUrl'
       ? `Enter ${metadata.label} base URL`
@@ -164,7 +163,6 @@ export function ProviderConnectionRow({
             </button>
           )}
           {isConfigured && info.source !== 'env' && (
-            <>
               <button
                 onClick={onRemove}
                 disabled={isRemoving}
@@ -172,7 +170,6 @@ export function ProviderConnectionRow({
               >
                 <Trash2 className="size-4" />
               </button>
-            </>
           )}
         </div>
       </div>
@@ -212,14 +209,14 @@ export function ProviderConnectionRow({
                 className="flex-1 text-sm"
               />
               <Button
-                size={setupActionButtonSize}
+                size={setupButtonSize}
                 onClick={handleSave}
                 disabled={isSaving || !value.trim()}
               >
                 Save
               </Button>
               {isConfigured && (
-                <Button size={setupActionButtonSize} variant="outline" onClick={cancelEditing}>
+                <Button size={setupButtonSize} variant="outline" onClick={cancelEditing}>
                   Cancel
                 </Button>
               )}

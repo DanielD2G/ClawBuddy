@@ -29,6 +29,46 @@ import { secretRedactionService } from './secret-redaction.service.js'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 
+const BINARY_EXTENSIONS = new Set([
+  'jpg',
+  'jpeg',
+  'png',
+  'gif',
+  'webp',
+  'bmp',
+  'ico',
+  'pdf',
+  'zip',
+  'tar',
+  'gz',
+  'mp3',
+  'mp4',
+  'wav',
+  'ogg',
+  'woff',
+  'woff2',
+  'ttf',
+  'otf',
+])
+
+const MIME_TYPES: Record<string, string> = {
+  csv: 'text/csv',
+  md: 'text/markdown',
+  txt: 'text/plain',
+  json: 'application/json',
+  html: 'text/html',
+  xml: 'application/xml',
+  yaml: 'text/yaml',
+  yml: 'text/yaml',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  pdf: 'application/pdf',
+  zip: 'application/zip',
+}
+
 interface ExecutionContext {
   workspaceId: string
   chatSessionId: string
@@ -317,46 +357,7 @@ async function executeGenerateFile(
   const sourcePath = args.sourcePath as string | undefined
 
   const ext = filename.split('.').pop()?.toLowerCase() ?? 'txt'
-  const BINARY_EXTENSIONS = new Set([
-    'jpg',
-    'jpeg',
-    'png',
-    'gif',
-    'webp',
-    'bmp',
-    'ico',
-    'pdf',
-    'zip',
-    'tar',
-    'gz',
-    'mp3',
-    'mp4',
-    'wav',
-    'ogg',
-    'woff',
-    'woff2',
-    'ttf',
-    'otf',
-  ])
   const isBinary = BINARY_EXTENSIONS.has(ext)
-
-  const mimeTypes: Record<string, string> = {
-    csv: 'text/csv',
-    md: 'text/markdown',
-    txt: 'text/plain',
-    json: 'application/json',
-    html: 'text/html',
-    xml: 'application/xml',
-    yaml: 'text/yaml',
-    yml: 'text/yaml',
-    jpg: 'image/jpeg',
-    jpeg: 'image/jpeg',
-    png: 'image/png',
-    gif: 'image/gif',
-    webp: 'image/webp',
-    pdf: 'application/pdf',
-    zip: 'application/zip',
-  }
 
   let buffer: Buffer
   if (sourcePath) {
@@ -439,7 +440,7 @@ async function executeGenerateFile(
   }
 
   const key = `generated/${Date.now()}-${filename}`
-  await storageService.upload(key, buffer, mimeTypes[ext] ?? 'application/octet-stream')
+  await storageService.upload(key, buffer, MIME_TYPES[ext] ?? 'application/octet-stream')
 
   const downloadUrl = `/api/files/${key}`
 
