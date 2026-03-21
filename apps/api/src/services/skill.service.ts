@@ -175,17 +175,21 @@ export const skillService = {
       return
     }
 
-    const existingObjects = await storageService.listObjects(SKILLS_PREFIX)
-    const existingKeys = new Set(existingObjects.map((o) => o.Key))
-
     for (const file of files) {
       const key = `${SKILLS_PREFIX}${file}`
-      if (existingKeys.has(key)) continue
 
       try {
         const content = readFileSync(join(skillsDir, file), 'utf-8')
-        // Validate before uploading
-        parseSkillFile(JSON.parse(content))
+        const { skill } = parseSkillFile(JSON.parse(content))
+
+        // Check if we need to update: compare version with DB
+        const existing = await prisma.capability.findUnique({
+          where: { slug: skill.slug },
+          select: { version: true },
+        })
+
+        if (existing && existing.version === skill.version) continue
+
         await storageService.upload(key, Buffer.from(content, 'utf-8'), 'application/json')
       } catch (err) {
         console.error(`[SkillService] Failed to seed bundled skill ${file}:`, err)
