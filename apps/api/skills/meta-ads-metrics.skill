@@ -1,0 +1,145 @@
+{
+  "name": "Meta Ads Metrics",
+  "slug": "meta-ads-metrics",
+  "description": "Collect Meta Ads (Facebook/Instagram) campaign metrics from any ad account. Supports summary KPIs, daily breakdowns, campaign-level data, period comparison, ad set metrics, and account info.",
+  "version": "1.1.0",
+  "icon": "Megaphone",
+  "category": "integrations",
+  "type": "python",
+  "networkAccess": true,
+  "inputs": {
+    "meta_access_token": {
+      "type": "secret",
+      "description": "Meta Graph API access token with ads_read permission. Generate at https://developers.facebook.com/tools/explorer. Expires every ~60 days."
+    },
+    "meta_ad_account_id": {
+      "type": "string",
+      "description": "Meta Ad Account ID (numeric, without the 'act_' prefix). Found in Meta Business Suite > Ad Account Settings.",
+      "placeholder": "123456789012345"
+    }
+  },
+  "installation": "echo 'No extra dependencies — uses urllib (built-in)'",
+  "tools": [
+    {
+      "name": "meta_summary",
+      "description": "Get aggregated ad account metrics for a period: impressions, reach, frequency, clicks, link clicks, landing page views, CTR, spend, CPC, CPM, video views, reactions, engagement, and net likes.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "days": {
+            "type": "number",
+            "description": "Period preset: 7, 14, 30, or 90 (default: 30). Ignored if start_date/end_date provided."
+          },
+          "start_date": {
+            "type": "string",
+            "description": "Start date YYYY-MM-DD for custom range. Use with end_date."
+          },
+          "end_date": {
+            "type": "string",
+            "description": "End date YYYY-MM-DD for custom range."
+          },
+          "timeout": {
+            "type": "number",
+            "description": "Timeout in seconds (default: 30, max: 300)"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "meta_comparison",
+      "description": "Compare current period vs previous period of equal length. Returns both sets of metrics plus delta percentages for impressions, clicks, CTR, spend, CPC, CPM, reach, frequency, link clicks, and landing views.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "days": {
+            "type": "number",
+            "description": "Period length in days (default: 30). Current = last N days, previous = N days before that."
+          },
+          "timeout": {
+            "type": "number",
+            "description": "Timeout in seconds (default: 30, max: 300)"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "meta_daily",
+      "description": "Get day-by-day breakdown: impressions, clicks, CTR, spend, reach, link clicks, and landing views per day. Useful for trend analysis and spotting performance shifts.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "days": {
+            "type": "number",
+            "description": "Period preset: 7, 14, 30, or 90 (default: 30)"
+          },
+          "start_date": {
+            "type": "string",
+            "description": "Start date YYYY-MM-DD for custom range."
+          },
+          "end_date": {
+            "type": "string",
+            "description": "End date YYYY-MM-DD for custom range."
+          },
+          "timeout": {
+            "type": "number",
+            "description": "Timeout in seconds (default: 30, max: 300)"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "meta_campaigns",
+      "description": "Get metrics broken down by campaign: campaign name, impressions, clicks, CTR, spend, CPC, reach, link clicks, and landing views per campaign.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "days": {
+            "type": "number",
+            "description": "Period preset: 7, 14, 30, or 90 (default: 30)"
+          },
+          "timeout": {
+            "type": "number",
+            "description": "Timeout in seconds (default: 30, max: 300)"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "meta_adsets",
+      "description": "Get metrics broken down by ad set: ad set name, campaign name, impressions, clicks, CTR, spend, CPC, reach, link clicks, and landing views per ad set.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "days": {
+            "type": "number",
+            "description": "Period preset: 7, 14, 30, or 90 (default: 30)"
+          },
+          "timeout": {
+            "type": "number",
+            "description": "Timeout in seconds (default: 30, max: 300)"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "meta_account_info",
+      "description": "Get ad account details: name, status, currency, timezone, total historical spend, and list of campaigns with their name, status, objective, budget, and date range.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "timeout": {
+            "type": "number",
+            "description": "Timeout in seconds (default: 30, max: 300)"
+          }
+        },
+        "required": []
+      }
+    }
+  ],
+  "instructions": "You collect Meta Ads metrics from any ad account via the Graph API. No external dependencies — uses `urllib` only.\n\n## Setup\n\n```python\nimport os, json, urllib.request, urllib.error\n\nACCESS_TOKEN = os.environ['META_ACCESS_TOKEN']\nAD_ACCOUNT_ID = os.environ['META_AD_ACCOUNT_ID']\nAPI_VERSION = 'v21.0'\nBASE_URL = f'https://graph.facebook.com/{API_VERSION}'\nACCOUNT = f'act_{AD_ACCOUNT_ID}'\n\ndef api_get(endpoint, params=None):\n    all_params = {'access_token': ACCESS_TOKEN}\n    if params:\n        all_params.update(params)\n    query = '&'.join(f'{k}={urllib.request.quote(str(v))}' for k, v in all_params.items())\n    url = f'{BASE_URL}/{endpoint}?{query}'\n    with urllib.request.urlopen(urllib.request.Request(url)) as r:\n        return json.loads(r.read().decode())\n\ndef date_preset(days):\n    return {7: 'last_7d', 14: 'last_14d', 30: 'last_30d', 90: 'last_90d'}.get(days, 'last_30d')\n\ndef extract_action(actions, action_type):\n    for a in (actions or []):\n        if a.get('action_type') == action_type:\n            return int(a.get('value', 0))\n    return 0\n```\n\n## Date ranges\n\n- If `start_date`/`end_date` provided: use `time_range` param as `{\"since\":\"YYYY-MM-DD\",\"until\":\"YYYY-MM-DD\"}`.\n- If only `days` provided: use `date_preset` (must be 7/14/30/90, default 30).\n\n## Tool implementations\n\n**meta_summary**: `{ACCOUNT}/insights` with fields `impressions,clicks,ctr,spend,cpc,cpm,reach,frequency,actions`.\nExtract from `actions` array: `link_click`, `landing_page_view`, `video_view`, `post_reaction`, `page_engagement`, `onsite_conversion.post_net_like`.\n\n**meta_comparison**: Two API calls — current period (date_preset) and previous period (time_range with calculated dates). Compute deltas: `(current - previous) / previous * 100`.\n\n**meta_daily**: Same insights endpoint with `time_increment=1`, `limit=100`.\n\n**meta_campaigns**: Insights with `level=campaign`, fields `campaign_name,impressions,clicks,ctr,spend,cpc,reach,actions`, limit 50.\n\n**meta_adsets**: Insights with `level=adset`, fields `adset_name,campaign_name,impressions,clicks,ctr,spend,cpc,reach,actions`, limit 50.\n\n**meta_account_info**: Two calls:\n1. `{ACCOUNT}` with fields `name,account_status,currency,timezone_name,amount_spent,balance` — status map: `{1:'Active', 2:'Disabled', 3:'Unsettled', 7:'Pending review'}`, `amount_spent` is in cents (divide by 100).\n2. `{ACCOUNT}/campaigns` with fields `name,status,objective,daily_budget,lifetime_budget,start_time,stop_time`, limit 50 — budgets in cents.\n\n## Output\n\nReturn clean markdown tables. Always calculate derived metrics:\n- Click-to-landing rate = landing_views / link_clicks * 100\n- Cost per landing view = spend / landing_views\n- Efficiency per $1 = link_clicks / spend\n\nFormat numbers: currency as $XX.XX (CPC as $X.XXXX), percentages as XX.XX%, counts with thousands separators.\n\n## Errors\n\n| Error code | Cause | Fix |\n|------------|-------|-----|\n| 190 | Token expired or invalid | Regenerate at developers.facebook.com/tools/explorer with `ads_read` scope |\n| 100 | Invalid parameter | Verify Ad Account ID is numeric without `act_` prefix |\n| 200 | Insufficient permissions | Token needs `ads_read` permission |\n| 17 | Rate limit | Wait a few minutes and retry |\n| No data | No active campaigns in period | Try a longer date range |"
+}
