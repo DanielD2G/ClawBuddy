@@ -604,32 +604,7 @@ app.post('/complete', async (c) => {
     telegramBotToken,
     telegramTokenTested,
     timezone,
-    // Chat model config (deferred from wizard step)
-    llm,
-    llmModel,
-    mediumModel,
-    lightModel,
-    exploreModel,
-    executeModel,
-    titleModel,
-    compactModel,
-    advancedModelConfig,
-    roleProviders,
   } = body
-
-  // Apply chat model config before validation
-  await settingsService.update({
-    ...(llm !== undefined ? { aiProvider: llm } : {}),
-    ...(llmModel !== undefined ? { aiModel: llmModel } : {}),
-    ...(mediumModel !== undefined ? { mediumModel } : {}),
-    ...(lightModel !== undefined ? { lightModel } : {}),
-    ...(exploreModel !== undefined ? { exploreModel } : {}),
-    ...(executeModel !== undefined ? { executeModel } : {}),
-    ...(titleModel !== undefined ? { titleModel } : {}),
-    ...(compactModel !== undefined ? { compactModel } : {}),
-    ...(advancedModelConfig !== undefined ? { advancedModelConfig } : {}),
-    ...(roleProviders !== undefined ? { roleProviders } : {}),
-  })
 
   const settings = await settingsService.get()
   const available = await settingsService.getAvailableProviders()
