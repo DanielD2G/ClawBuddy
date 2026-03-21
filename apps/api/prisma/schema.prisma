@@ -92,6 +92,7 @@ model ChatSession {
   contextSummary     String?   @db.Text
   contextSummaryUpTo String?
   lastInputTokens    Int?
+  linuxUser          String?
   sessionAllowRules  Json?
   source             String?
   externalChatId     String?
@@ -165,8 +166,31 @@ model AppSettings {
   subAgentExploreMaxIterations  Int      @default(50)
   subAgentAnalyzeMaxIterations  Int      @default(25)
   subAgentExecuteMaxIterations  Int      @default(50)
+  dismissedUpdateVersion        String?
   timezone                      String?
   updatedAt                    DateTime @updatedAt
+}
+
+model AppUpdateRun {
+  id                 String   @id @default(cuid())
+  status             String   @default("pending")
+  phase              String   @default("pending")
+  currentVersion     String?
+  targetVersion      String
+  targetReleaseName  String?
+  targetReleaseUrl   String?
+  targetPublishedAt  DateTime?
+  targetReleaseNotes String?  @db.Text
+  phaseMessage       String?
+  progress           Json?
+  error              String?  @db.Text
+  startedAt          DateTime?
+  completedAt        DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([status])
+  @@index([targetVersion])
 }
 
 // ── Capabilities System ─────────────────────────────────────

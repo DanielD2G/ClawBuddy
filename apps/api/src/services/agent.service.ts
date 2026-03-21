@@ -1547,9 +1547,7 @@ When using sourcePath in generate_file, use the full path: /workspace/filename o
         })
 
         return {
-          content: isDuplicateResume
-            ? resumeAccumulatedContent.trim()
-            : safeResponseContent,
+          content: isDuplicateResume ? resumeAccumulatedContent.trim() : safeResponseContent,
           toolExecutions: toolExecutionLog,
           sources: collectedSourcesResume.length ? collectedSourcesResume : undefined,
           lastMessageId: lastSavedMessageId,
@@ -1707,7 +1705,7 @@ When using sourcePath in generate_file, use the full path: /workspace/filename o
                   return toolExecutorService.execute(t.toolCall, t.capabilitySlug, {
                     workspaceId,
                     chatSessionId: sessionId,
-          
+
                     secretInventory: inventory,
                     capability: t.matchedCap
                       ? {
@@ -1750,7 +1748,7 @@ When using sourcePath in generate_file, use the full path: /workspace/filename o
               : await toolExecutorService.execute(toolCall, capabilitySlug, {
                   workspaceId,
                   chatSessionId: sessionId,
-        
+
                   secretInventory: inventory,
                   capability: matchedCap
                     ? {

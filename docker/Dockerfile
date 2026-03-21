@@ -21,6 +21,9 @@ RUN test -d node_modules/playwright-core || (echo "FATAL: playwright-core not in
 FROM base AS api-build
 WORKDIR /app
 
+ARG CLAWBUDDY_VERSION=dev
+ARG CLAWBUDDY_COMMIT_SHA=local
+
 COPY packages/ packages/
 COPY apps/api/ apps/api/
 
@@ -32,14 +35,27 @@ RUN bun run --filter @clawbuddy/api build
 FROM base AS web-build
 WORKDIR /app
 
+ARG CLAWBUDDY_VERSION=dev
+ARG CLAWBUDDY_COMMIT_SHA=local
+
 COPY packages/ packages/
 COPY apps/web/ apps/web/
 
-RUN bun run --filter @clawbuddy/web build
+RUN export VITE_CLAWBUDDY_VERSION="$CLAWBUDDY_VERSION" \
+  VITE_CLAWBUDDY_COMMIT_SHA="$CLAWBUDDY_COMMIT_SHA" \
+  VITE_CLAWBUDDY_BUILD_TIME="$(date -u +%FT%TZ)" && \
+  bun run --filter @clawbuddy/web build
 
 # ── Stage 4: API runtime ─────────────────────────────
 FROM oven/bun:1.3.5-debian AS api
 WORKDIR /app
+
+ARG CLAWBUDDY_VERSION=dev
+ARG CLAWBUDDY_COMMIT_SHA=local
+ARG CLAWBUDDY_BUILD_TIME=unknown
+ENV CLAWBUDDY_VERSION=$CLAWBUDDY_VERSION
+ENV CLAWBUDDY_COMMIT_SHA=$CLAWBUDDY_COMMIT_SHA
+ENV CLAWBUDDY_BUILD_TIME=$CLAWBUDDY_BUILD_TIME
 
 # Copy node_modules from api-build (includes generated Prisma client)
 COPY --from=api-build /app/node_modules node_modules

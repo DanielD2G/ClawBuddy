@@ -163,13 +163,13 @@ export function ProviderConnectionRow({
             </button>
           )}
           {isConfigured && info.source !== 'env' && (
-              <button
-                onClick={onRemove}
-                disabled={isRemoving}
-                className="rounded-md p-1.5 text-muted-foreground hover:text-destructive disabled:opacity-50"
-              >
-                <Trash2 className="size-4" />
-              </button>
+            <button
+              onClick={onRemove}
+              disabled={isRemoving}
+              className="rounded-md p-1.5 text-muted-foreground hover:text-destructive disabled:opacity-50"
+            >
+              <Trash2 className="size-4" />
+            </button>
           )}
         </div>
       </div>

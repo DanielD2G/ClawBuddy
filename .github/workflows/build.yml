@@ -44,6 +44,10 @@ jobs:
           file: docker/Dockerfile
           target: ${{ matrix.target }}
           push: true
+          build-args: |
+            CLAWBUDDY_VERSION=${{ github.ref_name }}
+            CLAWBUDDY_COMMIT_SHA=${{ github.sha }}
+            CLAWBUDDY_BUILD_TIME=${{ github.event.head_commit.timestamp }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha

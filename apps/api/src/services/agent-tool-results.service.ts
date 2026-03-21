@@ -48,11 +48,9 @@ export async function maybeTruncateOutput(
   try {
     // Write the full output to a file in the sandbox using base64 to avoid quoting issues
     const b64 = Buffer.from(output).toString('base64')
-    await sandboxService.execInWorkspace(
-      workspaceId,
-      `echo '${b64}' | base64 -d > ${filename}`,
-      { timeout: 10 },
-    )
+    await sandboxService.execInWorkspace(workspaceId, `echo '${b64}' | base64 -d > ${filename}`, {
+      timeout: 10,
+    })
   } catch {
     // If we can't write the file, return the full output
     return output

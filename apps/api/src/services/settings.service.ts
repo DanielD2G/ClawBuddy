@@ -142,6 +142,11 @@ export const settingsService = {
     return s.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
   },
 
+  async getDismissedUpdateVersion(): Promise<string | null> {
+    const s = await this.get()
+    return s.dismissedUpdateVersion ?? null
+  },
+
   async getMaxAgentIterations(): Promise<number> {
     return this._getNumericSetting('maxAgentIterations', DEFAULT_MAX_AGENT_ITERATIONS)
   },
@@ -395,6 +400,16 @@ export const settingsService = {
     const result = await prisma.appSettings.update({
       where: { id: 'singleton' },
       data: { browserGridApiKey: value },
+    })
+    this._invalidateCache()
+    return result
+  },
+
+  async setDismissedUpdateVersion(version: string | null) {
+    await this.get()
+    const result = await prisma.appSettings.update({
+      where: { id: 'singleton' },
+      data: { dismissedUpdateVersion: version?.trim() || null },
     })
     this._invalidateCache()
     return result

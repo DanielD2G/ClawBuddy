@@ -276,11 +276,7 @@ export const sandboxService = {
     }
 
     try {
-      const result = await this._execInContainerDirect(
-        workspace.containerId,
-        command,
-        options,
-      )
+      const result = await this._execInContainerDirect(workspace.containerId, command, options)
       await prisma.workspace.update({
         where: { id: workspaceId },
         data: { containerLastActivityAt: new Date() },
@@ -386,11 +382,7 @@ export const sandboxService = {
    * Write a file directly into the workspace container using Docker putArchive.
    * Bypasses shell argument limits — safe for large binary files (screenshots, etc.).
    */
-  async writeFileToContainer(
-    workspaceId: string,
-    filePath: string,
-    data: Buffer,
-  ): Promise<void> {
+  async writeFileToContainer(workspaceId: string, filePath: string, data: Buffer): Promise<void> {
     const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId } })
     if (!workspace.containerId || workspace.containerStatus !== 'running') {
       throw new Error('Workspace container is not running')
@@ -432,10 +424,7 @@ export const sandboxService = {
    * Read a file directly from the workspace container using Docker getArchive.
    * Bypasses stdout size limits — safe for large binary files (screenshots, etc.).
    */
-  async readFileFromContainer(
-    workspaceId: string,
-    filePath: string,
-  ): Promise<Buffer> {
+  async readFileFromContainer(workspaceId: string, filePath: string): Promise<Buffer> {
     const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId } })
     if (!workspace.containerId || workspace.containerStatus !== 'running') {
       throw new Error('Workspace container is not running')
