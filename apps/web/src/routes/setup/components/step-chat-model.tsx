@@ -16,11 +16,9 @@ interface StepChatModelProps {
   advancedMode: boolean
   models: Record<string, string>
   roleProviders: Record<string, string>
-  onUpdate: (data: Record<string, unknown>) => void
   onAdvancedModeChange: (advancedMode: boolean) => void
   onModelChange: (roleKey: string, modelId: string) => void
   onRoleProviderChange: (roleKey: string, provider: string) => void
-  isUpdating: boolean
   onBack: () => void
   onNext: () => void
 }
@@ -39,26 +37,14 @@ const ADVANCED_ROLES = [
   { key: 'compact', label: 'Compact', description: 'Context compression' },
 ]
 
-const MODEL_FIELD_MAP: Record<string, string> = {
-  primary: 'llmModel',
-  medium: 'mediumModel',
-  light: 'lightModel',
-  explore: 'exploreModel',
-  execute: 'executeModel',
-  title: 'titleModel',
-  compact: 'compactModel',
-}
-
 export function StepChatModel({
   providers,
   advancedMode,
   models,
   roleProviders,
-  onUpdate,
   onAdvancedModeChange,
   onModelChange,
   onRoleProviderChange,
-  isUpdating,
   onBack,
   onNext,
 }: StepChatModelProps) {
@@ -67,27 +53,16 @@ export function StepChatModel({
   const canContinue = roles.every((role) => Boolean(models[role.key]?.trim()))
 
   const handleProviderChange = (roleKey: string, provider: string) => {
-    const nextProviders = { ...roleProviders, [roleKey]: provider }
     onRoleProviderChange(roleKey, provider)
     onModelChange(roleKey, '')
-    const field = MODEL_FIELD_MAP[roleKey]
-    onUpdate({
-      roleProviders: nextProviders,
-      ...(field ? { [field]: null } : {}),
-      ...(roleKey === 'primary' ? { llm: provider } : {}),
-    })
   }
 
   const handleModelChange = (roleKey: string, modelId: string) => {
     onModelChange(roleKey, modelId)
-    const field = MODEL_FIELD_MAP[roleKey]
-    if (field) onUpdate({ [field]: modelId })
   }
 
   const handleAdvancedToggle = () => {
-    const next = !advancedMode
-    onAdvancedModeChange(next)
-    onUpdate({ advancedModelConfig: next })
+    onAdvancedModeChange(!advancedMode)
   }
 
   return (
@@ -140,7 +115,6 @@ export function StepChatModel({
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <button
-                        disabled={isUpdating}
                         className="flex h-(--control) w-[140px] shrink-0 items-center justify-between rounded-md border border-border bg-muted/40 px-3 text-sm hover:bg-muted/70 dark:bg-muted/20 dark:hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <span className="truncate">
@@ -165,7 +139,6 @@ export function StepChatModel({
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <button
-                        disabled={isUpdating}
                         className="flex h-(--control) w-full items-center justify-between rounded-md border border-border/50 bg-transparent px-3 font-mono text-xs hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <span className={cn('truncate', !currentModel && 'text-muted-foreground')}>
@@ -198,7 +171,7 @@ export function StepChatModel({
             <ChevronLeft className="size-4 mr-1" />
             Back
           </Button>
-          <Button onClick={onNext} disabled={!canContinue || isUpdating}>
+          <Button onClick={onNext} disabled={!canContinue}>
             Next
             <ChevronRight className="size-4 ml-1" />
           </Button>
