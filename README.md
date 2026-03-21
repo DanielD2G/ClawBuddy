@@ -44,7 +44,11 @@ One command. That's it.
 curl -fsSL https://raw.githubusercontent.com/DanielD2G/ClawBuddy/main/scripts/bootstrap.sh | bash
 ```
 
-This downloads the compose file, pulls pre-built images from GHCR, and starts all services. Once done, open **http://localhost:4321** and follow the setup wizard.
+This initializes a single-node Docker Swarm, downloads the stack files, and deploys ClawBuddy as two stacks: `clawbuddy-infra` for stateful/shared services and `clawbuddy-app` for the API and web app. Once done, open **http://localhost:4321** and follow the setup wizard.
+
+> ARM64 hosts currently run BrowserGrid via `linux/amd64` emulation. The bootstrap script validates emulation support before deployment and exits early if it is unavailable.
+
+> `bootstrap.sh --update` only supports installations already managed by Docker Swarm. Automatic migration from legacy Docker Compose installs is not supported in this iteration.
 
 > You'll need at least one AI provider connection: an API key (OpenAI, Anthropic, or Google Gemini) or a local OpenAI-compatible endpoint such as LM Studio or Ollama. See the **[API Keys & OAuth Setup Guide](docs/api-keys-setup.md)** for step-by-step instructions.
 

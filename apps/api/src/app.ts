@@ -20,6 +20,7 @@ import cronRoutes from './routes/cron.js'
 import oauthRoutes from './routes/oauth.js'
 import browserRoutes from './routes/browser.js'
 import channelRoutes from './routes/channels.js'
+import { startupService } from './services/startup.service.js'
 
 const app = new OpenAPIHono()
 
@@ -38,7 +39,24 @@ app.onError(errorHandler)
 
 // Health check & docs
 app.get('/api/health', (c) => {
-  return c.json({ success: true, data: { status: 'ok' } })
+  const startup = startupService.getState()
+  const status = startup.ready ? 200 : 503
+
+  return c.json(
+    {
+      success: startup.ready,
+      data: {
+        status: startup.ready ? 'ok' : 'starting',
+        phase: startup.phase,
+        attempt: startup.attempt,
+        startedAt: startup.startedAt,
+        lastReadyAt: startup.lastReadyAt,
+        lastError: startup.lastError,
+        checks: startup.checks,
+      },
+    },
+    status,
+  )
 })
 
 app.doc('/api/openapi', {
