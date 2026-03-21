@@ -74,56 +74,24 @@ export function resolveLLMRole(
   model: string | null
 } {
   const overrides = normalizeLLMProviderOverrides(settings.llmProviderOverrides)
+  const primary = { provider: settings.aiProvider, model: settings.aiModel }
 
-  switch (role) {
-    case 'primary':
-      return {
-        provider: settings.aiProvider,
-        model: settings.aiModel,
-      }
-    case 'medium':
-      return {
-        provider: overrides.medium ?? settings.aiProvider,
-        model: settings.mediumModel ?? settings.aiModel,
-      }
-    case 'light':
-      return {
-        provider: overrides.light ?? settings.aiProvider,
-        model: settings.lightModel ?? settings.aiModel,
-      }
-    case 'explore':
-      if (settings.advancedModelConfig && settings.exploreModel) {
-        return {
-          provider: overrides.explore ?? overrides.light ?? settings.aiProvider,
-          model: settings.exploreModel,
-        }
-      }
-      return resolveLLMRole(settings, 'light')
-    case 'execute':
-      if (settings.advancedModelConfig && settings.executeModel) {
-        return {
-          provider: overrides.execute ?? overrides.medium ?? settings.aiProvider,
-          model: settings.executeModel,
-        }
-      }
-      return resolveLLMRole(settings, 'medium')
-    case 'title':
-      if (settings.advancedModelConfig && settings.titleModel) {
-        return {
-          provider: overrides.title ?? overrides.light ?? settings.aiProvider,
-          model: settings.titleModel,
-        }
-      }
-      return resolveLLMRole(settings, 'light')
-    case 'compact':
-      if (settings.advancedModelConfig && settings.compactModel) {
-        return {
-          provider: overrides.compact ?? overrides.medium ?? settings.aiProvider,
-          model: settings.compactModel,
-        }
-      }
-      return resolveLLMRole(settings, 'medium')
+  if (role === 'primary') return primary
+
+  // Look up the role's own model
+  const modelField = LLM_ROLE_MODEL_FIELDS[role]
+  const roleModel = settings[modelField as keyof LLMSettings] as string | null
+
+  // If this role has its own model, use it with its own provider
+  if (roleModel) {
+    return {
+      provider: overrides[role as SecondaryLLMRole] ?? settings.aiProvider,
+      model: roleModel,
+    }
   }
+
+  // No model set — inherit both provider and model from primary
+  return primary
 }
 
 export function resolveAllLLMRoles(settings: LLMSettings): ResolvedLLMRoleMap {

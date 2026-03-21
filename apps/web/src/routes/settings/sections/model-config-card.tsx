@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { NumberInput } from '@/components/ui/number-input'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -264,99 +264,79 @@ export function ModelConfigCard() {
               })}
             </div>
 
-            {/* Context limit */}
-            <div className="flex flex-col gap-2 rounded-lg border bg-muted/30 px-4 py-3">
-              <div>
-                <div className="text-sm font-medium">Context limit</div>
-                <div className="text-xs text-muted-foreground">
-                  Max tokens (K) before older messages are compressed into a summary
+            {/* Limits */}
+            <div className="rounded-lg border bg-muted/30 px-4 py-3 space-y-2.5">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <span className="text-sm font-medium">Context limit</span>
+                  <span className="text-xs text-muted-foreground ml-2">tokens before compression</span>
                 </div>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Input
-                  type="number"
-                  min={5}
-                  max={200}
-                  step={1}
+                <NumberInput
                   value={Math.round(contextLimitTokens / 1000)}
-                  onChange={(e) => {
-                    setContextLimitTokens(Number(e.target.value) * 1000)
+                  onChange={(v) => {
+                    setContextLimitTokens(v * 1000)
                     setDirty(true)
                   }}
-                  className="w-20 h-8 text-xs font-mono text-right"
+                  min={5}
+                  max={200}
+                  suffix="K"
                 />
-                <span className="text-xs text-muted-foreground font-medium">K</span>
               </div>
-            </div>
-
-            {/* Max agent iterations */}
-            <div className="flex flex-col gap-2 rounded-lg border bg-muted/30 px-4 py-3">
-              <div>
-                <div className="text-sm font-medium">Max tool iterations</div>
-                <div className="text-xs text-muted-foreground">
-                  Maximum tool calls per chat turn before the agent stops
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <span className="text-sm font-medium">Max tool iterations</span>
+                  <span className="text-xs text-muted-foreground ml-2">per chat turn</span>
+                </div>
+                <NumberInput
+                  value={maxAgentIterations}
+                  onChange={(v) => {
+                    setMaxAgentIterations(v)
+                    setDirty(true)
+                  }}
+                  min={1}
+                  max={200}
+                />
+              </div>
+              <div className="border-t border-border/50 pt-2.5">
+                <div className="text-sm font-medium mb-1.5">Sub-agent iterations</div>
+                <div className="flex items-center gap-3">
+                  {(
+                    [
+                      {
+                        key: 'explore',
+                        label: 'Explore',
+                        value: subAgentExploreMaxIterations,
+                        setter: setSubAgentExploreMaxIterations,
+                      },
+                      {
+                        key: 'analyze',
+                        label: 'Analyze',
+                        value: subAgentAnalyzeMaxIterations,
+                        setter: setSubAgentAnalyzeMaxIterations,
+                      },
+                      {
+                        key: 'execute',
+                        label: 'Execute',
+                        value: subAgentExecuteMaxIterations,
+                        setter: setSubAgentExecuteMaxIterations,
+                      },
+                    ] as const
+                  ).map(({ key, label, value, setter }) => (
+                    <div key={key} className="flex items-center gap-1.5">
+                      <span className="text-xs text-muted-foreground">{label}</span>
+                      <NumberInput
+                        value={value}
+                        onChange={(v) => {
+                          setter(v)
+                          setDirty(true)
+                        }}
+                        min={1}
+                        max={200}
+                      />
+                    </div>
+                  ))}
                 </div>
               </div>
-              <Input
-                type="number"
-                min={1}
-                max={200}
-                step={1}
-                value={maxAgentIterations}
-                onChange={(e) => {
-                  setMaxAgentIterations(Number(e.target.value))
-                  setDirty(true)
-                }}
-                className="w-20 h-8 text-xs font-mono text-right"
-              />
-            </div>
-
-            {/* Sub-agent iterations */}
-            <div className="flex flex-col gap-3 rounded-lg border bg-muted/30 px-4 py-3">
-              <div>
-                <div className="text-sm font-medium">Sub-agent iterations</div>
-                <div className="text-xs text-muted-foreground">
-                  Maximum tool calls per sub-agent type before it stops
-                </div>
-              </div>
-              {(
-                [
-                  {
-                    key: 'explore',
-                    label: 'Explore',
-                    value: subAgentExploreMaxIterations,
-                    setter: setSubAgentExploreMaxIterations,
-                  },
-                  {
-                    key: 'analyze',
-                    label: 'Analyze',
-                    value: subAgentAnalyzeMaxIterations,
-                    setter: setSubAgentAnalyzeMaxIterations,
-                  },
-                  {
-                    key: 'execute',
-                    label: 'Execute',
-                    value: subAgentExecuteMaxIterations,
-                    setter: setSubAgentExecuteMaxIterations,
-                  },
-                ] as const
-              ).map(({ key, label, value, setter }) => (
-                <div key={key} className="flex items-center justify-between gap-2">
-                  <span className="text-xs text-muted-foreground">{label}</span>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={200}
-                    step={1}
-                    value={value}
-                    onChange={(e) => {
-                      setter(Number(e.target.value))
-                      setDirty(true)
-                    }}
-                    className="w-20 h-8 text-xs font-mono text-right"
-                  />
-                </div>
-              ))}
             </div>
 
             {/* Save */}
