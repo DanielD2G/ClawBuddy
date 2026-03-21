@@ -31,6 +31,18 @@ export function useCompleteSetup() {
       workspaceColor?: string
       timezone?: string
       telegramBotToken?: string
+      telegramTokenTested?: boolean
+      // Chat model config
+      llm?: string
+      llmModel?: string | null
+      mediumModel?: string | null
+      lightModel?: string | null
+      exploreModel?: string | null
+      executeModel?: string | null
+      titleModel?: string | null
+      compactModel?: string | null
+      advancedModelConfig?: boolean
+      roleProviders?: Record<string, string>
     }) =>
       apiClient.post<{ onboardingComplete: boolean; workspace?: Workspace }>(
         '/setup/complete',
