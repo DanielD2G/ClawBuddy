@@ -167,6 +167,14 @@ input[type='button'] {
 }
 
 /* Chat markdown styles */
+.chat-markdown {
+  min-width: 0;
+}
+
+.chat-markdown :where(p, li, blockquote, td, th, a) {
+  overflow-wrap: anywhere;
+}
+
 .chat-markdown h1,
 .chat-markdown h2,
 .chat-markdown h3,

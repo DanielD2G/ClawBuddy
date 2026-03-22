@@ -89,7 +89,10 @@ export function UpdateCard() {
             <RefreshCw className="mr-1 size-4" />
             {checkForUpdates.isPending ? 'Checking...' : 'Check now'}
           </Button>
-          <Button onClick={() => navigate('/update')} disabled={(!hasUpdate || !data?.supported) && !data?.forceUpdate}>
+          <Button
+            onClick={() => navigate('/update')}
+            disabled={(!hasUpdate || !data?.supported) && !data?.forceUpdate}
+          >
             <Rocket className="mr-1 size-4" />
             Open updater
           </Button>

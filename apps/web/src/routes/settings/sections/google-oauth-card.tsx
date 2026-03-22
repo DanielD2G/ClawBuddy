@@ -156,7 +156,10 @@ export function GoogleOAuthCard() {
         {data && (
           <div className="space-y-3">
             <div className="flex items-center gap-2 flex-wrap">
-              <Badge variant={data.configured ? 'default' : 'secondary'} className="h-9 text-sm px-3">
+              <Badge
+                variant={data.configured ? 'default' : 'secondary'}
+                className="h-9 text-sm px-3"
+              >
                 {data.configured ? 'Configured' : 'Not configured'}
               </Badge>
               {data.configured && (
