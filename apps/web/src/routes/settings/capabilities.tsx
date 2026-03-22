@@ -522,10 +522,7 @@ function CapabilityCard({
                     </Button>
                   ))}
                 {!isOAuth && hasConfig && capability.enabled && (
-                  <Button
-                    variant="outline"
-                    onClick={() => setConfigOpen(true)}
-                  >
+                  <Button variant="outline" onClick={() => setConfigOpen(true)}>
                     <Settings className="size-4 mr-1" />
                     Settings
                   </Button>

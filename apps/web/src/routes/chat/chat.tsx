@@ -223,8 +223,8 @@ export function ChatPage() {
                     </div>
                   ) : msg.role === 'user' ? (
                     <div className="flex justify-end">
-                      <div className="max-w-[85%]">
-                        <div className="rounded-xl bg-muted/80 px-5 py-3 text-[15px] text-foreground">
+                      <div className="max-w-[85%] min-w-0">
+                        <div className="rounded-xl bg-muted/80 px-5 py-3 text-[15px] text-foreground break-words [overflow-wrap:anywhere]">
                           {msg.content}
                         </div>
                         {msg.attachments && msg.attachments.length > 0 && (
