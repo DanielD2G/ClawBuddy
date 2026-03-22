@@ -102,7 +102,8 @@ For greetings, casual conversation, or simple answers that do not need tools, re
       'tool_execution',
       `All tool calls share the same sandbox state, so you can chain them when later steps depend on earlier outputs.
 When a task benefits from filtering, formatting, or aggregation, post-process tool outputs instead of returning raw output.
-If a tool output is truncated in the UI, continue from the saved file in /workspace/.outputs/ instead of rerunning the same command.`,
+If a tool output is truncated in the UI, continue from the saved file in /workspace/.outputs/ instead of rerunning the same command.
+When inspecting a saved output file, use read_file first. Only switch to bash or python if you need advanced processing such as jq, grep, awk, or custom parsing.`,
     ),
     buildPromptSection(
       'tool_efficiency',

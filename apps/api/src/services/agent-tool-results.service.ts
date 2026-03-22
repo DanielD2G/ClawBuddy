@@ -61,7 +61,7 @@ export async function maybeTruncateOutput(
   const head = output.slice(0, headSize)
   const tail = output.slice(-tailSize)
   const preview = `${head}\n\n... [TRUNCATED — ${output.length - headSize - tailSize} chars omitted] ...\n\n${tail}`
-  return `${preview}\n\n✅ COMMAND SUCCEEDED — complete output (${output.length} chars) saved to ${filename}\nThe preview above is truncated for display only. The saved file contains the FULL, UNMODIFIED output.\nProcess the saved file to continue: use jq, grep, awk, head, or python on ${filename}.\nDo NOT re-run the command. Do NOT embed or echo the file contents inline — reference the file path directly.`
+  return `${preview}\n\n✅ COMMAND SUCCEEDED — complete output (${output.length} chars) saved to ${filename}\nThe preview above is truncated for display only. The saved file contains the FULL, UNMODIFIED output.\nTo continue, inspect ${filename} with read_file first. Only use bash or python if you need advanced processing such as jq, grep, awk, or custom parsing.\nDo NOT re-run the command. Do NOT embed or echo the file contents inline — reference the file path directly.`
 }
 
 /**
