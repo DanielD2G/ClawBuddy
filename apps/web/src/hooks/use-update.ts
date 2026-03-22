@@ -7,8 +7,6 @@ export type UpdateRunPhase =
   | 'pending'
   | 'pulling-images'
   | 'waiting-for-api'
-  | 'deploying-web'
-  | 'waiting-for-web'
   | 'completed'
   | 'failed'
 
@@ -48,16 +46,11 @@ export interface UpdateOverview {
     phaseMessage: string | null
     progress: {
       pullApi: UpdateStepProgress
-      pullWeb: UpdateStepProgress
       apiDeploy: UpdateStepProgress
-      webDeploy: UpdateStepProgress
       observed: {
         apiVersion: string | null
         apiUpdateState: string | null
         apiUpdateMessage: string | null
-        webVersion: string | null
-        webUpdateState: string | null
-        webUpdateMessage: string | null
       }
     }
     error: string | null
