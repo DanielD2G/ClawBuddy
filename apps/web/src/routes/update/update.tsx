@@ -35,13 +35,6 @@ import {
 } from '@/components/ui/dialog'
 import { Spinner } from '@/components/ui/spinner'
 
-interface ProbeState {
-  reachable: boolean
-  version: string | null
-  phase: string | null
-  message: string
-}
-
 function summarizeReleaseNotes(notes: string | null | undefined) {
   if (!notes?.trim()) {
     return 'This release does not include notes yet. You can still open the GitHub release page for the full context.'
@@ -153,18 +146,6 @@ export function UpdatePage() {
   const [isLoading, setIsLoading] = useState(true)
   const [requestError, setRequestError] = useState<string | null>(null)
   const [rolloutTargetVersion, setRolloutTargetVersion] = useState<string | null>(null)
-  const [_apiProbe, setApiProbe] = useState<ProbeState>({
-    reachable: false,
-    version: null,
-    phase: null,
-    message: 'Waiting for API health checks',
-  })
-  const [_webProbe, setWebProbe] = useState<ProbeState>({
-    reachable: false,
-    version: null,
-    phase: null,
-    message: 'Waiting for the frontend to answer /version.json',
-  })
 
   const loadOverview = useCallback(async (silent = false) => {
     try {
@@ -219,80 +200,31 @@ export function UpdatePage() {
       return
     }
 
-    const shouldProbeApi = activeRun?.phase === 'waiting-for-api'
-    const shouldProbeWeb =
-      activeRun?.phase === 'waiting-for-web' ||
+    const shouldProbeApi =
+      activeRun?.phase === 'waiting-for-api' ||
       activeRun?.phase === 'completed' ||
       (!!rolloutTargetVersion && overview?.currentVersion !== rolloutTargetVersion)
 
-    if (!shouldProbeApi && !shouldProbeWeb) {
+    if (!shouldProbeApi) {
       return
     }
 
     let cancelled = false
     const interval = window.setInterval(async () => {
-      if (shouldProbeApi) {
-        try {
-          const res = await fetch(`/api/health?t=${Date.now()}`, {
-            credentials: 'include',
-            cache: 'no-store',
-          })
-          const payload = (await res.json()) as {
-            data?: { version?: string; phase?: string; status?: string }
-          }
-          if (!cancelled) {
-            setApiProbe({
-              reachable: res.ok,
-              version: payload.data?.version ?? null,
-              phase: payload.data?.phase ?? null,
-              message: res.ok
-                ? `API responded with ${payload.data?.version ?? 'unknown version'}`
-                : `API is still starting (${payload.data?.phase ?? 'unavailable'})`,
-            })
-          }
-        } catch {
-          if (!cancelled) {
-            setApiProbe({
-              reachable: false,
-              version: null,
-              phase: null,
-              message: 'Waiting for the API container to answer again',
-            })
-          }
+      try {
+        const res = await fetch(`/api/health?t=${Date.now()}`, {
+          credentials: 'include',
+          cache: 'no-store',
+        })
+        const payload = (await res.json()) as {
+          data?: { version?: string; phase?: string; status?: string }
         }
-      }
 
-      if (shouldProbeWeb) {
-        try {
-          const res = await fetch(`/version.json?t=${Date.now()}`, {
-            credentials: 'same-origin',
-            cache: 'no-store',
-          })
-          const payload = (await res.json()) as { version?: string }
-          if (!cancelled) {
-            setWebProbe({
-              reachable: res.ok,
-              version: payload.version ?? null,
-              phase: null,
-              message: res.ok
-                ? `Frontend responded with ${payload.version ?? 'unknown version'}`
-                : 'Waiting for the frontend to publish the new version manifest',
-            })
-          }
-
-          if (res.ok && payload.version === targetVersion && !cancelled) {
-            setUpdateReady(true)
-          }
-        } catch {
-          if (!cancelled) {
-            setWebProbe({
-              reachable: false,
-              version: null,
-              phase: null,
-              message: 'Waiting for the frontend container to answer /version.json',
-            })
-          }
+        if (!cancelled && res.ok && payload.data?.version === targetVersion) {
+          setUpdateReady(true)
         }
+      } catch {
+        // Keep polling while the service restarts.
       }
     }, POLL_UPDATE_STATUS_MS)
 
@@ -398,7 +330,7 @@ export function UpdatePage() {
             <h1 className="text-3xl font-semibold tracking-tight">Update ClawBuddy</h1>
             <p className="max-w-2xl text-sm text-muted-foreground">
               This page stays focused on the rollout itself so it can keep tracking progress while
-              the API restarts and the new frontend comes online.
+              the service restarts and the new build comes online.
             </p>
           </div>
           <div className="flex gap-3">
@@ -540,7 +472,7 @@ export function UpdatePage() {
               {activeRun ? (
                 <p className="text-sm text-muted-foreground">
                   Active rollout: {activeRun.targetVersion}. This page will keep polling until the
-                  new frontend answers `version.json`.
+                  updated service reports the target version.
                 </p>
               ) : null}
             </div>
@@ -598,33 +530,21 @@ export function UpdatePage() {
 
             <div className="space-y-3">
               <ProgressLine
-                label="Pull API image"
+                label="Pull release image"
                 {...(activeRun?.progress.pullApi ?? {
                   status: forceUpdate ? 'done' : 'pending',
-                  progress: forceUpdate ? 'API image ready (v0.1.8)' : 'Waiting',
+                  progress: forceUpdate ? 'Release image ready (v0.1.8)' : 'Waiting',
                 })}
               />
               <ProgressLine
-                label="Pull Web image"
-                {...(activeRun?.progress.pullWeb ?? {
-                  status: forceUpdate ? 'running' : 'pending',
-                  progress: forceUpdate ? 'Downloading layer (abc123) 74%' : 'Waiting',
-                })}
-              />
-              <ProgressLine
-                label="Deploy API"
+                label="Deploy unified service"
                 {...(activeRun?.progress.apiDeploy ?? {
-                  status: 'pending',
-                  progress: 'Waiting for images',
-                })}
-              />
-              <ProgressLine
-                label="Deploy Frontend"
-                {...(activeRun?.progress.webDeploy ?? {
-                  status: updateReady ? 'done' : 'pending',
+                  status: forceUpdate ? (updateReady ? 'done' : 'running') : 'pending',
                   progress: updateReady
-                    ? `Frontend ${targetVersion} is deployed`
-                    : 'Waiting for API',
+                    ? `ClawBuddy ${targetVersion} is deployed`
+                    : forceUpdate
+                      ? 'Waiting for the service to restart'
+                      : 'Waiting for the image pull',
                 })}
               />
             </div>

@@ -12,13 +12,6 @@ jobs:
       packages: write
     outputs:
       version: ${{ github.ref_name }}
-    strategy:
-      matrix:
-        include:
-          - target: api
-            image: ghcr.io/danield2g/clawbuddy-api
-          - target: web
-            image: ghcr.io/danield2g/clawbuddy-web
     steps:
       - uses: actions/checkout@v4
         with:
@@ -35,7 +28,7 @@ jobs:
       - uses: docker/metadata-action@v5
         id: meta
         with:
-          images: ${{ matrix.image }}
+          images: ghcr.io/danield2g/clawbuddy
           tags: |
             type=raw,value=latest
             type=semver,pattern={{version}}
@@ -44,7 +37,6 @@ jobs:
         with:
           context: .
           file: docker/Dockerfile
-          target: ${{ matrix.target }}
           push: true
           build-args: |
             CLAWBUDDY_VERSION=${{ github.ref_name }}
@@ -79,8 +71,7 @@ jobs:
             echo "## Docker Images"
             echo ""
             echo '```'
-            echo "docker pull ghcr.io/danield2g/clawbuddy-api:${{ needs.build.outputs.version }}"
-            echo "docker pull ghcr.io/danield2g/clawbuddy-web:${{ needs.build.outputs.version }}"
+            echo "docker pull ghcr.io/danield2g/clawbuddy:${{ needs.build.outputs.version }}"
             echo '```'
             echo ""
             echo "## Changes"
