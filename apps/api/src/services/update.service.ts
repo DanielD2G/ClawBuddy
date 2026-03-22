@@ -10,14 +10,7 @@ const UPDATE_FORCE = ['true', '1', 'yes'].includes(env.UPDATE_FORCE.toLowerCase(
 type UpdateRunRecord = Awaited<ReturnType<typeof prisma.appUpdateRun.findUniqueOrThrow>>
 type StepStatus = 'pending' | 'running' | 'done' | 'error'
 type RunStatus = 'pending' | 'running' | 'completed' | 'failed'
-type UpdatePhase =
-  | 'pending'
-  | 'pulling-images'
-  | 'waiting-for-api'
-  | 'deploying-web'
-  | 'waiting-for-web'
-  | 'completed'
-  | 'failed'
+type UpdatePhase = 'pending' | 'pulling-images' | 'waiting-for-api' | 'completed' | 'failed'
 
 interface LatestReleaseInfo {
   version: string
@@ -35,16 +28,11 @@ interface StepProgress {
 
 interface UpdateProgress {
   pullApi: StepProgress
-  pullWeb: StepProgress
   apiDeploy: StepProgress
-  webDeploy: StepProgress
   observed: {
     apiVersion: string | null
     apiUpdateState: string | null
     apiUpdateMessage: string | null
-    webVersion: string | null
-    webUpdateState: string | null
-    webUpdateMessage: string | null
   }
 }
 
@@ -113,7 +101,6 @@ const dockerWithModem = docker as Docker & {
 const UPDATE_CACHE_TTL_MS = 15 * 60 * 1000
 const GITHUB_RELEASES_URL = 'https://api.github.com/repos/DanielD2G/ClawBuddy/releases/latest'
 const API_SERVICE_NAME = 'clawbuddy-app_api'
-const WEB_SERVICE_NAME = 'clawbuddy-app_web'
 const STEP_DELAY_NS = 10_000_000_000
 const STEP_MONITOR_NS = 30_000_000_000
 
@@ -127,17 +114,12 @@ function createStepProgress(progress: string): StepProgress {
 
 function createDefaultProgress(): UpdateProgress {
   return {
-    pullApi: createStepProgress('Waiting to pull the API image'),
-    pullWeb: createStepProgress('Waiting to pull the web image'),
-    apiDeploy: createStepProgress('Waiting to deploy the API'),
-    webDeploy: createStepProgress('Waiting to deploy the web app'),
+    pullApi: createStepProgress('Waiting to pull the release image'),
+    apiDeploy: createStepProgress('Waiting to deploy the unified service'),
     observed: {
       apiVersion: null,
       apiUpdateState: null,
       apiUpdateMessage: null,
-      webVersion: null,
-      webUpdateState: null,
-      webUpdateMessage: null,
     },
   }
 }
@@ -153,17 +135,9 @@ function parseProgress(progress: unknown): UpdateProgress {
       ...createDefaultProgress().pullApi,
       ...(source.pullApi ?? {}),
     },
-    pullWeb: {
-      ...createDefaultProgress().pullWeb,
-      ...(source.pullWeb ?? {}),
-    },
     apiDeploy: {
       ...createDefaultProgress().apiDeploy,
       ...(source.apiDeploy ?? {}),
-    },
-    webDeploy: {
-      ...createDefaultProgress().webDeploy,
-      ...(source.webDeploy ?? {}),
     },
     observed: {
       ...createDefaultProgress().observed,
@@ -255,19 +229,16 @@ async function getInstallSupport() {
       return { supported: false, reason: 'Docker Swarm is not active' }
     }
 
-    const [apiService, webService] = await Promise.all([
-      getServiceByName(API_SERVICE_NAME),
-      getServiceByName(WEB_SERVICE_NAME),
-    ])
+    const apiService = await getServiceByName(API_SERVICE_NAME)
 
-    if (!apiService || !webService) {
+    if (!apiService) {
       return {
         supported: false,
-        reason: 'Managed ClawBuddy Swarm services were not found on this host',
+        reason: 'Managed ClawBuddy Swarm API service was not found on this host',
       }
     }
 
-    return { supported: true, reason: null, apiService, webService }
+    return { supported: true, reason: null, apiService }
   } catch (error) {
     return {
       supported: false,
@@ -547,21 +518,8 @@ function getServiceFailure(service: SwarmServiceInfo | null) {
   return null
 }
 
-function isServiceStableAtTarget(service: SwarmServiceInfo | null, targetVersion: string) {
-  const version = extractVersionFromImage(service?.Spec?.TaskTemplate?.ContainerSpec?.Image)
-  if (version !== targetVersion) return false
-
-  const status = service?.ServiceStatus
-  if (!status) return true
-
-  return status.DesiredTasks === 0 || status.RunningTasks >= status.DesiredTasks
-}
-
 async function refreshObservedProgress(run: UpdateRunRecord) {
-  const [apiService, webService] = await Promise.all([
-    getServiceByName(API_SERVICE_NAME),
-    getServiceByName(WEB_SERVICE_NAME),
-  ])
+  const apiService = await getServiceByName(API_SERVICE_NAME)
 
   return updateRunProgress(run.id, (progress) => ({
     ...progress,
@@ -569,9 +527,6 @@ async function refreshObservedProgress(run: UpdateRunRecord) {
       apiVersion: extractVersionFromImage(apiService?.Spec?.TaskTemplate?.ContainerSpec?.Image),
       apiUpdateState: apiService?.UpdateStatus?.State ?? null,
       apiUpdateMessage: apiService?.UpdateStatus?.Message ?? null,
-      webVersion: extractVersionFromImage(webService?.Spec?.TaskTemplate?.ContainerSpec?.Image),
-      webUpdateState: webService?.UpdateStatus?.State ?? null,
-      webUpdateMessage: webService?.UpdateStatus?.Message ?? null,
     },
   }))
 }
@@ -585,18 +540,10 @@ async function failRun(runId: string, message: string) {
         progress.pullApi.status === 'running'
           ? { status: 'error', progress: progress.pullApi.progress, error: message }
           : progress.pullApi,
-      pullWeb:
-        progress.pullWeb.status === 'running'
-          ? { status: 'error', progress: progress.pullWeb.progress, error: message }
-          : progress.pullWeb,
       apiDeploy:
         progress.apiDeploy.status === 'done'
           ? progress.apiDeploy
           : { status: 'error', progress: progress.apiDeploy.progress, error: message },
-      webDeploy:
-        progress.webDeploy.status === 'done'
-          ? progress.webDeploy
-          : { status: 'error', progress: progress.webDeploy.progress, error: message },
     }),
     {
       status: 'failed',
@@ -614,7 +561,7 @@ async function runAcceptedUpdate(runId: string) {
 
   try {
     const support = await getInstallSupport()
-    if (!support.supported || !support.apiService || !support.webService) {
+    if (!support.supported || !support.apiService) {
       throw new Error(support.reason || 'This installation is not managed by ClawBuddy Swarm')
     }
 
@@ -622,12 +569,7 @@ async function runAcceptedUpdate(runId: string) {
     const apiImage = buildTargetImage(
       support.apiService,
       run.targetVersion,
-      'ghcr.io/danield2g/clawbuddy-api',
-    )
-    const webImage = buildTargetImage(
-      support.webService,
-      run.targetVersion,
-      'ghcr.io/danield2g/clawbuddy-web',
+      'ghcr.io/danield2g/clawbuddy',
     )
 
     await updateRunProgress(
@@ -635,14 +577,12 @@ async function runAcceptedUpdate(runId: string) {
       (progress) => ({
         ...progress,
         pullApi: { status: 'running', progress: `Pulling ${apiImage}` },
-        pullWeb: { status: 'pending', progress: `Waiting to pull ${webImage}` },
         apiDeploy: createStepProgress('Waiting for images to finish pulling'),
-        webDeploy: createStepProgress('Waiting for the API deployment'),
       }),
       {
         status: 'running',
         phase: 'pulling-images',
-        phaseMessage: 'Pulling release images',
+        phaseMessage: 'Pulling the release image',
       },
     )
 
@@ -655,21 +595,8 @@ async function runAcceptedUpdate(runId: string) {
 
     await updateRunProgress(runId, (progress) => ({
       ...progress,
-      pullApi: { status: 'done', progress: `API image ready (${run.targetVersion})` },
-      pullWeb: { status: 'running', progress: `Pulling ${webImage}` },
-    }))
-
-    await pullImage(webImage, async (progressLine) => {
-      await updateRunProgress(runId, (progress) => ({
-        ...progress,
-        pullWeb: { status: 'running', progress: progressLine },
-      }))
-    })
-
-    await updateRunProgress(runId, (progress) => ({
-      ...progress,
-      pullWeb: { status: 'done', progress: `Web image ready (${run.targetVersion})` },
-      apiDeploy: { status: 'running', progress: `Deploying API ${run.targetVersion}` },
+      pullApi: { status: 'done', progress: `Release image ready (${run.targetVersion})` },
+      apiDeploy: { status: 'running', progress: `Deploying ClawBuddy ${run.targetVersion}` },
     }))
 
     await updateServiceImage(support.apiService, apiImage)
@@ -680,12 +607,12 @@ async function runAcceptedUpdate(runId: string) {
         ...progress,
         apiDeploy: {
           status: 'running',
-          progress: 'API update requested. Waiting for the new API task to become healthy',
+          progress: 'Update requested. Waiting for the new service task to become healthy',
         },
       }),
       {
         phase: 'waiting-for-api',
-        phaseMessage: 'Waiting for the new API task to become healthy',
+        phaseMessage: 'Waiting for the new service task to become healthy',
       },
     )
   } catch (error) {
@@ -696,10 +623,7 @@ async function runAcceptedUpdate(runId: string) {
 }
 
 async function reconcileWaitingForApi(run: UpdateRunRecord) {
-  const [apiService, webService] = await Promise.all([
-    getServiceByName(API_SERVICE_NAME),
-    getServiceByName(WEB_SERVICE_NAME),
-  ])
+  const apiService = await getServiceByName(API_SERVICE_NAME)
 
   const apiFailure = getServiceFailure(apiService)
   if (apiFailure) {
@@ -713,69 +637,11 @@ async function reconcileWaitingForApi(run: UpdateRunRecord) {
     return prisma.appUpdateRun.findUniqueOrThrow({ where: { id: run.id } })
   }
 
-  if (!webService) {
-    await failRun(run.id, 'Web Swarm service is missing')
-    return prisma.appUpdateRun.findUniqueOrThrow({ where: { id: run.id } })
-  }
-
-  const webImage = buildTargetImage(
-    webService,
-    run.targetVersion,
-    'ghcr.io/danield2g/clawbuddy-web',
-  )
-
   await updateRunProgress(
     run.id,
     (progress) => ({
       ...progress,
-      apiDeploy: { status: 'done', progress: `API ${run.targetVersion} is healthy` },
-      webDeploy: { status: 'running', progress: `Deploying web ${run.targetVersion}` },
-    }),
-    {
-      phase: 'deploying-web',
-      phaseMessage: `Deploying web ${run.targetVersion}`,
-    },
-  )
-
-  await updateServiceImage(webService, webImage)
-
-  await updateRunProgress(
-    run.id,
-    (progress) => ({
-      ...progress,
-      webDeploy: {
-        status: 'running',
-        progress: 'Web update requested. Waiting for the new frontend to respond',
-      },
-    }),
-    {
-      phase: 'waiting-for-web',
-      phaseMessage: 'Waiting for the new frontend to respond',
-    },
-  )
-
-  await refreshObservedProgress(run)
-  return prisma.appUpdateRun.findUniqueOrThrow({ where: { id: run.id } })
-}
-
-async function reconcileWaitingForWeb(run: UpdateRunRecord) {
-  const webService = await getServiceByName(WEB_SERVICE_NAME)
-  const webFailure = getServiceFailure(webService)
-  if (webFailure) {
-    await failRun(run.id, webFailure)
-    return prisma.appUpdateRun.findUniqueOrThrow({ where: { id: run.id } })
-  }
-
-  const refreshed = await refreshObservedProgress(run)
-  if (!isServiceStableAtTarget(webService, run.targetVersion)) {
-    return refreshed
-  }
-
-  await updateRunProgress(
-    run.id,
-    (progress) => ({
-      ...progress,
-      webDeploy: { status: 'done', progress: `Web ${run.targetVersion} is deployed` },
+      apiDeploy: { status: 'done', progress: `ClawBuddy ${run.targetVersion} is healthy` },
     }),
     {
       status: 'completed',
@@ -786,6 +652,7 @@ async function reconcileWaitingForWeb(run: UpdateRunRecord) {
     },
   )
 
+  await refreshObservedProgress(run)
   return prisma.appUpdateRun.findUniqueOrThrow({ where: { id: run.id } })
 }
 
@@ -903,10 +770,6 @@ export const updateService = {
 
     if (run.phase === 'waiting-for-api') {
       return reconcileWaitingForApi(run)
-    }
-
-    if (run.phase === 'deploying-web' || run.phase === 'waiting-for-web') {
-      return reconcileWaitingForWeb(run)
     }
 
     return run

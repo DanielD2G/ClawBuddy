@@ -1,8 +1,8 @@
 services:
   api:
-    image: ghcr.io/danield2g/clawbuddy-api:latest
+    image: ghcr.io/danield2g/clawbuddy:latest
     ports:
-      - "4000:4000"
+      - "4321:4000"
     env_file: .env
     environment:
       DATABASE_URL: postgresql://clawbuddy:clawbuddy@postgres:5432/clawbuddy
@@ -37,33 +37,6 @@ services:
       placement:
         constraints:
           - node.role == manager
-
-  web:
-    image: ghcr.io/danield2g/clawbuddy-web:latest
-    ports:
-      - "4321:80"
-    networks:
-      - shared
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1/version.json >/dev/null 2>&1 || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 20
-      start_period: 30s
-    deploy:
-      replicas: 1
-      restart_policy:
-        condition: on-failure
-        delay: 10s
-        max_attempts: 20
-        window: 120s
-      update_config:
-        parallelism: 1
-        delay: 10s
-        failure_action: rollback
-        order: start-first
-      rollback_config:
-        parallelism: 1
 
 networks:
   shared:

@@ -1,7 +1,11 @@
 import { OpenAPIHono } from '@hono/zod-openapi'
 import { swaggerUI } from '@hono/swagger-ui'
+import type { Context, Next } from 'hono'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
+import { serveStatic } from 'hono/bun'
+import { existsSync } from 'node:fs'
+import { extname } from 'node:path'
 import { errorHandler } from './middleware/error-handler.js'
 import { env } from './env.js'
 import workspaceRoutes from './routes/workspaces.js'
@@ -25,6 +29,52 @@ import updateRoutes from './routes/update.js'
 import { getBuildInfo } from './lib/build-info.js'
 
 const app = new OpenAPIHono()
+const STATIC_ROOT = './web'
+const INDEX_HTML_PATH = `${STATIC_ROOT}/index.html`
+const STATIC_GZIP_TYPES = new Set([
+  'application/javascript',
+  'application/json',
+  'text/css',
+  'text/javascript',
+  'text/plain',
+  'text/xml',
+])
+
+async function gzipStaticResponse(c: Context, next: Next) {
+  await next()
+
+  if (!['GET', 'HEAD'].includes(c.req.method)) {
+    return
+  }
+
+  if (c.req.path.startsWith('/api/')) {
+    return
+  }
+
+  if (!c.req.header('accept-encoding')?.includes('gzip')) {
+    return
+  }
+
+  if (c.res.headers.has('Content-Encoding') || !c.res.body) {
+    return
+  }
+
+  const contentType = c.res.headers.get('content-type')?.split(';')[0]?.trim()
+  if (!contentType || !STATIC_GZIP_TYPES.has(contentType)) {
+    return
+  }
+
+  const headers = new Headers(c.res.headers)
+  headers.set('Content-Encoding', 'gzip')
+  headers.set('Vary', 'Accept-Encoding')
+  headers.delete('Content-Length')
+
+  c.res = new Response(c.res.body.pipeThrough(new CompressionStream('gzip')), {
+    status: c.res.status,
+    statusText: c.res.statusText,
+    headers,
+  })
+}
 
 // Global middleware
 app.use(
@@ -93,5 +143,35 @@ app.route('/api/oauth', oauthRoutes)
 app.route('/api/browser', browserRoutes)
 app.route('/api/channels', channelRoutes)
 app.route('/api', updateRoutes)
+
+if (existsSync(INDEX_HTML_PATH)) {
+  const serveWebAsset = serveStatic({ root: STATIC_ROOT })
+
+  app.use('*', gzipStaticResponse)
+  app.use('*', async (c, next) => {
+    if (c.req.path.startsWith('/api/')) {
+      await next()
+      return
+    }
+
+    await serveWebAsset(c, next)
+  })
+
+  app.get('*', async (c) => {
+    if (c.req.path.startsWith('/api/')) {
+      return c.notFound()
+    }
+
+    if (extname(c.req.path)) {
+      return c.notFound()
+    }
+
+    return new Response(Bun.file(INDEX_HTML_PATH), {
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+      },
+    })
+  })
+}
 
 export default app
