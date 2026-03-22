@@ -405,7 +405,7 @@ preflight_browsergrid_arm64() {
 pull_stack_images() {
   if [[ "$HOST_ARCH" == "arm64" ]]; then
     docker compose -f "$INFRA_COMPOSE_FILE" pull postgres redis qdrant minio minio-init
-    docker compose -f "$APP_COMPOSE_FILE" pull api web
+    docker compose -f "$APP_COMPOSE_FILE" pull api
     docker pull --platform linux/amd64 ghcr.io/danield2g/browsergrid-standalone:latest >/dev/null
     return
   fi
@@ -643,7 +643,7 @@ step_pull_images() {
   # Check ports (skip if our stack is already running)
   if ! is_any_stack_active; then
     info "Checking required ports..."
-    local PORTS=(4321 4000 5433 6333 6334 6380 9000 9001 9090)
+    local PORTS=(4321 5433 6333 6334 6380 9000 9001 9090)
     local BUSY=()
 
     for port in "${PORTS[@]}"; do
@@ -657,10 +657,10 @@ step_pull_images() {
       echo -e "  ${RED}The following ports are already in use: ${BOLD}${BUSY[*]}${NC}"
       echo ""
       echo -e "  ClawBuddy needs these ports:"
-      echo -e "    4321 - Web app       4000 - API"
-      echo -e "    5433 - PostgreSQL    6333 - Qdrant"
-      echo -e "    6380 - Redis         9000 - MinIO"
-      echo -e "    9001 - MinIO Console 9090 - BrowserGrid"
+      echo -e "    4321 - Web + API     5433 - PostgreSQL"
+      echo -e "    6333 - Qdrant        6380 - Redis"
+      echo -e "    9000 - MinIO         9001 - MinIO Console"
+      echo -e "    9090 - BrowserGrid"
       echo ""
       echo -e "  To find what's using a port: ${CYAN}lsof -i :PORT${NC}"
       fail "Free the ports listed above and re-run this script."
@@ -1036,7 +1036,7 @@ step_start_services() {
   echo -e "    ${DIM}Update:${NC}       bash bootstrap.sh --update"
   echo ""
   echo -e "  ${BOLD}Other services:${NC}"
-  echo -e "    API:            ${CYAN}http://localhost:4000${NC}"
+  echo -e "    API:            ${CYAN}http://localhost:4321/api${NC}"
   echo -e "    MinIO Console:  ${CYAN}http://localhost:9001${NC}"
   echo ""
 }
