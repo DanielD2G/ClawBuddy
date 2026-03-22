@@ -778,21 +778,32 @@ async function reconcileWaitingForApi(run: UpdateRunRecord) {
     return prisma.appUpdateRun.findUniqueOrThrow({ where: { id: run.id } })
   }
 
+  // Swarm's UpdateStatus.State must indicate the rollout is finished.
+  // During a start-first rollout the OLD task stays healthy while the new one
+  // is starting, so health checks alone are not sufficient – we'd incorrectly
+  // mark the update as completed while the old version is still running.
+  const updateState = apiService?.UpdateStatus?.State ?? null
+  const isRolloutComplete = updateState === 'completed' || updateState === null
+
   const health = await getServiceHealthSnapshot(apiService)
 
-  if (!health.allHealthy) {
+  if (!health.allHealthy || !isRolloutComplete) {
+    const message = !isRolloutComplete
+      ? `Swarm rollout in progress (${updateState}). ${health.message}`
+      : health.message
+
     await updateRunProgress(
       run.id,
       (progress) => ({
         ...progress,
         apiDeploy: {
           status: 'running',
-          progress: health.message,
+          progress: message,
         },
       }),
       {
         phase: 'waiting-for-api',
-        phaseMessage: health.message,
+        phaseMessage: message,
       },
     )
     await refreshObservedProgress(run)
