@@ -153,13 +153,13 @@ export function UpdatePage() {
   const [isLoading, setIsLoading] = useState(true)
   const [requestError, setRequestError] = useState<string | null>(null)
   const [rolloutTargetVersion, setRolloutTargetVersion] = useState<string | null>(null)
-  const [apiProbe, setApiProbe] = useState<ProbeState>({
+  const [_apiProbe, setApiProbe] = useState<ProbeState>({
     reachable: false,
     version: null,
     phase: null,
     message: 'Waiting for API health checks',
   })
-  const [webProbe, setWebProbe] = useState<ProbeState>({
+  const [_webProbe, setWebProbe] = useState<ProbeState>({
     reachable: false,
     version: null,
     phase: null,
