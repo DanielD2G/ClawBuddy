@@ -54,6 +54,46 @@ function formatDate(value: string | null | undefined) {
   return new Date(value).toLocaleString()
 }
 
+type RolloutModalStatus = 'idle' | 'running' | 'ready' | 'failed'
+
+interface PersistedRolloutState {
+  status: RolloutModalStatus
+  targetVersion: string | null
+}
+
+const UPDATE_ROLLOUT_STORAGE_KEY = 'clawbuddy.update.rollout'
+
+function readPersistedRolloutState(): PersistedRolloutState {
+  if (typeof window === 'undefined') {
+    return { status: 'idle', targetVersion: null }
+  }
+
+  try {
+    const raw = window.sessionStorage.getItem(UPDATE_ROLLOUT_STORAGE_KEY)
+    if (!raw) {
+      return { status: 'idle', targetVersion: null }
+    }
+
+    const parsed = JSON.parse(raw) as Partial<PersistedRolloutState>
+    const status =
+      parsed.status === 'running' ||
+      parsed.status === 'ready' ||
+      parsed.status === 'failed' ||
+      parsed.status === 'idle'
+        ? parsed.status
+        : 'idle'
+    const targetVersion = typeof parsed.targetVersion === 'string' ? parsed.targetVersion : null
+
+    if (status === 'idle' || !targetVersion) {
+      return { status: 'idle', targetVersion: null }
+    }
+
+    return { status, targetVersion }
+  } catch {
+    return { status: 'idle', targetVersion: null }
+  }
+}
+
 function StepBadge({ status }: { status: 'pending' | 'running' | 'done' | 'error' }) {
   if (status === 'done') {
     return (
@@ -145,7 +185,9 @@ export function UpdatePage() {
   const [overview, setOverview] = useState<UpdateOverview | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [requestError, setRequestError] = useState<string | null>(null)
-  const [rolloutTargetVersion, setRolloutTargetVersion] = useState<string | null>(null)
+  const [rolloutState, setRolloutState] = useState<PersistedRolloutState>(() =>
+    readPersistedRolloutState(),
+  )
 
   const loadOverview = useCallback(async (silent = false) => {
     try {
@@ -165,12 +207,23 @@ export function UpdatePage() {
   const forceUpdate = overview?.forceUpdate ?? false
   const activeRun = overview?.activeRun ?? null
   const latestRelease = overview?.latestRelease ?? null
-  const targetVersion =
-    rolloutTargetVersion ?? activeRun?.targetVersion ?? latestRelease?.version ?? null
-  const isRunning = !!activeRun && activeRun.status !== 'failed'
   const [forceModal, setForceModal] = useState(false)
-  const [updateReady, setUpdateReady] = useState(false)
-  const showModal = isRunning || updateReady || (forceUpdate && forceModal)
+  const hasPersistedRollout = rolloutState.status !== 'idle' && !!rolloutState.targetVersion
+  const targetVersion =
+    rolloutState.targetVersion ?? activeRun?.targetVersion ?? latestRelease?.version ?? null
+  const isRolloutBlocking = rolloutState.status === 'running'
+  const updateReady = rolloutState.status === 'ready'
+  const updateFailed = rolloutState.status === 'failed'
+  const showModal = hasPersistedRollout || (forceUpdate && forceModal)
+
+  useEffect(() => {
+    if (rolloutState.status === 'idle' || !rolloutState.targetVersion) {
+      window.sessionStorage.removeItem(UPDATE_ROLLOUT_STORAGE_KEY)
+      return
+    }
+
+    window.sessionStorage.setItem(UPDATE_ROLLOUT_STORAGE_KEY, JSON.stringify(rolloutState))
+  }, [rolloutState])
 
   useEffect(() => {
     void loadOverview(false)
@@ -185,27 +238,40 @@ export function UpdatePage() {
   }, [loadOverview])
 
   useEffect(() => {
-    if (activeRun?.targetVersion) {
-      setRolloutTargetVersion(activeRun.targetVersion)
+    if (!activeRun?.targetVersion) {
       return
     }
 
-    if (overview?.currentVersion === rolloutTargetVersion) {
-      setRolloutTargetVersion(null)
-    }
-  }, [activeRun?.targetVersion, overview?.currentVersion, rolloutTargetVersion])
+    const nextStatus: RolloutModalStatus =
+      activeRun.status === 'failed'
+        ? 'failed'
+        : activeRun.phase === 'completed'
+          ? 'ready'
+          : 'running'
+
+    setRolloutState((current) => {
+      if (current.targetVersion === activeRun.targetVersion && current.status === nextStatus) {
+        return current
+      }
+
+      return {
+        status: nextStatus,
+        targetVersion: activeRun.targetVersion,
+      }
+    })
+  }, [activeRun?.phase, activeRun?.status, activeRun?.targetVersion])
 
   useEffect(() => {
-    if (!targetVersion || (!activeRun && latestRelease?.version !== targetVersion)) {
-      return
+    if (activeRun?.status === 'failed' && activeRun.targetVersion) {
+      setRolloutState({
+        status: 'failed',
+        targetVersion: activeRun.targetVersion,
+      })
     }
+  }, [activeRun])
 
-    const shouldProbeApi =
-      activeRun?.phase === 'waiting-for-api' ||
-      activeRun?.phase === 'completed' ||
-      (!!rolloutTargetVersion && overview?.currentVersion !== rolloutTargetVersion)
-
-    if (!shouldProbeApi) {
+  useEffect(() => {
+    if (!rolloutState.targetVersion || rolloutState.status !== 'running') {
       return
     }
 
@@ -220,8 +286,16 @@ export function UpdatePage() {
           data?: { version?: string; phase?: string; status?: string }
         }
 
-        if (!cancelled && res.ok && payload.data?.version === targetVersion) {
-          setUpdateReady(true)
+        if (
+          !cancelled &&
+          res.ok &&
+          payload.data?.status === 'ok' &&
+          payload.data?.version === rolloutState.targetVersion
+        ) {
+          setRolloutState({
+            status: 'ready',
+            targetVersion: rolloutState.targetVersion,
+          })
         }
       } catch {
         // Keep polling while the service restarts.
@@ -232,28 +306,26 @@ export function UpdatePage() {
       cancelled = true
       window.clearInterval(interval)
     }
-  }, [
-    activeRun,
-    latestRelease?.version,
-    overview?.currentVersion,
-    rolloutTargetVersion,
-    targetVersion,
-  ])
+  }, [rolloutState.status, rolloutState.targetVersion])
 
   const releaseStatus = useMemo(() => {
     if (!overview?.supported) return 'error'
     if (!latestRelease) return 'pending'
-    if (overview.currentVersion === latestRelease.version && !activeRun) return 'done'
+    if (overview.currentVersion === latestRelease.version && !activeRun && !hasPersistedRollout)
+      return 'done'
     return 'done'
-  }, [activeRun, latestRelease, overview?.currentVersion, overview?.supported])
+  }, [activeRun, hasPersistedRollout, latestRelease, overview?.currentVersion, overview?.supported])
 
   const decisionStatus = useMemo(() => {
     if (!overview?.supported) return 'error'
+    if (rolloutState.status === 'failed') return 'error'
+    if (rolloutState.status === 'running') return 'running'
+    if (rolloutState.status === 'ready') return 'done'
     if (activeRun && activeRun.status === 'failed') return 'error'
     if (activeRun) return 'done'
     if (latestRelease && overview.currentVersion !== latestRelease.version) return 'running'
     return 'done'
-  }, [activeRun, latestRelease, overview?.currentVersion, overview?.supported])
+  }, [activeRun, latestRelease, overview?.currentVersion, overview?.supported, rolloutState.status])
 
   async function handleCheckNow() {
     try {
@@ -271,13 +343,31 @@ export function UpdatePage() {
     try {
       const next = await acceptUpdate.mutateAsync()
       setOverview(next)
-      if (next.activeRun?.targetVersion) {
-        setRolloutTargetVersion(next.activeRun.targetVersion)
-      }
+      setRolloutState({
+        status: next.activeRun?.status === 'failed' ? 'failed' : 'running',
+        targetVersion: next.activeRun?.targetVersion ?? next.latestRelease?.version ?? null,
+      })
       toast.success('Update started')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to start the update')
     }
+  }
+
+  function handleCloseRolloutModal(open: boolean) {
+    if (isRolloutBlocking) {
+      return
+    }
+
+    if (!open && hasPersistedRollout) {
+      setRolloutState({ status: 'idle', targetVersion: null })
+    }
+
+    setForceModal(open)
+  }
+
+  function clearRolloutStateAndGoHome() {
+    setRolloutState({ status: 'idle', targetVersion: null })
+    window.location.href = '/'
   }
 
   async function handleDecline() {
@@ -449,6 +539,7 @@ export function UpdatePage() {
                     !latestRelease ||
                     !overview.supported ||
                     acceptUpdate.isPending ||
+                    rolloutState.status === 'running' ||
                     (!!activeRun && activeRun.status !== 'failed') ||
                     overview.currentVersion === latestRelease.version
                   }
@@ -474,6 +565,11 @@ export function UpdatePage() {
                   Active rollout: {activeRun.targetVersion}. This page will keep polling until the
                   updated service reports the target version.
                 </p>
+              ) : hasPersistedRollout ? (
+                <p className="text-sm text-muted-foreground">
+                  Rollout in progress for {rolloutState.targetVersion}. The modal will stay open
+                  until the API is healthy again or the update rolls back.
+                </p>
               ) : null}
             </div>
           </UpdateStepCard>
@@ -491,22 +587,17 @@ export function UpdatePage() {
           </Card>
         ) : null}
 
-        <Dialog
-          open={showModal}
-          onOpenChange={(open) => {
-            if (!isRunning && !updateReady) setForceModal(open)
-          }}
-        >
+        <Dialog open={showModal} onOpenChange={handleCloseRolloutModal}>
           <DialogContent
-            showCloseButton={forceUpdate && !isRunning && !updateReady}
+            showCloseButton={forceUpdate || updateReady || updateFailed}
             onEscapeKeyDown={(e) => {
-              if (isRunning || updateReady) e.preventDefault()
+              if (isRolloutBlocking) e.preventDefault()
             }}
             onPointerDownOutside={(e) => {
-              if (isRunning || updateReady) e.preventDefault()
+              if (isRolloutBlocking) e.preventDefault()
             }}
             onInteractOutside={(e) => {
-              if (isRunning || updateReady) e.preventDefault()
+              if (isRolloutBlocking) e.preventDefault()
             }}
             className="sm:max-w-lg max-h-[85vh] overflow-y-auto"
           >
@@ -514,17 +605,25 @@ export function UpdatePage() {
               <DialogTitle className="flex items-center gap-2">
                 {updateReady ? (
                   <CheckCircle2 className="size-5 text-green-500" />
+                ) : updateFailed ? (
+                  <AlertTriangle className="size-5 text-destructive" />
                 ) : (
                   <Loader2 className="size-5 animate-spin" />
                 )}
                 {updateReady
                   ? `ClawBuddy ${targetVersion} is ready`
-                  : `Updating to ${activeRun?.targetVersion ?? latestRelease?.version ?? 'vX.X.X'}`}
+                  : updateFailed
+                    ? `Update to ${targetVersion ?? 'the latest version'} failed`
+                    : `Updating to ${targetVersion ?? 'vX.X.X'}`}
               </DialogTitle>
               <DialogDescription>
                 {updateReady
-                  ? 'The new version has been deployed successfully. Reload to start using it.'
-                  : `${activeRun?.phaseMessage ?? 'Preparing update'}. Please wait while the update completes.`}
+                  ? 'The new version is healthy again. You can go back home once you are ready.'
+                  : updateFailed
+                    ? (activeRun?.error ??
+                      activeRun?.phaseMessage ??
+                      'Docker rolled the deployment back before the service became healthy.')
+                    : `${activeRun?.phaseMessage ?? 'Waiting for the API to become healthy again'}. Please keep this page open while the rollout completes.`}
               </DialogDescription>
             </DialogHeader>
 
@@ -539,21 +638,39 @@ export function UpdatePage() {
               <ProgressLine
                 label="Deploy unified service"
                 {...(activeRun?.progress.apiDeploy ?? {
-                  status: forceUpdate ? (updateReady ? 'done' : 'running') : 'pending',
+                  status: updateFailed
+                    ? 'error'
+                    : forceUpdate || hasPersistedRollout
+                      ? updateReady
+                        ? 'done'
+                        : 'running'
+                      : 'pending',
                   progress: updateReady
                     ? `ClawBuddy ${targetVersion} is deployed`
-                    : forceUpdate
-                      ? 'Waiting for the service to restart'
-                      : 'Waiting for the image pull',
+                    : updateFailed
+                      ? (activeRun?.error ??
+                        activeRun?.phaseMessage ??
+                        'The service rolled back before it became healthy')
+                      : forceUpdate || hasPersistedRollout
+                        ? 'Waiting for Docker to report the service as healthy'
+                        : 'Waiting for the image pull',
+                  error: updateFailed
+                    ? (activeRun?.error ??
+                      'The rollout rolled back before the service became healthy')
+                    : undefined,
                 })}
               />
             </div>
 
             {updateReady ? (
-              <Button className="w-full" onClick={() => (window.location.href = '/')}>
+              <Button className="w-full" onClick={clearRolloutStateAndGoHome}>
                 <RefreshCw className="mr-1 size-4" />
-                Reload and go to home
+                Go to home
               </Button>
+            ) : updateFailed ? (
+              <p className="text-xs text-destructive">
+                The rollout did not complete successfully. ClawBuddy stayed on the previous version.
+              </p>
             ) : requestError ? (
               <p className="text-xs text-muted-foreground">
                 {requestError} — the rollout may still be progressing while the API restarts.

@@ -87,6 +87,37 @@ interface SwarmServiceInfo {
   }
 }
 
+interface SwarmTaskInfo {
+  ID?: string
+  DesiredState?: string
+  Status?: {
+    State?: string
+    Message?: string
+    Err?: string
+    ContainerStatus?: {
+      ContainerID?: string
+    }
+  }
+}
+
+interface DockerContainerInspectInfo {
+  State?: {
+    Running?: boolean
+    Status?: string
+    Health?: {
+      Status?: string
+    }
+  }
+}
+
+interface ServiceHealthSnapshot {
+  allHealthy: boolean
+  desiredTasks: number
+  runningTasks: number
+  healthyTasks: number
+  message: string
+}
+
 const docker = new Docker()
 const dockerWithModem = docker as Docker & {
   modem: {
@@ -262,7 +293,7 @@ async function getCurrentInstalledVersion(): Promise<string> {
   return imageVersion && imageVersion !== 'vlatest' ? imageVersion : 'legacy/latest'
 }
 
-function buildTargetImage(
+export function buildTargetImage(
   service: SwarmServiceInfo | null,
   version: string,
   fallbackImage: string,
@@ -438,6 +469,8 @@ async function updateServiceImage(service: SwarmServiceInfo, image: string) {
   const spec = configureServiceRollout(service.Spec)
   const nextForceUpdate = (spec.TaskTemplate?.ForceUpdate ?? 0) + 1
 
+  // Setting the tag again here is what makes Swarm resolve the current digest
+  // for that image instead of keeping the previously pinned one.
   await docker.getService(service.ID).update({
     _query: { version: versionIndex },
     _body: {
@@ -516,6 +549,120 @@ function getServiceFailure(service: SwarmServiceInfo | null) {
   }
 
   return null
+}
+
+async function getServiceHealthSnapshot(
+  service: SwarmServiceInfo | null,
+): Promise<ServiceHealthSnapshot> {
+  if (!service) {
+    return {
+      allHealthy: false,
+      desiredTasks: 0,
+      runningTasks: 0,
+      healthyTasks: 0,
+      message: 'Waiting for the managed ClawBuddy service to appear in Docker Swarm',
+    }
+  }
+
+  const tasks = (await docker.listTasks({
+    filters: {
+      service: [service.ID],
+      'desired-state': ['running'],
+    },
+  })) as unknown as SwarmTaskInfo[]
+
+  if (tasks.length === 0) {
+    return {
+      allHealthy: false,
+      desiredTasks: 0,
+      runningTasks: 0,
+      healthyTasks: 0,
+      message: 'Waiting for the replacement service task to be scheduled',
+    }
+  }
+
+  const taskStates = await Promise.all(
+    tasks.map(async (task) => {
+      const containerId = task.Status?.ContainerStatus?.ContainerID
+
+      if (!containerId) {
+        return {
+          task,
+          container: null,
+        }
+      }
+
+      try {
+        const container = (await docker
+          .getContainer(containerId)
+          .inspect()) as DockerContainerInspectInfo
+        return { task, container }
+      } catch {
+        return { task, container: null }
+      }
+    }),
+  )
+
+  let runningTasks = 0
+  let healthyTasks = 0
+  const waitingReasons: string[] = []
+
+  for (const { task, container } of taskStates) {
+    const taskState = task.Status?.State ?? 'new'
+    const taskLabel = task.ID ? `Task ${task.ID.slice(0, 12)}` : 'Service task'
+
+    if (taskState === 'running') {
+      runningTasks += 1
+    } else {
+      waitingReasons.push(task.Status?.Message || `${taskLabel} is ${taskState}`)
+      continue
+    }
+
+    const healthStatus = container?.State?.Health?.Status
+    if (healthStatus === 'healthy') {
+      healthyTasks += 1
+      continue
+    }
+
+    if (!healthStatus && container?.State?.Running) {
+      healthyTasks += 1
+      continue
+    }
+
+    if (healthStatus === 'unhealthy') {
+      waitingReasons.push(`${taskLabel} failed its health check`)
+      continue
+    }
+
+    if (healthStatus) {
+      waitingReasons.push(`${taskLabel} health is ${healthStatus}`)
+      continue
+    }
+
+    waitingReasons.push(task.Status?.Message || `${taskLabel} is starting`)
+  }
+
+  const desiredTasks = tasks.length
+  if (healthyTasks === desiredTasks && runningTasks === desiredTasks) {
+    return {
+      allHealthy: true,
+      desiredTasks,
+      runningTasks,
+      healthyTasks,
+      message: `All service tasks are healthy (${healthyTasks}/${desiredTasks})`,
+    }
+  }
+
+  const summary = `Waiting for healthy service tasks (${healthyTasks}/${desiredTasks})`
+  const detail = waitingReasons.find(Boolean)
+
+  return {
+    allHealthy: false,
+    desiredTasks,
+    runningTasks,
+    healthyTasks,
+    message: detail ? `${summary}. ${detail}` : summary,
+  }
 }
 
 async function refreshObservedProgress(run: UpdateRunRecord) {
@@ -631,8 +778,23 @@ async function reconcileWaitingForApi(run: UpdateRunRecord) {
     return prisma.appUpdateRun.findUniqueOrThrow({ where: { id: run.id } })
   }
 
-  const currentBuildVersion = getCurrentVersionFromBuild()
-  if (currentBuildVersion !== run.targetVersion) {
+  const health = await getServiceHealthSnapshot(apiService)
+
+  if (!health.allHealthy) {
+    await updateRunProgress(
+      run.id,
+      (progress) => ({
+        ...progress,
+        apiDeploy: {
+          status: 'running',
+          progress: health.message,
+        },
+      }),
+      {
+        phase: 'waiting-for-api',
+        phaseMessage: health.message,
+      },
+    )
     await refreshObservedProgress(run)
     return prisma.appUpdateRun.findUniqueOrThrow({ where: { id: run.id } })
   }

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { extractVersionFromImage, isReleaseNewer } from './update.service.js'
+import { buildTargetImage, extractVersionFromImage, isReleaseNewer } from './update.service.js'
 
 describe('extractVersionFromImage', () => {
   test('extracts a semver tag from a tagged image reference', () => {
@@ -28,5 +28,32 @@ describe('isReleaseNewer', () => {
 
   test('treats legacy installs as needing an update when a stable release exists', () => {
     expect(isReleaseNewer('legacy/latest', 'v0.4.1')).toBe(true)
+  })
+})
+
+describe('buildTargetImage', () => {
+  test('replaces the tag and strips an existing digest from the running service image', () => {
+    expect(
+      buildTargetImage(
+        {
+          ID: 'svc-1',
+          Spec: {
+            TaskTemplate: {
+              ContainerSpec: {
+                Image: 'ghcr.io/danield2g/clawbuddy:0.3.0@sha256:abcdef123456',
+              },
+            },
+          },
+        },
+        'v0.3.1',
+        'ghcr.io/danield2g/clawbuddy',
+      ),
+    ).toBe('ghcr.io/danield2g/clawbuddy:0.3.1')
+  })
+
+  test('falls back to the default image when the service does not expose one yet', () => {
+    expect(buildTargetImage(null, 'v0.3.1', 'ghcr.io/danield2g/clawbuddy')).toBe(
+      'ghcr.io/danield2g/clawbuddy:0.3.1',
+    )
   })
 })
