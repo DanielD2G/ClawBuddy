@@ -269,7 +269,9 @@ export function ModelConfigCard() {
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <span className="text-sm font-medium">Context limit</span>
-                  <span className="text-xs text-muted-foreground ml-2">tokens before compression</span>
+                  <span className="text-xs text-muted-foreground ml-2">
+                    tokens before compression
+                  </span>
                 </div>
                 <NumberInput
                   value={Math.round(contextLimitTokens / 1000)}
@@ -341,10 +343,7 @@ export function ModelConfigCard() {
 
             {/* Save */}
             {dirty && (
-              <Button
-                onClick={() => saveMutation.mutate()}
-                disabled={saveMutation.isPending}
-              >
+              <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
                 {saveMutation.isPending && <Loader2 className="size-4 mr-1 animate-spin" />}
                 Save changes
               </Button>

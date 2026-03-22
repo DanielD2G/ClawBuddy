@@ -1,8 +1,24 @@
-import Anthropic from '@anthropic-ai/sdk'
+import { ChatAnthropic } from '@langchain/anthropic'
+import { ChatGoogleGenerativeAI } from '@langchain/google-genai'
+import { ChatOpenAI } from '@langchain/openai'
 import { settingsService } from './settings.service.js'
-import { listOpenAICompatibleModels } from '../providers/openai-compatible.js'
 
-const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
+const CACHE_TTL_MS = 5 * 60 * 1000
+
+const STATIC_MODEL_CATALOG = {
+  openai: {
+    llm: ['gpt-5.4', 'gpt-5-mini', 'gpt-4.1', 'gpt-4o', 'gpt-4o-mini'],
+    embedding: ['text-embedding-3-large', 'text-embedding-3-small'],
+  },
+  claude: {
+    llm: ['claude-sonnet-4-6', 'claude-opus-4-6', 'claude-haiku-4-5'],
+    embedding: [],
+  },
+  gemini: {
+    llm: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'],
+    embedding: ['gemini-embedding-001'],
+  },
+} as const
 
 interface CacheEntry {
   models: string[]
@@ -30,121 +46,91 @@ function getCached(cache: Map<string, CacheEntry>, key: string): string[] | null
   return entry.models
 }
 
-const OPENAI_CHAT_PREFIXES = ['gpt-', 'o1', 'o3', 'o4']
-const OPENAI_CHAT_EXCLUDES = [
-  'realtime',
-  'audio',
-  'search',
-  'transcribe',
-  'tts',
-  'dall-e',
-  'whisper',
-  'instruct',
-  '-codex',
-  'moderation',
-  'gpt-image',
-  'chatgpt-image',
-  'gpt-oss',
-]
-const OPENAI_EMBEDDING_PREFIXES = ['text-embedding-']
+function normalizeLocalBaseUrl(baseUrl: string): string {
+  const normalized = baseUrl.trim().replace(/\/+$/, '')
+  if (!normalized) return ''
+  return normalized.endsWith('/v1') ? normalized : `${normalized}/v1`
+}
 
-async function fetchOpenAIModels(apiKey: string): Promise<{ llm: string[]; embedding: string[] }> {
-  const all = await listOpenAICompatibleModels({ apiKey })
-  return {
-    llm: all
-      .filter((id) => OPENAI_CHAT_PREFIXES.some((p) => id.startsWith(p)))
-      .filter((id) => !OPENAI_CHAT_EXCLUDES.some((ex) => id.includes(ex))),
-    embedding: all.filter((id) => OPENAI_EMBEDDING_PREFIXES.some((p) => id.startsWith(p))),
+async function listOpenAICompatibleModels(connectionValue: string) {
+  const baseUrl = normalizeLocalBaseUrl(connectionValue)
+  const response = await fetch(`${baseUrl}/models`, {
+    headers: {
+      Authorization: 'Bearer local',
+      'Content-Type': 'application/json',
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error(`Local provider returned ${response.status}`)
   }
-}
 
-async function fetchLocalModels(baseURL: string): Promise<{ llm: string[]; embedding: string[] }> {
-  const all = await listOpenAICompatibleModels({ baseURL })
-  return { llm: all, embedding: all }
-}
-
-// ── Anthropic ────────────────────────────────────────
-
-async function fetchAnthropicModels(apiKey: string): Promise<{ llm: string[] }> {
-  const client = new Anthropic({ apiKey })
-  const list = await client.models.list({ limit: 100 })
-  const models = list.data.map((m) => m.id).sort()
-  return { llm: models }
-}
-
-// ── Gemini ───────────────────────────────────────────
-
-const GEMINI_LLM_EXCLUDES = [
-  'image',
-  'tts',
-  'robotics',
-  'computer-use',
-  'deep-research',
-  'nano-banana',
-  'gemma',
-  'customtools',
-  'learnlm',
-]
-
-interface GeminiModel {
-  name: string
-  supportedGenerationMethods: string[]
-}
-
-interface GeminiListResponse {
-  models: GeminiModel[]
-  nextPageToken?: string
-}
-
-async function fetchGeminiModels(apiKey: string): Promise<{ llm: string[]; embedding: string[] }> {
-  const allModels: GeminiModel[] = []
-  let pageToken: string | undefined
-
-  do {
-    const url = new URL('https://generativelanguage.googleapis.com/v1beta/models')
-    url.searchParams.set('key', apiKey)
-    url.searchParams.set('pageSize', '100')
-    if (pageToken) url.searchParams.set('pageToken', pageToken)
-
-    const res = await fetch(url.toString())
-    if (!res.ok) throw new Error(`Gemini API returned ${res.status}`)
-    const data = (await res.json()) as GeminiListResponse
-    allModels.push(...(data.models ?? []))
-    pageToken = data.nextPageToken
-  } while (pageToken)
-
-  const stripPrefix = (name: string) => name.replace(/^models\//, '')
-
-  return {
-    llm: allModels
-      .filter((m) => m.supportedGenerationMethods?.includes('generateContent'))
-      .map((m) => stripPrefix(m.name))
-      .filter((id) => !GEMINI_LLM_EXCLUDES.some((ex) => id.includes(ex)))
-      .sort(),
-    embedding: allModels
-      .filter((m) => m.supportedGenerationMethods?.includes('embedContent'))
-      .map((m) => stripPrefix(m.name))
-      .sort(),
+  const data = (await response.json()) as {
+    data?: Array<{ id?: string }>
   }
-}
 
-// ── Public API ───────────────────────────────────────
+  return (data.data ?? [])
+    .map((entry) => entry.id?.trim())
+    .filter((id): id is string => Boolean(id))
+}
 
 async function fetchProviderModels(
   provider: string,
   connectionValue: string,
 ): Promise<{ llm: string[]; embedding: string[] }> {
+  if (provider === 'local') {
+    const llm = await listOpenAICompatibleModels(connectionValue)
+    return { llm, embedding: llm }
+  }
+
+  const staticCatalog = STATIC_MODEL_CATALOG[provider as keyof typeof STATIC_MODEL_CATALOG] ?? null
+  if (!staticCatalog) return { llm: [], embedding: [] }
+  return {
+    llm: [...staticCatalog.llm],
+    embedding: [...staticCatalog.embedding],
+  }
+}
+
+async function assertProviderReachable(provider: string, connectionValue: string) {
   switch (provider) {
-    case 'openai':
-      return fetchOpenAIModels(connectionValue)
-    case 'claude':
-      return { ...(await fetchAnthropicModels(connectionValue)), embedding: [] }
-    case 'gemini':
-      return fetchGeminiModels(connectionValue)
+    case 'openai': {
+      const model = STATIC_MODEL_CATALOG.openai.llm[0]
+      const client = new ChatOpenAI({
+        model,
+        apiKey: connectionValue,
+        maxRetries: 0,
+        maxTokens: 1,
+      })
+      await client.invoke('ping')
+      return
+    }
+    case 'claude': {
+      const model = STATIC_MODEL_CATALOG.claude.llm[0]
+      const client = new ChatAnthropic({
+        model,
+        apiKey: connectionValue,
+        maxRetries: 0,
+        maxTokens: 1,
+      })
+      await client.invoke('ping')
+      return
+    }
+    case 'gemini': {
+      const model = STATIC_MODEL_CATALOG.gemini.llm[0]
+      const client = new ChatGoogleGenerativeAI({
+        model,
+        apiKey: connectionValue,
+        maxRetries: 0,
+        maxOutputTokens: 1,
+      })
+      await client.invoke('ping')
+      return
+    }
     case 'local':
-      return fetchLocalModels(connectionValue)
+      await listOpenAICompatibleModels(connectionValue)
+      return
     default:
-      return { llm: [], embedding: [] }
+      throw new Error(`Unknown provider: ${provider}`)
   }
 }
 
@@ -164,6 +150,7 @@ export async function testProviderConnection(
   }
 
   try {
+    await assertProviderReachable(provider, trimmed)
     const result = await fetchProviderModels(provider, trimmed)
     const hasModels = result.llm.length > 0 || result.embedding.length > 0
 
@@ -194,13 +181,8 @@ export async function discoverLLMModels(provider: string): Promise<string[]> {
     if (!connectionValue) return []
 
     const result = await fetchProviderModels(provider, connectionValue)
-
-    // Cache both
     llmCache.set(provider, { models: result.llm, fetchedAt: Date.now() })
-    if (result.embedding.length) {
-      embeddingCache.set(provider, { models: result.embedding, fetchedAt: Date.now() })
-    }
-
+    embeddingCache.set(provider, { models: result.embedding, fetchedAt: Date.now() })
     return result.llm
   } catch (err) {
     console.warn(
@@ -220,13 +202,8 @@ export async function discoverEmbeddingModels(provider: string): Promise<string[
     if (!connectionValue) return []
 
     const result = await fetchProviderModels(provider, connectionValue)
-
-    // Cache both
-    if (result.llm.length) {
-      llmCache.set(provider, { models: result.llm, fetchedAt: Date.now() })
-    }
+    llmCache.set(provider, { models: result.llm, fetchedAt: Date.now() })
     embeddingCache.set(provider, { models: result.embedding, fetchedAt: Date.now() })
-
     return result.embedding
   } catch (err) {
     console.warn(
@@ -237,7 +214,6 @@ export async function discoverEmbeddingModels(provider: string): Promise<string[
   }
 }
 
-/** Build a full model catalog keyed by provider for both LLM and embedding. */
 export async function buildModelCatalogs(available: {
   llm: string[]
   embedding: string[]
@@ -246,24 +222,30 @@ export async function buildModelCatalogs(available: {
   embedding: Record<string, string[]>
 }> {
   const [llmEntries, embeddingEntries] = await Promise.all([
-    Promise.all(available.llm.map(async (p) => [p, await discoverLLMModels(p)] as const)),
     Promise.all(
-      available.embedding.map(async (p) => [p, await discoverEmbeddingModels(p)] as const),
+      available.llm.map(async (provider) => [provider, await discoverLLMModels(provider)]),
+    ),
+    Promise.all(
+      available.embedding.map(async (provider) => [
+        provider,
+        await discoverEmbeddingModels(provider),
+      ]),
     ),
   ])
+
   return {
     llm: Object.fromEntries(llmEntries) as Record<string, string[]>,
     embedding: Object.fromEntries(embeddingEntries) as Record<string, string[]>,
   }
 }
 
-/** Invalidate cache for a provider (e.g. after API key change) */
 export function invalidateModelCache(provider?: string) {
-  if (provider) {
-    llmCache.delete(provider)
-    embeddingCache.delete(provider)
-  } else {
+  if (!provider) {
     llmCache.clear()
     embeddingCache.clear()
+    return
   }
+
+  llmCache.delete(provider)
+  embeddingCache.delete(provider)
 }

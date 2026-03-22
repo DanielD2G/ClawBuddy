@@ -5,7 +5,6 @@ import { recordTokenUsage } from './agent.service.js'
 import { embeddingService } from './embedding.service.js'
 import { searchService } from './search.service.js'
 import { agentService } from './agent.service.js'
-import { capabilityService } from './capability.service.js'
 import type { SSEEmit } from '../lib/sse.js'
 import { isAbortError, registerAgentLoop, unregisterAgentLoop } from '../lib/agent-abort.js'
 import {
@@ -234,7 +233,7 @@ export const chatService = {
       llmContent?: string
     },
   ) {
-    const { documentIds, mentionedSlugs, attachments, inventory, llmContent } = options ?? {}
+    const { mentionedSlugs, attachments, inventory, llmContent } = options ?? {}
     const session = await prisma.chatSession.findUniqueOrThrow({
       where: { id: sessionId },
     })
@@ -258,40 +257,14 @@ export const chatService = {
       prisma.$executeRaw`UPDATE "ChatSession" SET "lastMessageAt" = NOW() WHERE "id" = ${sessionId}`,
     ])
 
-    // Check workspace-scoped capabilities
-    const capabilities = await capabilityService.getEnabledCapabilitiesForWorkspace(
-      session.workspaceId!,
+    return this._sendWithAgentLoop(
+      session,
+      sessionId,
+      safeLlmContent,
+      emit,
+      secretInventory,
+      mentionedSlugs,
     )
-    const hasNonDocCapabilities = capabilities.some((c) => c.slug !== 'document-search')
-
-    const hasMentions = mentionedSlugs?.length && mentionedSlugs.length > 0
-
-    const debugAgent = process.env.DEBUG_AGENT === '1' || process.env.DEBUG === '1'
-    if (debugAgent) {
-      console.debug('[Chat] sendMessage routing', {
-        sessionId,
-        workspaceId: session.workspaceId,
-        hasNonDocCapabilities,
-        hasMentions,
-        mentionedSlugs,
-        capabilitySlugs: capabilities.map((c) => c.slug),
-        willUseAgent: hasNonDocCapabilities || hasMentions,
-      })
-    }
-
-    if (hasNonDocCapabilities || hasMentions) {
-      return this._sendWithAgentLoop(
-        session,
-        sessionId,
-        safeLlmContent,
-        emit,
-        secretInventory,
-        mentionedSlugs,
-      )
-    }
-
-    // Use classic RAG flow for document-search-only workspaces
-    return this._sendWithRAG(session, sessionId, safeLlmContent, emit, secretInventory, documentIds)
   },
 
   /**

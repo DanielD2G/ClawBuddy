@@ -153,13 +153,13 @@ export function UpdatePage() {
   const [isLoading, setIsLoading] = useState(true)
   const [requestError, setRequestError] = useState<string | null>(null)
   const [rolloutTargetVersion, setRolloutTargetVersion] = useState<string | null>(null)
-  const [apiProbe, setApiProbe] = useState<ProbeState>({
+  const [, setApiProbe] = useState<ProbeState>({
     reachable: false,
     version: null,
     phase: null,
     message: 'Waiting for API health checks',
   })
-  const [webProbe, setWebProbe] = useState<ProbeState>({
+  const [, setWebProbe] = useState<ProbeState>({
     reachable: false,
     version: null,
     phase: null,
@@ -527,7 +527,11 @@ export function UpdatePage() {
                 <Button
                   variant="outline"
                   onClick={handleDecline}
-                  disabled={!latestRelease || declineUpdate.isPending || (!!activeRun && activeRun.status !== 'failed')}
+                  disabled={
+                    !latestRelease ||
+                    declineUpdate.isPending ||
+                    (!!activeRun && activeRun.status !== 'failed')
+                  }
                 >
                   {declineUpdate.isPending ? 'Saving...' : 'Decline for now'}
                 </Button>
@@ -555,12 +559,23 @@ export function UpdatePage() {
           </Card>
         ) : null}
 
-        <Dialog open={showModal} onOpenChange={(open) => { if (!isRunning && !updateReady) setForceModal(open) }}>
+        <Dialog
+          open={showModal}
+          onOpenChange={(open) => {
+            if (!isRunning && !updateReady) setForceModal(open)
+          }}
+        >
           <DialogContent
             showCloseButton={forceUpdate && !isRunning && !updateReady}
-            onEscapeKeyDown={(e) => { if (isRunning || updateReady) e.preventDefault() }}
-            onPointerDownOutside={(e) => { if (isRunning || updateReady) e.preventDefault() }}
-            onInteractOutside={(e) => { if (isRunning || updateReady) e.preventDefault() }}
+            onEscapeKeyDown={(e) => {
+              if (isRunning || updateReady) e.preventDefault()
+            }}
+            onPointerDownOutside={(e) => {
+              if (isRunning || updateReady) e.preventDefault()
+            }}
+            onInteractOutside={(e) => {
+              if (isRunning || updateReady) e.preventDefault()
+            }}
             className="sm:max-w-lg max-h-[85vh] overflow-y-auto"
           >
             <DialogHeader>
@@ -607,13 +622,15 @@ export function UpdatePage() {
                 label="Deploy Frontend"
                 {...(activeRun?.progress.webDeploy ?? {
                   status: updateReady ? 'done' : 'pending',
-                  progress: updateReady ? `Frontend ${targetVersion} is deployed` : 'Waiting for API',
+                  progress: updateReady
+                    ? `Frontend ${targetVersion} is deployed`
+                    : 'Waiting for API',
                 })}
               />
             </div>
 
             {updateReady ? (
-              <Button className="w-full" onClick={() => window.location.href = '/'}>
+              <Button className="w-full" onClick={() => (window.location.href = '/')}>
                 <RefreshCw className="mr-1 size-4" />
                 Reload and go to home
               </Button>

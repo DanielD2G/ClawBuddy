@@ -1,13 +1,11 @@
 import { prisma } from '../lib/prisma.js'
 import type { Prisma } from '@prisma/client'
-import type { GroundingMetadata, Tool as GeminiTool } from '@google/generative-ai'
 import { embeddingService } from './embedding.service.js'
 import { searchService } from './search.service.js'
 import { sandboxService } from './sandbox.service.js'
 import { ingestionService } from './ingestion.service.js'
 import { storageService } from './storage.service.js'
 import { cronService } from './cron.service.js'
-import { settingsService } from './settings.service.js'
 import { browserService } from './browser.service.js'
 import type { ToolCall } from '../providers/llm.interface.js'
 import type { SSEEmit } from '../lib/sse.js'
@@ -697,46 +695,37 @@ async function executeWebSearch(toolCall: ToolCall): Promise<ExecutionResult> {
     return { output: '', error: 'Search query is required', durationMs: Date.now() - startTime }
   }
 
-  const apiKey = await settingsService.getApiKey('gemini')
-  if (!apiKey) {
-    return {
-      output: '',
-      error: 'Web search requires a Gemini API key. Please configure it in Settings.',
-      durationMs: Date.now() - startTime,
-    }
-  }
-
   try {
-    const { GoogleGenerativeAI } = await import('@google/generative-ai')
-    const client = new GoogleGenerativeAI(apiKey)
-
-    const model = client.getGenerativeModel({
-      model: 'gemini-2.5-flash',
-      tools: [{ googleSearch: {} } as unknown as GeminiTool],
+    const url = new URL('https://html.duckduckgo.com/html/')
+    url.searchParams.set('q', query)
+    const response = await fetch(url.toString(), {
+      headers: {
+        'User-Agent': 'ClawBuddy/1.0',
+      },
     })
 
-    const result = await model.generateContent(query)
-    const response = result.response
-    const text = response.text() ?? ''
-
-    // Extract grounding metadata if available
-    const candidate = response.candidates?.[0]
-    const groundingMeta: GroundingMetadata | undefined = candidate?.groundingMetadata
-    let sources = ''
-    if (groundingMeta?.groundingChunks?.length) {
-      const chunks = groundingMeta.groundingChunks as Array<{
-        web?: { uri: string; title: string }
-      }>
-      sources =
-        '\n\n**Sources:**\n' +
-        chunks
-          .filter((c) => c.web)
-          .map((c) => `- [${c.web!.title}](${c.web!.uri})`)
-          .join('\n')
+    if (!response.ok) {
+      return {
+        output: '',
+        error: `Search failed with status ${response.status}`,
+        durationMs: Date.now() - startTime,
+      }
     }
 
+    const html = await response.text()
+    const matches = [
+      ...html.matchAll(/<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/g),
+    ]
+    const results = matches.slice(0, 5).map((match) => {
+      const title = htmlToText(match[2]).replace(/\s+/g, ' ').trim()
+      const href = match[1]
+      return `- [${title || href}](${href})`
+    })
+
     return {
-      output: text + sources,
+      output: results.length
+        ? `Top search results for "${query}":\n${results.join('\n')}`
+        : `No search results found for "${query}".`,
       durationMs: Date.now() - startTime,
     }
   } catch (err) {
