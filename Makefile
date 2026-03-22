@@ -1,94 +1,111 @@
-.PHONY: install dev dev-build build test lint fmt format format-check type-check typecheck clean \
-       docker-up docker-down docker-restart docker-logs \
-       db-generate db-push db-migrate db-studio \
-       setup start stop
+.PHONY: dev dev-build infra test lint fmt format typecheck clean \
+       docker-down docker-restart docker-logs docker-reset \
+       api api-worker api-test api-lint api-fmt api-typecheck \
+       web web-lint web-fmt \
+       db-migrate db-upgrade db-downgrade \
+       setup stop help
+
+SHELL := /bin/bash
+DEV_COMPOSE := docker compose -f docker-compose.dev.yml
 
 # ─── Quick Start ───────────────────────────────────────────
 
-setup: install docker-up db-generate db-push ## First-time setup: install deps, start infra, init DB
-	@echo "✅ Setup complete. Run 'make dev' to start."
+setup: infra ## First-time setup: start infra, install API deps
+	cd backend && uv sync
+	cd frontend && bun install
+	@echo "Setup complete. Run 'make infra', then 'make api' and 'make web' in separate terminals."
 
-start: dev ## Start everything (infra + dev servers)
+stop: docker-down ## Stop all containers
 
-stop: docker-down ## Stop all infrastructure services
+# ─── Infrastructure ───────────────────────────────────────
 
-# ─── Development ───────────────────────────────────────────
+infra: ## Start infrastructure (Postgres, Redis, Qdrant, MinIO, BrowserGrid)
+	$(DEV_COMPOSE) --profile infra up -d
 
-install: ## Install all dependencies
-	$(COMPOSE_WORKSPACE) true
+# ─── Full Stack (Docker Compose) ──────────────────────────
 
-SHELL := /bin/bash
-dev: ## Start development stack in Docker Compose with live reload
-	$(DEV_COMPOSE) --profile app up
-
-dev-build: ## Build and start development stack in Docker Compose
+dev: ## Start full dev stack in Docker Compose (API + Web + Infra)
 	$(DEV_COMPOSE) --profile app up --build
 
-build: ## Build all packages
-	$(COMPOSE_WORKSPACE) bun run build
+dev-build: ## Force rebuild and start dev stack
+	$(DEV_COMPOSE) --profile app up --build --force-recreate
 
-test: ## Run the full test suite in Docker Compose
-	$(COMPOSE_TEST)
+# ─── API (Python/FastAPI) ─────────────────────────────────
 
-lint: ## Run linters
-	$(COMPOSE_WORKSPACE) bun lint
+api: ## Run API server locally (requires infra)
+	cd backend && uv run uvicorn clawbuddy.main:app --host 0.0.0.0 --port 4000 --reload --reload-dir src
 
-fmt: ## Format all files
-	$(COMPOSE_WORKSPACE) bun fmt
+api-worker: ## Run ARQ worker locally
+	cd backend && uv run arq clawbuddy.workers.WorkerSettings
 
-format: fmt ## Format all files
+api-test: ## Run API tests
+	cd backend && uv run pytest tests/ -v
 
-format-check: ## Check formatting
-	$(COMPOSE_WORKSPACE) bun run format:check
+api-lint: ## Lint API code with ruff
+	cd backend && uv run ruff check src/
 
-type-check: ## Run TypeScript type checking
-	$(COMPOSE_WORKSPACE) sh -lc "bun run db:generate && bun type-check"
+api-fmt: ## Format API code with ruff
+	cd backend && uv run ruff format src/
 
-typecheck: type-check ## Run TypeScript type checking
+api-typecheck: ## Type-check API code with mypy
+	cd backend && uv run mypy src/
 
-clean: ## Remove node_modules, dist, .turbo
-	$(COMPOSE_WORKSPACE) bun run clean
+# ─── Web (React/Vite) ─────────────────────────────────────
 
-# ─── Docker / Infrastructure ──────────────────────────────
+web: ## Run web dev server locally (requires API)
+	cd frontend && bun run dev
 
-DEV_COMPOSE := docker compose -f docker-compose.dev.yml
-COMPOSE_WORKSPACE := $(DEV_COMPOSE) run --rm --no-deps workspace
-COMPOSE_API := $(DEV_COMPOSE) run --rm api
-COMPOSE_API_PORTS := $(DEV_COMPOSE) run --rm --service-ports api
-COMPOSE_TEST := $(DEV_COMPOSE) run --rm test
+web-lint: ## Lint web code
+	cd frontend && bun run lint
 
-docker-up: ## Start infrastructure (Postgres, Redis, Qdrant, MinIO, BrowserGrid)
-	$(DEV_COMPOSE) --profile infra up -d
+web-fmt: ## Format web code
+	cd frontend && bun run fmt
+
+# ─── Combined Commands ────────────────────────────────────
+
+test: api-test ## Run test suite
+
+lint: api-lint ## Run linters
+
+fmt: api-fmt ## Format code
+
+format: fmt ## Alias for fmt
+
+typecheck: api-typecheck ## Type-check code
+
+clean: ## Remove build artifacts
+	rm -rf backend/.venv backend/__pycache__ backend/src/**/__pycache__
+	rm -rf frontend/dist frontend/node_modules
+
+# ─── Docker ──────────────────────────────────────────────
 
 docker-down: ## Stop all containers
 	$(DEV_COMPOSE) down
 
-docker-restart: docker-down docker-up ## Restart all containers
+docker-restart: ## Restart infrastructure
+	$(DEV_COMPOSE) down && $(DEV_COMPOSE) --profile infra up -d
 
 docker-logs: ## Tail container logs
 	$(DEV_COMPOSE) logs -f
 
-docker-reset: ## Stop containers and remove volumes (⚠️ destroys data)
+docker-reset: ## Stop containers and remove volumes (destroys data)
 	$(DEV_COMPOSE) down -v
 
-# ─── Database ─────────────────────────────────────────────
+# ─── Database (Alembic) ──────────────────────────────────
 
-db-generate: ## Generate Prisma client
-	$(COMPOSE_WORKSPACE) bun run db:generate
+db-migrate: ## Create a new Alembic migration (usage: make db-migrate msg="description")
+	cd backend && uv run alembic revision --autogenerate -m "$(msg)"
 
-db-push: ## Push schema to database
-	$(COMPOSE_API) sh -lc "cd apps/api && bun run db:push"
+db-upgrade: ## Apply pending migrations
+	cd backend && uv run alembic upgrade head
 
-db-migrate: ## Run Prisma migrations
-	$(COMPOSE_API_PORTS) sh -lc "cd apps/api && bun run db:migrate"
-
-db-studio: ## Open Prisma Studio
-	$(DEV_COMPOSE) run --rm --service-ports -p 5555:5555 api sh -lc "cd apps/api && bun x prisma studio --hostname 0.0.0.0 --port 5555"
+db-downgrade: ## Revert last migration
+	cd backend && uv run alembic downgrade -1
 
 # ─── Help ─────────────────────────────────────────────────
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
-		awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-16s\033[0m %s\n", $$1, $$2}'
+		awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
 .DEFAULT_GOAL := help

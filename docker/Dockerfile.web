@@ -1,0 +1,43 @@
+# ── Web Frontend Dockerfile ───────────────────────────────
+# Multi-stage build for the ClawBuddy React/Vite frontend
+
+# ── Stage 1: Build ────────────────────────────────────────
+FROM oven/bun:1.3.5-debian AS build
+
+WORKDIR /app
+
+# Copy dependency manifests (workspace structure for shared package)
+COPY frontend/package.json package.json
+COPY frontend/bun.lock bun.lock
+COPY frontend/patches/ patches/
+COPY frontend/packages/shared/package.json packages/shared/package.json
+COPY frontend/packages/tsconfig/ packages/tsconfig/
+COPY frontend/packages/eslint-config/package.json packages/eslint-config/package.json
+
+RUN bun install; exit 0
+
+# Copy source
+COPY frontend/packages/ packages/
+COPY frontend/src/ src/
+COPY frontend/public/ public/
+COPY frontend/index.html index.html
+COPY frontend/vite.config.ts vite.config.ts
+COPY frontend/tsconfig.json tsconfig.json
+COPY frontend/tsconfig.app.json tsconfig.app.json
+COPY frontend/components.json components.json
+
+ARG CLAWBUDDY_VERSION=dev
+ARG CLAWBUDDY_COMMIT_SHA=local
+
+RUN export VITE_CLAWBUDDY_VERSION="$CLAWBUDDY_VERSION" \
+  VITE_CLAWBUDDY_COMMIT_SHA="$CLAWBUDDY_COMMIT_SHA" \
+  VITE_CLAWBUDDY_BUILD_TIME="$(date -u +%FT%TZ)" && \
+  bun run build
+
+# ── Stage 2: Runtime (nginx) ─────────────────────────────
+FROM nginx:alpine AS runtime
+
+COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/dist /usr/share/nginx/html
+
+EXPOSE 80

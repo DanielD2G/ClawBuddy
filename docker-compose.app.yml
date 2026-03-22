@@ -15,7 +15,7 @@ services:
     networks:
       - shared
     healthcheck:
-      test: ["CMD", "bun", "--eval", "fetch('http://localhost:4000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      test: ["CMD", "curl", "-f", "http://localhost:4000/api/health"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -37,6 +37,27 @@ services:
       placement:
         constraints:
           - node.role == manager
+
+  worker:
+    image: ghcr.io/danield2g/clawbuddy-api:latest
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://clawbuddy:clawbuddy@postgres:5432/clawbuddy
+      REDIS_URL: redis://redis:6379
+      QDRANT_URL: http://qdrant:6333
+      MINIO_ENDPOINT: http://minio:9000
+    command: ["python", "-m", "arq", "clawbuddy.workers.WorkerSettings"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - shared
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 10
+        window: 120s
 
   web:
     image: ghcr.io/danield2g/clawbuddy-web:latest

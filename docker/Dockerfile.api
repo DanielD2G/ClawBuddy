@@ -1,0 +1,47 @@
+# ── Python API Dockerfile ─────────────────────────────────
+# Multi-stage build for the ClawBuddy Python/FastAPI backend
+
+# ── Stage 1: Base with dependencies ──────────────────────
+FROM python:3.12-slim AS base
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv for fast dependency management
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# Copy dependency manifests and install
+COPY backend/pyproject.toml pyproject.toml
+RUN uv venv /app/.venv && uv pip install --python /app/.venv/bin/python -r pyproject.toml
+
+ENV PATH="/app/.venv/bin:$PATH"
+ENV PYTHONPATH="/app/src"
+
+# ── Stage 2: Dev (with source mounted via volumes) ───────
+FROM base AS dev
+
+# Source will be mounted via docker-compose volumes
+CMD ["uvicorn", "clawbuddy.main:app", "--host", "0.0.0.0", "--port", "4000", "--reload", "--reload-dir", "src"]
+
+# ── Stage 3: Production runtime ──────────────────────────
+FROM base AS runtime
+
+ARG CLAWBUDDY_VERSION=dev
+ARG CLAWBUDDY_COMMIT_SHA=local
+ARG CLAWBUDDY_BUILD_TIME=unknown
+ENV CLAWBUDDY_VERSION=$CLAWBUDDY_VERSION
+ENV CLAWBUDDY_COMMIT_SHA=$CLAWBUDDY_COMMIT_SHA
+ENV CLAWBUDDY_BUILD_TIME=$CLAWBUDDY_BUILD_TIME
+
+# Copy application code
+COPY backend/src src
+COPY backend/alembic.ini alembic.ini
+COPY backend/alembic alembic
+COPY backend/skills skills
+
+EXPOSE 4000
+CMD ["uvicorn", "clawbuddy.main:app", "--host", "0.0.0.0", "--port", "4000"]

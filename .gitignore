@@ -16,9 +16,17 @@ dist/
 *.swo
 .DS_Store
 
-# Prisma
-apps/api/prisma/*.db
-apps/api/prisma/migrations/
+# Python
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+.venv/
+backend/.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
 
 # Logs
 *.log

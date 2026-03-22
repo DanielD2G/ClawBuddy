@@ -1,19 +1,5 @@
-x-dev-app: &dev-app
-  build:
-    context: .
-    dockerfile: docker/Dockerfile
-    target: base
-  working_dir: /app
-  env_file: .env
-  entrypoint: ['sh', '/app/docker/dev-entrypoint.sh']
-  volumes:
-    - .:/app
-    - workspace_node_modules:/app/node_modules
-
 services:
-  workspace:
-    <<: *dev-app
-    command: ['true']
+  # ── Infrastructure ──────────────────────────────────────
 
   postgres:
     profiles: ['infra', 'app']
@@ -106,25 +92,29 @@ services:
       timeout: 5s
       retries: 5
 
+  # ── Python API (FastAPI + uvicorn) ──────────────────────
+
   api:
-    <<: *dev-app
     profiles: ['app']
-    command: >
-      sh -lc "cd apps/api &&
-      bun run db:generate &&
-      bun x prisma db push --skip-generate &&
-      bun --watch src/index.ts"
-    ports:
-      - '4000:4000'
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+      target: dev
+    working_dir: /app
+    env_file: .env
     environment:
       DATABASE_URL: postgresql://clawbuddy:clawbuddy@postgres:5432/clawbuddy
       REDIS_URL: redis://redis:6379
       QDRANT_URL: http://qdrant:6333
       MINIO_ENDPOINT: http://minio:9000
       BROWSER_GRID_URL: http://browsergrid:9090
+    ports:
+      - '4000:4000'
     volumes:
-      - .:/app
-      - workspace_node_modules:/app/node_modules
+      - ./backend/src:/app/src
+      - ./backend/skills:/app/skills
+      - ./backend/alembic:/app/alembic
+      - ./backend/alembic.ini:/app/alembic.ini
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       postgres:
@@ -138,42 +128,82 @@ services:
       browsergrid:
         condition: service_healthy
     healthcheck:
-      test:
-        [
-          'CMD',
-          'bun',
-          '--eval',
-          "fetch('http://localhost:4000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
-        ]
+      test: ['CMD', 'curl', '-f', 'http://localhost:4000/api/health']
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 30s
 
-  web:
-    <<: *dev-app
+  # ── ARQ Worker (background jobs) ────────────────────────
+
+  worker:
     profiles: ['app']
-    command: >
-      sh -lc "cd apps/web &&
-      bun run dev --host 0.0.0.0 --port 4321"
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+      target: dev
+    working_dir: /app
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://clawbuddy:clawbuddy@postgres:5432/clawbuddy
+      REDIS_URL: redis://redis:6379
+      QDRANT_URL: http://qdrant:6333
+      MINIO_ENDPOINT: http://minio:9000
+    command: ["python", "-m", "arq", "clawbuddy.workers.WorkerSettings"]
+    volumes:
+      - ./backend/src:/app/src
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # ── React Web (Vite dev server) ─────────────────────────
+
+  web:
+    profiles: ['app']
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+      target: build
+    working_dir: /app
+    entrypoint: ['sh', '-c']
+    command: ['bun run dev --host 0.0.0.0 --port 4321']
     ports:
       - '4321:4321'
     environment:
       CHOKIDAR_USEPOLLING: 'true'
       VITE_API_PROXY_TARGET: http://api:4000
     volumes:
-      - .:/app
-      - workspace_node_modules:/app/node_modules
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+      - ./frontend/index.html:/app/index.html
+      - ./frontend/vite.config.ts:/app/vite.config.ts
+      - ./frontend/tsconfig.json:/app/tsconfig.json
+      - ./frontend/tsconfig.app.json:/app/tsconfig.app.json
+      - ./frontend/packages/shared/src:/app/packages/shared/src
     depends_on:
       api:
         condition: service_healthy
 
+  # ── Tests ───────────────────────────────────────────────
+
   test:
-    <<: *dev-app
-    profiles: ['app']
+    profiles: ['test']
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+      target: dev
+    working_dir: /app
+    env_file: .env
     environment:
-      API_BASE: http://api:4000/api
-    command: ['sh', '-lc', 'bun run db:generate && bun run test']
+      DATABASE_URL: postgresql://clawbuddy:clawbuddy@postgres:5432/clawbuddy
+      REDIS_URL: redis://redis:6379
+      QDRANT_URL: http://qdrant:6333
+      MINIO_ENDPOINT: http://minio:9000
+    command: ["python", "-m", "pytest", "tests/", "-v"]
+    volumes:
+      - ./backend/src:/app/src
+      - ./backend/tests:/app/tests
     depends_on:
       api:
         condition: service_healthy
@@ -183,4 +213,3 @@ volumes:
   redis_data:
   qdrant_data:
   minio_data:
-  workspace_node_modules:

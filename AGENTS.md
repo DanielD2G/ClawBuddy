@@ -2,13 +2,13 @@
 
 ## Task Completion Requirements
 
-- All of `bun fmt`, `bun lint`, and `bun typecheck` must pass before considering tasks completed.
+- Backend: `cd backend && uv run ruff check src/` and `uv run mypy src/` must pass.
+- Frontend: `cd frontend && bun run lint` and `bun run type-check` must pass.
 - NEVER run `bun test`. Always use `bun run test` (runs Vitest).
-- The Docker Compose-based Makefile targets are optional for future CI/CD or containerized workflows; local task completion should still use the direct Bun commands above unless a task explicitly asks otherwise.
 
 ## Project Snapshot
 
-ClawBuddy is a Self-hosted, privacy-first AI agent platform with sandboxed tool execution. Inspired by Openclaw in many ways, but trying to improve the formula by adding more capabilities
+ClawBuddy is a Self-hosted, privacy-first AI agent platform with sandboxed tool execution.
 
 This repository is a VERY EARLY WIP. Proposing sweeping changes that improve long-term maintainability is encouraged.
 
@@ -26,8 +26,8 @@ Long term maintainability is a core priority. If you add new functionality, firs
 
 ## Package Roles
 
-- `apps/api`: Hono
-- `apps/web`: React/Vite UI. Owns session UX, conversation/event rendering, and client-side state. Connects to the server
+- `backend/`: Python/FastAPI API server + ARQ workers
+- `frontend/`: React/Vite UI. Owns session UX, conversation/event rendering, and client-side state.
 
 ## Coding Principles — Non-negotiable
 
