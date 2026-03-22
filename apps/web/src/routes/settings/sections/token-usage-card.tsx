@@ -52,11 +52,11 @@ export function TokenUsageCard() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['token-usage'],
-    queryFn: () => apiClient.get<TokenUsageData>('/settings/token-usage'),
+    queryFn: () => apiClient.get<TokenUsageData>('/global-settings/token-usage'),
   })
 
   const resetMutation = useMutation({
-    mutationFn: () => apiClient.delete('/settings/token-usage'),
+    mutationFn: () => apiClient.delete('/global-settings/token-usage'),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['token-usage'] }),
   })
 

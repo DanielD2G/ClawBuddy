@@ -1,9 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import type { WorkspaceSettings } from '@clawbuddy/shared'
 import { apiClient } from '@/lib/api-client'
-import { useActiveWorkspace } from '@/providers/workspace-provider'
 import { POLL_CONTAINER_STATUS_MS } from '@/constants'
-import { createMutation, createMutationWithContext, createCustomMutation } from './create-mutation'
+import { createMutation, createCustomMutation } from './create-mutation'
 
 export interface Workspace {
   id: string
@@ -38,30 +37,6 @@ export const useCreateWorkspace = createMutation<
   Workspace,
   { name: string; description?: string; color?: string }
 >('post', '/workspaces', [['workspaces']])
-
-export const useUpdateWorkspace = createMutationWithContext<
-  Workspace,
-  {
-    id: string
-    name?: string
-    description?: string
-    color?: string
-    settings?: WorkspaceSettings
-    autoExecute?: boolean
-  }
->(
-  'patch',
-  ({ id }) => `/workspaces/${id}`,
-  [['workspaces']],
-  () => {
-    const { activeWorkspace, setActiveWorkspace } = useActiveWorkspace()
-    return (updated) => {
-      if (activeWorkspace && updated.id === activeWorkspace.id) {
-        setActiveWorkspace(updated)
-      }
-    }
-  },
-)
 
 export const useDeleteWorkspace = createMutation<unknown, string>(
   'delete',

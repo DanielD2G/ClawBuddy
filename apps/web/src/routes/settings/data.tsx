@@ -29,11 +29,11 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import {
-  useAdminStats,
-  useAdminWorkspaces,
-  useAdminDocuments,
-  useAdminConversations,
-} from '@/hooks/use-admin'
+  useDataStats,
+  useDataWorkspaces,
+  useDataDocuments,
+  useDataConversations,
+} from '@/hooks/use-data-overview'
 import { DEFAULT_PAGE_SIZE } from '@/constants'
 
 const STATUS_COLORS: Record<string, string> = {
@@ -43,7 +43,7 @@ const STATUS_COLORS: Record<string, string> = {
   FAILED: 'bg-red-500/10 text-red-700 dark:text-red-400',
 }
 
-export function DataSettingsPage() {
+export function DataOverviewPage() {
   return (
     <div className="space-y-8">
       <StatsCards />
@@ -55,7 +55,7 @@ export function DataSettingsPage() {
 }
 
 function StatsCards() {
-  const { data, isLoading } = useAdminStats()
+  const { data, isLoading } = useDataStats()
 
   const cards = [
     { label: 'Workspaces', value: data?.workspaces, icon: FolderOpen },
@@ -92,7 +92,7 @@ function StatsCards() {
 function WorkspacesSection() {
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
-  const { data, isLoading } = useAdminWorkspaces({ page, limit: DEFAULT_PAGE_SIZE, search })
+  const { data, isLoading } = useDataWorkspaces({ page, limit: DEFAULT_PAGE_SIZE, search })
 
   const totalPages = data ? Math.ceil(data.total / data.limit) : 1
 
@@ -194,7 +194,12 @@ function DocumentsSection() {
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
   const [page, setPage] = useState(1)
-  const { data, isLoading } = useAdminDocuments({ page, limit: DEFAULT_PAGE_SIZE, search, status })
+  const { data, isLoading } = useDataDocuments({
+    page,
+    limit: DEFAULT_PAGE_SIZE,
+    search,
+    status,
+  })
 
   const totalPages = data ? Math.ceil(data.total / data.limit) : 1
 
@@ -340,7 +345,7 @@ function DocumentsSection() {
 function ConversationsSection() {
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
-  const { data, isLoading } = useAdminConversations({ page, limit: DEFAULT_PAGE_SIZE, search })
+  const { data, isLoading } = useDataConversations({ page, limit: DEFAULT_PAGE_SIZE, search })
 
   const totalPages = data ? Math.ceil(data.total / data.limit) : 1
 

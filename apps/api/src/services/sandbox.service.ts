@@ -28,6 +28,14 @@ interface ExecResult {
   exitCode: number
 }
 
+type SandboxSessionContainerRow = {
+  containerId: string | null
+}
+
+type WorkspaceContainerRow = {
+  containerId: string | null
+}
+
 async function resolveImage(workspaceId: string): Promise<string> {
   let image: string
   try {
@@ -207,57 +215,6 @@ export const sandboxService = {
       `[Sandbox] Created workspace container for ${workspaceId}: ${container.id.slice(0, 12)}`,
     )
     return container.id
-  },
-
-  /**
-   * Create a Linux user inside the workspace container for a conversation.
-   * Returns the username. Idempotent — if user already exists, returns existing.
-   */
-  async ensureConversationUser(workspaceId: string, chatSessionId: string): Promise<string> {
-    const session = await prisma.chatSession.findUniqueOrThrow({
-      where: { id: chatSessionId },
-    })
-
-    if (session.linuxUser) return session.linuxUser
-
-    const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId } })
-    if (!workspace.containerId || workspace.containerStatus !== 'running') {
-      throw new Error('Workspace container is not running')
-    }
-
-    const container = docker.getContainer(workspace.containerId)
-    const username = `conv-${chatSessionId.slice(0, 8)}`
-    const homeDir = `/workspace/users/${username}`
-
-    // Create user with home dir, bash shell, and sudo access (idempotent)
-    await execSimple(
-      container,
-      `id ${username} 2>/dev/null || (useradd -m -d ${homeDir} -s /bin/bash ${username} && mkdir -p ${homeDir} && chown ${username}:${username} ${homeDir}); chmod 777 ${homeDir} 2>/dev/null || true; find ${homeDir} -mindepth 1 -exec chmod a+rwX {} + 2>/dev/null || true`,
-    )
-    // Grant passwordless sudo
-    await execSimple(
-      container,
-      `echo '${username} ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/${username} 2>/dev/null || true`,
-    )
-
-    // Copy credentials from skel if available (AWS, GWS, etc.)
-    await execSimple(
-      container,
-      [
-        `if [ -d /etc/skel/.aws ]; then cp -r /etc/skel/.aws ${homeDir}/.aws 2>/dev/null; chown -R ${username}:${username} ${homeDir}/.aws 2>/dev/null; fi`,
-        `if [ -d /etc/skel/.config/gws ]; then mkdir -p ${homeDir}/.config/gws; cp -r /etc/skel/.config/gws/* ${homeDir}/.config/gws/ 2>/dev/null; chown -R ${username}:${username} ${homeDir}/.config 2>/dev/null; fi`,
-      ].join(' || true\n') + ' || true',
-    )
-
-    await prisma.chatSession.update({
-      where: { id: chatSessionId },
-      data: { linuxUser: username },
-    })
-
-    console.log(
-      `[Sandbox] Created user ${username} for session ${chatSessionId} in workspace ${workspaceId}`,
-    )
-    return username
   },
 
   /**
@@ -577,24 +534,24 @@ export const sandboxService = {
 
       const activeContainerIds = new Set(
         (
-          await prisma.sandboxSession.findMany({
+          (await prisma.sandboxSession.findMany({
             where: { status: 'running' },
             select: { containerId: true },
-          })
+          })) as SandboxSessionContainerRow[]
         )
-          .map((s) => s.containerId)
-          .filter(Boolean),
+          .map((s: SandboxSessionContainerRow) => s.containerId)
+          .filter((containerId): containerId is string => Boolean(containerId)),
       )
 
       const workspaceContainerIds = new Set(
         (
-          await prisma.workspace.findMany({
+          (await prisma.workspace.findMany({
             where: { containerStatus: 'running' },
             select: { containerId: true },
-          })
+          })) as WorkspaceContainerRow[]
         )
-          .map((w) => w.containerId)
-          .filter(Boolean),
+          .map((w: WorkspaceContainerRow) => w.containerId)
+          .filter((containerId): containerId is string => Boolean(containerId)),
       )
 
       for (const container of containers) {

@@ -54,6 +54,13 @@ interface DiscoveredCapability {
   skillType: string | null
 }
 
+type CapabilityListRow = {
+  slug: string
+  name: string
+  description: string
+  toolDefinitions: unknown
+}
+
 export const toolDiscoveryService = {
   /**
    * Index all capabilities into Qdrant for semantic search.
@@ -203,13 +210,13 @@ export const toolDiscoveryService = {
    * List all available capabilities in compact format (for fallback).
    */
   async listAvailable(enabledSlugs: string[]): Promise<string> {
-    const capabilities = await prisma.capability.findMany({
+    const capabilities = (await prisma.capability.findMany({
       where: { slug: { in: enabledSlugs } },
       select: { slug: true, name: true, description: true, toolDefinitions: true },
-    })
+    })) as CapabilityListRow[]
 
     return capabilities
-      .map((cap) => {
+      .map((cap: CapabilityListRow) => {
         const toolDefs = (cap.toolDefinitions ?? []) as unknown as ToolDefinition[]
         const toolNames = toolDefs.map((t) => t.name).join(', ')
         return `- ${cap.slug}: ${cap.name} — ${cap.description} (tools: ${toolNames})`
@@ -219,7 +226,7 @@ export const toolDiscoveryService = {
 
   /**
    * Build the minimal discovery context for the agent loop.
-   * Only includes always-on capabilities + mentioned ones + discover_tools.
+   * Only includes always-on capabilities + preloaded conversation capabilities + discover_tools.
    */
   buildDiscoveryContext(
     capabilities: Array<{
@@ -229,16 +236,16 @@ export const toolDiscoveryService = {
       toolDefinitions: unknown
       networkAccess?: boolean
     }>,
-    mentionedSlugs?: string[],
+    preloadedSlugs?: string[],
     timezone?: string,
   ): DiscoveryContext {
     // Always-on capabilities
     const alwaysOnSlugs = [...ALWAYS_ON_CAPABILITY_SLUGS]
-    const mentionedSet = new Set(mentionedSlugs ?? [])
+    const preloadedSet = new Set(preloadedSlugs ?? [])
 
     // Collect capabilities that should be loaded immediately
     const loadedCaps = capabilities.filter(
-      (c) => alwaysOnSlugs.includes(c.slug) || mentionedSet.has(c.slug),
+      (c) => alwaysOnSlugs.includes(c.slug) || preloadedSet.has(c.slug),
     )
 
     // Build system prompt with only loaded capabilities + discovery instructions
