@@ -108,7 +108,7 @@ export function ChatPage() {
   const contextTokens = currentSession?.lastInputTokens
   const { data: modelConfig } = useQuery({
     queryKey: ['model-config'],
-    queryFn: () => apiClient.get<{ contextLimitTokens?: number }>('/settings/models'),
+    queryFn: () => apiClient.get<{ contextLimitTokens?: number }>('/global-settings/models'),
     staleTime: MODEL_CONFIG_STALE_TIME_MS,
   })
   const contextLimit = modelConfig?.contextLimitTokens ?? DEFAULT_CONTEXT_LIMIT_TOKENS

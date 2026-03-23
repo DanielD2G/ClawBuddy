@@ -42,17 +42,17 @@ function computeAllowRule(approval: PendingApproval): string {
     case 'aws_command': {
       const tokens = command.split(/\s+/).filter(Boolean)
       const prefix = tokens[0] ?? ''
-      return prefix ? `Bash(aws ${prefix} *)` : 'Bash(aws *)'
+      return prefix ? `Aws(${prefix} *)` : 'Aws(*)'
     }
     case 'kubectl_command': {
       const tokens = command.split(/\s+/).filter(Boolean)
       const prefix = tokens[0] ?? ''
-      return prefix ? `Bash(kubectl ${prefix} *)` : 'Bash(kubectl *)'
+      return prefix ? `Kubectl(${prefix} *)` : 'Kubectl(*)'
     }
     case 'docker_command': {
       const tokens = command.split(/\s+/).filter(Boolean)
       const prefix = tokens[0] ?? ''
-      return prefix ? `Bash(docker ${prefix} *)` : 'Bash(docker *)'
+      return prefix ? `Docker(${prefix} *)` : 'Docker(*)'
     }
     case 'run_python':
       return 'Python(*)'
@@ -71,7 +71,7 @@ function computeAllowRule(approval: PendingApproval): string {
 const APPROVAL_OPTIONS = [
   'Yes',
   'Yes, always in this session',
-  'Yes, always',
+  'Yes, always in this workspace',
   'No, skip this action',
 ]
 
@@ -81,7 +81,7 @@ export interface ApprovalInputBarProps {
     approvalId: string,
     decision: 'approved' | 'denied',
     allowRule?: string,
-    scope?: 'session' | 'global',
+    scope?: 'session' | 'workspace',
   ) => void
 }
 
@@ -98,7 +98,7 @@ export function ApprovalInputBar({ approvals, onDecision }: ApprovalInputBarProp
       )
     } else if (selectedIndex === 2) {
       approvals.forEach((a) =>
-        onDecision(a.approvalId, 'approved', allowRule ?? computeAllowRule(a), 'global'),
+        onDecision(a.approvalId, 'approved', allowRule ?? computeAllowRule(a), 'workspace'),
       )
     } else {
       approvals.forEach((a) => onDecision(a.approvalId, 'denied'))

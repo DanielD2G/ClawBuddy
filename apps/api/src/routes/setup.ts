@@ -18,6 +18,7 @@ import { validateBody } from '../lib/validate.js'
 import Docker from 'dockerode'
 import { buildProviderState } from '../services/provider-state.service.js'
 import { handleProviderConnectionTest } from './provider-connection-test.js'
+import { SANDBOX_BASE_IMAGE } from '../constants.js'
 
 const app = new Hono()
 
@@ -479,7 +480,7 @@ app.post('/preflight', async (c) => {
   await runCheck('Sandbox Base Image', async () => {
     const docker = new Docker()
     try {
-      const img = await docker.getImage('clawbuddy-sandbox-base').inspect()
+      const img = await docker.getImage(SANDBOX_BASE_IMAGE).inspect()
       const sizeMB = Math.round((img.Size ?? 0) / 1024 / 1024)
       return { status: 'pass', message: `Image ready (${sizeMB}MB)` }
     } catch {
@@ -490,7 +491,7 @@ app.post('/preflight', async (c) => {
   // 9. Sandbox spin-up test — create and immediately destroy a test container
   await runCheck('Sandbox Spin-up', async () => {
     const docker = new Docker()
-    let image = 'clawbuddy-sandbox-base'
+    let image = SANDBOX_BASE_IMAGE
     try {
       await docker.getImage(image).inspect()
     } catch {

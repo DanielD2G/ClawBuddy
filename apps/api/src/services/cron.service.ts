@@ -16,10 +16,99 @@ function repeatableJobKey(cronJobId: string) {
   return `cron:${cronJobId}`
 }
 
+type CronJobRow = {
+  id: string
+  enabled: boolean
+  schedule: string
+}
+
+type ListCronJobsOptions = {
+  workspaceId?: string
+  sessionId?: string
+  includeGlobal?: boolean
+  includeWorkspace?: boolean
+  includeConversation?: boolean
+}
+
 export const cronService = {
-  async list() {
-    return prisma.cronJob.findMany({
-      orderBy: { createdAt: 'asc' },
+  async list(options: ListCronJobsOptions = {}) {
+    const {
+      workspaceId,
+      sessionId,
+      includeGlobal = !options.workspaceId,
+      includeWorkspace = !!options.workspaceId,
+      includeConversation = !!options.workspaceId,
+    } = options
+
+    const orWhere: Record<string, unknown>[] = []
+
+    if (includeGlobal) {
+      orWhere.push({ workspaceId: null, sessionId: null })
+    }
+
+    if (workspaceId && includeWorkspace) {
+      orWhere.push({ workspaceId, sessionId: null })
+    }
+
+    if (workspaceId && includeConversation) {
+      orWhere.push(
+        sessionId ? { workspaceId, sessionId } : { workspaceId, sessionId: { not: null } },
+      )
+    }
+
+    if (orWhere.length === 0) {
+      return []
+    }
+
+    const where = { OR: orWhere }
+    const jobs = await prisma.cronJob.findMany({
+      where,
+      orderBy: [{ builtin: 'desc' }, { createdAt: 'asc' }],
+    })
+
+    const workspaceIds = Array.from(
+      new Set(jobs.map((job) => job.workspaceId).filter((value): value is string => !!value)),
+    )
+    const sessionIds = Array.from(
+      new Set(jobs.map((job) => job.sessionId).filter((value): value is string => !!value)),
+    )
+
+    const [workspaces, sessions] = await Promise.all([
+      workspaceIds.length > 0
+        ? prisma.workspace.findMany({
+            where: { id: { in: workspaceIds } },
+            select: { id: true, name: true },
+          })
+        : [],
+      sessionIds.length > 0
+        ? prisma.chatSession.findMany({
+            where: { id: { in: sessionIds } },
+            select: { id: true, title: true },
+          })
+        : [],
+    ])
+
+    const workspaceNames = new Map(workspaces.map((workspace) => [workspace.id, workspace.name]))
+    const sessionTitles = new Map(
+      sessions.map((session) => [session.id, session.title || 'Untitled conversation']),
+    )
+
+    return jobs.map((job) => {
+      const scope =
+        !job.workspaceId && !job.sessionId
+          ? 'global'
+          : job.workspaceId && job.sessionId
+            ? 'conversation'
+            : 'workspace'
+
+      return {
+        ...job,
+        scope,
+        scopeLabel:
+          scope === 'global' ? 'Global' : scope === 'conversation' ? 'Conversation' : 'Workspace',
+        workspaceName: job.workspaceId ? (workspaceNames.get(job.workspaceId) ?? null) : null,
+        conversationTitle: job.sessionId ? (sessionTitles.get(job.sessionId) ?? null) : null,
+      }
     })
   },
 
@@ -135,8 +224,10 @@ export const cronService = {
 
   async syncAllJobs() {
     // Get all DB jobs
-    const dbJobs = await prisma.cronJob.findMany()
-    const dbJobIds = new Set(dbJobs.filter((j) => j.enabled).map((j) => j.id))
+    const dbJobs = (await prisma.cronJob.findMany()) as CronJobRow[]
+    const dbJobIds = new Set(
+      dbJobs.filter((j: CronJobRow) => j.enabled).map((j: CronJobRow) => j.id),
+    )
 
     // Get existing repeatables from BullMQ
     const existingRepeatables = await cronQueue.getRepeatableJobs()

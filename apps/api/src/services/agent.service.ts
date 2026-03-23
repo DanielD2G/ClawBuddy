@@ -52,6 +52,11 @@ import {
   deserializeAgentState,
   buildPublicAgentState,
 } from './agent-state.service.js'
+import {
+  buildSessionConversationState,
+  getSessionAllowRules,
+  getSessionLoadedCapabilitySlugs,
+} from './session-state.service.js'
 
 /** Resolve sub-agent metadata for delegate_task approval events. */
 function resolveSubAgentMeta(
@@ -69,6 +74,77 @@ function resolveSubAgentMeta(
     subAgentDescription: roleConfig.description,
     subAgentToolNames: resolved.map((t) => t.name),
   }
+}
+
+const MAX_CONVERSATION_LOADED_CAPABILITIES = 8
+
+function stringArraysEqual(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index])
+}
+
+function mergeConversationLoadedCapabilitySlugs(
+  existing: string[] | null | undefined,
+  additions: string[] | null | undefined,
+  enabledCapabilitySlugs: Set<string>,
+): string[] {
+  const merged: string[] = []
+
+  for (const slug of [...(additions ?? []), ...(existing ?? [])]) {
+    if (!enabledCapabilitySlugs.has(slug)) continue
+    if (ALWAYS_ON_CAPABILITY_SLUGS.includes(slug)) continue
+    if (merged.includes(slug)) continue
+    merged.push(slug)
+    if (merged.length >= MAX_CONVERSATION_LOADED_CAPABILITIES) break
+  }
+
+  return merged
+}
+
+async function persistConversationLoadedCapabilitySlugs(
+  sessionId: string,
+  current: string[],
+  additions: string[],
+  enabledCapabilitySlugs: Set<string>,
+): Promise<string[]> {
+  if (!additions.length) return current
+
+  const next = mergeConversationLoadedCapabilitySlugs(current, additions, enabledCapabilitySlugs)
+  if (stringArraysEqual(current, next)) return current
+
+  const session = await prisma.chatSession.findUniqueOrThrow({
+    where: { id: sessionId },
+    select: { sessionAllowRules: true },
+  })
+
+  await prisma.chatSession.update({
+    where: { id: sessionId },
+    data: {
+      sessionAllowRules: buildSessionConversationState(session.sessionAllowRules, {
+        loadedCapabilitySlugs: next,
+      }),
+    },
+  })
+
+  return next
+}
+
+function buildConversationLoadedCapabilitiesSection(
+  loadedCapabilitySlugs: string[],
+  capabilities: Array<{ slug: string; name: string }>,
+): string {
+  if (!loadedCapabilitySlugs.length) return ''
+
+  const loadedNames = loadedCapabilitySlugs
+    .map((slug) => capabilities.find((cap) => cap.slug === slug)?.name ?? slug)
+    .filter(Boolean)
+
+  if (!loadedNames.length) return ''
+
+  return buildPromptSection(
+    'conversation_loaded_capabilities',
+    `These capabilities were already discovered or used earlier in this conversation and remain available now: ${loadedNames.join(', ')}.
+For short follow-up requests such as "again", "otra vez", "same", or retries, reuse the most relevant capability from this list before falling back to generic bash/python or running tool discovery again.`,
+  )
 }
 
 /**
@@ -218,6 +294,39 @@ export const agentService = {
 
     // Get workspace-scoped capabilities
     const capabilities = await capabilityService.getEnabledCapabilitiesForWorkspace(workspaceId)
+    const enabledCapabilitySlugs = new Set(capabilities.map((cap) => cap.slug))
+
+    const sessionData = await prisma.chatSession.findUniqueOrThrow({
+      where: { id: sessionId },
+      select: {
+        contextSummary: true,
+        contextSummaryUpTo: true,
+        lastInputTokens: true,
+        sessionAllowRules: true,
+      },
+    })
+
+    const storedConversationLoadedCapabilitySlugs = getSessionLoadedCapabilitySlugs(
+      sessionData.sessionAllowRules,
+    )
+    let conversationLoadedCapabilitySlugs = mergeConversationLoadedCapabilitySlugs(
+      storedConversationLoadedCapabilitySlugs,
+      options?.mentionedSlugs,
+      enabledCapabilitySlugs,
+    )
+
+    if (
+      !stringArraysEqual(storedConversationLoadedCapabilitySlugs, conversationLoadedCapabilitySlugs)
+    ) {
+      await prisma.chatSession.update({
+        where: { id: sessionId },
+        data: {
+          sessionAllowRules: buildSessionConversationState(sessionData.sessionAllowRules, {
+            loadedCapabilitySlugs: conversationLoadedCapabilitySlugs,
+          }),
+        },
+      })
+    }
 
     // Discovery mode: when many capabilities are enabled, use dynamic tool loading
     const useDiscovery = capabilities.length >= TOOL_DISCOVERY_THRESHOLD
@@ -238,7 +347,7 @@ export const agentService = {
     if (useDiscovery) {
       const ctx = toolDiscoveryService.buildDiscoveryContext(
         capabilities,
-        options?.mentionedSlugs,
+        conversationLoadedCapabilitySlugs,
         timezone,
       )
       tools = ctx.tools
@@ -247,17 +356,24 @@ export const agentService = {
         capabilityCount: capabilities.length,
         loadedTools: tools.map((t) => t.name),
         alwaysOnSlugs: ctx.alwaysOnSlugs,
+        conversationLoadedCapabilitySlugs,
       })
 
       // Pre-flight discovery: search for relevant tools based on the user's message
       const enabledSlugs = capabilities
         .map((c) => c.slug)
-        .filter((slug) => !ALWAYS_ON_CAPABILITY_SLUGS.includes(slug))
-      const preflightResults = await toolDiscoveryService.search(
-        safeUserContent,
-        enabledSlugs,
-        PREFLIGHT_DISCOVERY_SCORE_THRESHOLD,
-      )
+        .filter(
+          (slug) =>
+            !ALWAYS_ON_CAPABILITY_SLUGS.includes(slug) &&
+            !conversationLoadedCapabilitySlugs.includes(slug),
+        )
+      const preflightResults = enabledSlugs.length
+        ? await toolDiscoveryService.search(
+            safeUserContent,
+            enabledSlugs,
+            PREFLIGHT_DISCOVERY_SCORE_THRESHOLD,
+          )
+        : []
       if (preflightResults.length) {
         for (const cap of preflightResults) {
           discoveredCapabilities.push({
@@ -285,6 +401,12 @@ export const agentService = {
           })),
         )
         systemPrompt += `\n\n${buildPromptSection('dynamically_loaded_capabilities', capPrompts)}`
+        conversationLoadedCapabilitySlugs = await persistConversationLoadedCapabilitySlugs(
+          sessionId,
+          conversationLoadedCapabilitySlugs,
+          preflightResults.map((cap) => cap.slug),
+          enabledCapabilitySlugs,
+        )
         log.debugLog('Pre-flight discovery loaded', {
           slugs: preflightResults.map((c) => c.slug),
           toolsAdded: preflightResults.flatMap((c) => c.tools.map((t) => t.name)),
@@ -328,12 +450,21 @@ You MUST use the tools from these capabilities to fulfill this request. Do NOT s
       }
     }
 
+    const conversationLoadedCapabilitiesSection = buildConversationLoadedCapabilitiesSection(
+      conversationLoadedCapabilitySlugs,
+      capabilities,
+    )
+    if (conversationLoadedCapabilitiesSection) {
+      systemPrompt += `\n\n${conversationLoadedCapabilitiesSection}`
+    }
+
     log.debugLog('Capabilities loaded', {
       count: capabilities.length,
       slugs: capabilities.map((c) => c.slug),
       toolCount: tools.length,
       toolNames: tools.map((t) => t.name),
       mentionedSlugs: options?.mentionedSlugs,
+      conversationLoadedCapabilitySlugs,
       discoveryMode: useDiscovery,
     })
 
@@ -348,14 +479,9 @@ You MUST use the tools from these capabilities to fulfill this request. Do NOT s
     log.debugLog('History loaded', { messageCount: history.length })
 
     // Context compression — summarize older messages if context is too large
-    const sessionData = await prisma.chatSession.findUniqueOrThrow({
-      where: { id: sessionId },
-      select: {
-        contextSummary: true,
-        contextSummaryUpTo: true,
-        lastInputTokens: true,
-        sessionAllowRules: true,
-      },
+    const workspaceData = await prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { permissions: true },
     })
 
     const contextLimitTokens = await settingsService.getContextLimitTokens()
@@ -460,11 +586,12 @@ When using sourcePath in generate_file, use the full path: /workspace/filename o
       ;(messages[0] as { content: string }).content += sandboxContext
     }
 
-    // Load auto-approve rules (global + session-scoped)
-    const globalSettings = await prisma.globalSettings.findUnique({ where: { id: 'singleton' } })
-    const globalRules = (globalSettings?.autoApproveRules as string[]) ?? []
-    const sessionRules = (sessionData.sessionAllowRules as string[]) ?? []
-    const allowRules: string[] = [...globalRules, ...sessionRules]
+    // Load auto-approve rules (workspace + session-scoped)
+    const workspaceRules = (
+      (workspaceData?.permissions as { allow?: string[] } | null)?.allow ?? []
+    ).filter((rule): rule is string => typeof rule === 'string')
+    const sessionRules = getSessionAllowRules(sessionData.sessionAllowRules)
+    const allowRules: string[] = [...workspaceRules, ...sessionRules]
 
     const maxIterations = await settingsService.getMaxAgentIterations()
     for (let i = 0; i < maxIterations; i++) {
@@ -957,6 +1084,12 @@ When using sourcePath in generate_file, use the full path: /workspace/filename o
                 if (newCaps.length < parsed.discovered.length) {
                   result.output = JSON.stringify({ ...parsed, discovered: newCaps })
                 }
+                conversationLoadedCapabilitySlugs = await persistConversationLoadedCapabilitySlugs(
+                  sessionId,
+                  conversationLoadedCapabilitySlugs,
+                  newCaps.map((cap: { slug: string }) => cap.slug),
+                  enabledCapabilitySlugs,
+                )
                 log.debugLog('Tools dynamically injected', {
                   newSlugs: newCaps.map((c: { slug: string }) => c.slug),
                   skippedDuplicates: parsed.discovered.length - newCaps.length,
@@ -966,6 +1099,15 @@ When using sourcePath in generate_file, use the full path: /workspace/filename o
             } catch {
               /* Discovery output parse failed */
             }
+          }
+
+          if (!result.error && capabilitySlug !== 'unknown') {
+            conversationLoadedCapabilitySlugs = await persistConversationLoadedCapabilitySlugs(
+              sessionId,
+              conversationLoadedCapabilitySlugs,
+              [capabilitySlug],
+              enabledCapabilitySlugs,
+            )
           }
 
           toolExecutionLog.push({
@@ -1239,6 +1381,28 @@ When using sourcePath in generate_file, use the full path: /workspace/filename o
     // Pre-load capabilities for resume execution
     const resumeCapabilities =
       await capabilityService.getEnabledCapabilitiesForWorkspace(workspaceId)
+    const enabledCapabilitySlugs = new Set(resumeCapabilities.map((cap) => cap.slug))
+    const storedConversationLoadedCapabilitySlugs = getSessionLoadedCapabilitySlugs(
+      session.sessionAllowRules,
+    )
+    let conversationLoadedCapabilitySlugs = mergeConversationLoadedCapabilitySlugs(
+      storedConversationLoadedCapabilitySlugs,
+      state.mentionedSlugs,
+      enabledCapabilitySlugs,
+    )
+
+    if (
+      !stringArraysEqual(storedConversationLoadedCapabilitySlugs, conversationLoadedCapabilitySlugs)
+    ) {
+      await prisma.chatSession.update({
+        where: { id: sessionId },
+        data: {
+          sessionAllowRules: buildSessionConversationState(session.sessionAllowRules, {
+            loadedCapabilitySlugs: conversationLoadedCapabilitySlugs,
+          }),
+        },
+      })
+    }
 
     // Process approved tool calls — parallel-safe tools concurrently, others sequentially
     const resumeExecutionIds: string[] = []
@@ -1295,7 +1459,7 @@ When using sourcePath in generate_file, use the full path: /workspace/filename o
       r: (typeof resolvedPending)[number],
       result: ExecutionResult,
     ) => {
-      const { toolCall } = r
+      const { toolCall, capabilitySlug } = r
       const isDiscoveryToolResume = toolCall.name === 'discover_tools'
 
       log.logToolResult(toolCall.name, result)
@@ -1314,6 +1478,31 @@ When using sourcePath in generate_file, use the full path: /workspace/filename o
       if (result.executionId) resumeExecutionIds.push(result.executionId)
       if (result.subAgentExecutionIds?.length) {
         resumeExecutionIds.push(...result.subAgentExecutionIds)
+      }
+
+      if (isDiscoveryToolResume && result.output) {
+        try {
+          const parsed = JSON.parse(result.output)
+          if (parsed.type === 'discovery_result' && parsed.discovered?.length) {
+            conversationLoadedCapabilitySlugs = await persistConversationLoadedCapabilitySlugs(
+              sessionId,
+              conversationLoadedCapabilitySlugs,
+              parsed.discovered.map((cap: { slug: string }) => cap.slug),
+              enabledCapabilitySlugs,
+            )
+          }
+        } catch {
+          /* Discovery output parse failed */
+        }
+      }
+
+      if (!result.error && capabilitySlug !== 'unknown') {
+        conversationLoadedCapabilitySlugs = await persistConversationLoadedCapabilitySlugs(
+          sessionId,
+          conversationLoadedCapabilitySlugs,
+          [capabilitySlug],
+          enabledCapabilitySlugs,
+        )
       }
 
       // Truncate large sandbox outputs to save context
@@ -1438,19 +1627,22 @@ When using sourcePath in generate_file, use the full path: /workspace/filename o
       .buildToolDefinitions(capabilities)
       .filter((t) => !DELEGATION_ONLY_TOOLS.has(t.name))
 
-    // Load auto-approve rules (global + session-scoped) and workspace auto-execute flag
-    const resumeSettings = await prisma.globalSettings.findUnique({ where: { id: 'singleton' } })
-    const resumeGlobalRules = (resumeSettings?.autoApproveRules as string[]) ?? []
+    // Load auto-approve rules (workspace + session-scoped) and workspace auto-execute flag
     const resumeSession = await prisma.chatSession.findUniqueOrThrow({
       where: { id: sessionId },
       select: { sessionAllowRules: true },
     })
-    const resumeSessionRules = (resumeSession.sessionAllowRules as string[]) ?? []
-    const allowRules: string[] = [...resumeGlobalRules, ...resumeSessionRules]
+    const resumeSessionRules = getSessionAllowRules(resumeSession.sessionAllowRules)
     const resumeWorkspace = await prisma.workspace.findUniqueOrThrow({
       where: { id: state.workspaceId },
-      select: { autoExecute: true },
+      select: { autoExecute: true, permissions: true },
     })
+    const allowRules: string[] = [
+      ...(((resumeWorkspace.permissions as { allow?: string[] } | null)?.allow ?? []).filter(
+        (rule): rule is string => typeof rule === 'string',
+      ) as string[]),
+      ...resumeSessionRules,
+    ]
     const autoApprove = resumeWorkspace.autoExecute
 
     const maxIterations = await settingsService.getMaxAgentIterations()
@@ -1776,6 +1968,31 @@ When using sourcePath in generate_file, use the full path: /workspace/filename o
               exitCode: result.exitCode,
               durationMs: result.durationMs,
             })
+          }
+
+          if (isDiscoveryToolLoop && result.output) {
+            try {
+              const parsed = JSON.parse(result.output)
+              if (parsed.type === 'discovery_result' && parsed.discovered?.length) {
+                conversationLoadedCapabilitySlugs = await persistConversationLoadedCapabilitySlugs(
+                  sessionId,
+                  conversationLoadedCapabilitySlugs,
+                  parsed.discovered.map((cap: { slug: string }) => cap.slug),
+                  enabledCapabilitySlugs,
+                )
+              }
+            } catch {
+              /* Discovery output parse failed */
+            }
+          }
+
+          if (!result.error && capabilitySlug !== 'unknown') {
+            conversationLoadedCapabilitySlugs = await persistConversationLoadedCapabilitySlugs(
+              sessionId,
+              conversationLoadedCapabilitySlugs,
+              [capabilitySlug],
+              enabledCapabilitySlugs,
+            )
           }
 
           // Collect document sources from search_documents

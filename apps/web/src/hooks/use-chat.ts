@@ -663,7 +663,7 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
       approvalId: string,
       decision: 'approved' | 'denied',
       allowRule?: string,
-      scope?: 'session' | 'global',
+      scope?: 'session' | 'workspace',
     ) => {
       const sessionId = sessionIdRef.current
       if (!sessionId) return

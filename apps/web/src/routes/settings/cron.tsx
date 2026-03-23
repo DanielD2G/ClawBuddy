@@ -1,12 +1,13 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import {
-  useAdminCronJobs,
+  useCronJobs,
   useCreateCronJob,
   useDeleteCronJob,
   useToggleCronJob,
   useTriggerCronJob,
-  type AdminCronJob,
-} from '@/hooks/use-admin'
+  type CronJob,
+} from '@/hooks/use-cron-jobs'
+import { useActiveWorkspace } from '@/providers/workspace-provider'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -44,27 +45,47 @@ import {
   Check,
 } from 'lucide-react'
 
-export function CronSettingsPage() {
+const SCOPE_ORDER = ['global', 'workspace', 'conversation'] as const
+
+export function DataCronPage() {
+  const { activeWorkspace, activeWorkspaceId } = useActiveWorkspace()
   const [createOpen, setCreateOpen] = useState(false)
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <p className="text-muted-foreground">Manage scheduled tasks and recurring agent jobs.</p>
-        <Button onClick={() => setCreateOpen(true)}>
+        <div className="space-y-1">
+          <p className="text-muted-foreground">Manage scheduled tasks and recurring agent jobs.</p>
+          <p className="text-xs text-muted-foreground">
+            {activeWorkspace
+              ? `Showing global jobs plus jobs for ${activeWorkspace.name}.`
+              : 'Showing global jobs only. Select a workspace to create workspace cron jobs.'}
+          </p>
+        </div>
+        <Button onClick={() => setCreateOpen(true)} disabled={!activeWorkspaceId}>
           <Plus className="size-4 mr-1" />
           New Cron Job
         </Button>
       </div>
 
       <CronJobsTable />
-      <CreateCronDialog open={createOpen} onOpenChange={setCreateOpen} />
+      <CreateCronDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        workspaceId={activeWorkspaceId}
+      />
     </div>
   )
 }
 
 function CronJobsTable() {
-  const { data: jobs, isLoading } = useAdminCronJobs()
+  const { activeWorkspaceId } = useActiveWorkspace()
+  const { data: jobs, isLoading } = useCronJobs({
+    workspaceId: activeWorkspaceId,
+    includeGlobal: true,
+    includeWorkspace: !!activeWorkspaceId,
+    includeConversation: !!activeWorkspaceId,
+  })
   const toggleMutation = useToggleCronJob()
   const triggerMutation = useTriggerCronJob()
   const deleteMutation = useDeleteCronJob()
@@ -83,12 +104,18 @@ function CronJobsTable() {
     )
   }
 
+  const groupedJobs = SCOPE_ORDER.map((scope) => ({
+    scope,
+    jobs: jobs.filter((job) => job.scope === scope),
+  })).filter((group) => group.jobs.length > 0)
+
   return (
     <Card>
       <Table>
         <TableHeader>
           <TableRow>
             <TableHead>Name</TableHead>
+            <TableHead>Scope</TableHead>
             <TableHead>Schedule</TableHead>
             <TableHead>Type</TableHead>
             <TableHead>Status</TableHead>
@@ -97,17 +124,33 @@ function CronJobsTable() {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {jobs.map((job) => (
-            <CronJobRow
-              key={job.id}
-              job={job}
-              onToggle={(enabled) => toggleMutation.mutate({ id: job.id, enabled })}
-              onTrigger={() => triggerMutation.mutate(job.id)}
-              onDelete={() => deleteMutation.mutate(job.id)}
-              isToggling={toggleMutation.isPending}
-              isTriggering={triggerMutation.isPending}
-              isDeleting={deleteMutation.isPending}
-            />
+          {groupedJobs.map((group) => (
+            <Fragment key={group.scope}>
+              <TableRow key={`${group.scope}-label`}>
+                <TableCell
+                  colSpan={7}
+                  className="bg-muted/30 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                >
+                  {group.scope === 'global'
+                    ? 'Global'
+                    : group.scope === 'workspace'
+                      ? 'Workspace'
+                      : 'Conversation'}
+                </TableCell>
+              </TableRow>
+              {group.jobs.map((job) => (
+                <CronJobRow
+                  key={job.id}
+                  job={job}
+                  onToggle={(enabled) => toggleMutation.mutate({ id: job.id, enabled })}
+                  onTrigger={() => triggerMutation.mutate(job.id)}
+                  onDelete={() => deleteMutation.mutate(job.id)}
+                  isToggling={toggleMutation.isPending}
+                  isTriggering={triggerMutation.isPending}
+                  isDeleting={deleteMutation.isPending}
+                />
+              ))}
+            </Fragment>
           ))}
         </TableBody>
       </Table>
@@ -124,7 +167,7 @@ function CronJobRow({
   isTriggering,
   isDeleting,
 }: {
-  job: AdminCronJob
+  job: CronJob
   onToggle: (enabled: boolean) => void
   onTrigger: () => void
   onDelete: () => void
@@ -140,7 +183,23 @@ function CronJobRow({
           {job.description && (
             <div className="text-xs text-muted-foreground mt-0.5">{job.description}</div>
           )}
+          {job.scope === 'workspace' && job.workspaceName && (
+            <div className="text-xs text-muted-foreground mt-0.5">
+              Workspace: {job.workspaceName}
+            </div>
+          )}
+          {job.scope === 'conversation' && (
+            <div className="text-xs text-muted-foreground mt-0.5">
+              {job.workspaceName ? `${job.workspaceName} · ` : ''}
+              {job.conversationTitle ?? 'Untitled conversation'}
+            </div>
+          )}
         </div>
+      </TableCell>
+      <TableCell>
+        <Badge variant="outline" className="text-xs">
+          {job.scopeLabel}
+        </Badge>
       </TableCell>
       <TableCell>
         <code className="text-xs bg-muted px-1.5 py-0.5 rounded">{job.schedule}</code>
@@ -203,9 +262,11 @@ function CronJobRow({
 function CreateCronDialog({
   open,
   onOpenChange,
+  workspaceId,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
+  workspaceId: string | undefined
 }) {
   const [name, setName] = useState('')
   const [schedule, setSchedule] = useState('')
@@ -215,8 +276,10 @@ function CreateCronDialog({
   const createMutation = useCreateCronJob()
 
   const handleSubmit = () => {
+    if (!workspaceId) return
+
     createMutation.mutate(
-      { name, schedule, type, prompt: type === 'agent' ? prompt : undefined },
+      { name, schedule, type, prompt: type === 'agent' ? prompt : undefined, workspaceId },
       {
         onSuccess: () => {
           onOpenChange(false)
@@ -301,7 +364,7 @@ function CreateCronDialog({
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={!name.trim() || !schedule.trim() || createMutation.isPending}
+            disabled={!workspaceId || !name.trim() || !schedule.trim() || createMutation.isPending}
           >
             {createMutation.isPending ? 'Creating...' : 'Create'}
           </Button>

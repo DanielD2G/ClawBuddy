@@ -1,13 +1,15 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { useAdminSettings } from '@/hooks/use-admin-settings'
+import {
+  useGlobalProviders,
+  useSetGlobalProviderConnection,
+  useRemoveGlobalProviderConnection,
+} from '@/hooks/use-providers'
 import { ProviderConnectionRow } from '@/components/provider-connection-row'
 
 export function ApiKeysSection() {
-  const {
-    query: { data, isPending },
-    setProviderConnection,
-    removeProviderConnection,
-  } = useAdminSettings()
+  const { data, isPending } = useGlobalProviders()
+  const setProviderConnection = useSetGlobalProviderConnection()
+  const removeProviderConnection = useRemoveGlobalProviderConnection()
 
   if (isPending) {
     return (
@@ -24,8 +26,6 @@ export function ApiKeysSection() {
 
   if (!data) return null
 
-  const { providers } = data
-
   return (
     <Card>
       <CardHeader>
@@ -36,17 +36,17 @@ export function ApiKeysSection() {
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        {Object.entries(providers.metadata).map(([provider, metadata]) => (
+        {Object.entries(data.metadata).map(([provider, metadata]) => (
           <ProviderConnectionRow
             key={provider}
             provider={provider}
             metadata={metadata}
-            info={providers.connections[provider]}
+            info={data.connections[provider]}
             onSave={(value) => setProviderConnection.mutate({ provider, value })}
             onRemove={() => removeProviderConnection.mutate(provider)}
             isSaving={setProviderConnection.isPending}
             isRemoving={removeProviderConnection.isPending}
-            basePath="/admin"
+            basePath="/global-settings"
             variant="settings"
           />
         ))}

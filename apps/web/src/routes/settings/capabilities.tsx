@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
+import type { Workspace } from '@/hooks/use-workspaces'
 import { useActiveWorkspace } from '@/providers/workspace-provider'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -26,12 +27,8 @@ import {
   Box,
   FileSearch,
   Puzzle,
-  Trash2,
   Settings,
-  ShieldCheck,
-  Plus,
-  X,
-  Save,
+  Trash2,
   Upload,
   Braces,
   CheckCircle2,
@@ -44,7 +41,7 @@ import {
   Unplug,
   Info,
 } from 'lucide-react'
-import { CATEGORY_LABELS, EXAMPLE_PERMISSION_RULES } from '@/constants'
+import { CATEGORY_LABELS } from '@/constants'
 
 const ICON_MAP: Record<string, React.ElementType> = {
   Terminal,
@@ -199,7 +196,6 @@ export function CapabilitiesSettingsPage() {
   return (
     <div className="space-y-8">
       <CapabilitiesGrid onCapabilityToggled={triggerRebuild} />
-      <GlobalPermissions />
 
       <div className="border-t pt-8">
         <InstalledSkills onRebuild={triggerRebuild} rebuildStatus={rebuildState.status} />
@@ -260,24 +256,48 @@ export function CapabilitiesSettingsPage() {
 }
 
 function CapabilitiesGrid({ onCapabilityToggled }: { onCapabilityToggled: () => void }) {
-  const { activeWorkspaceId } = useActiveWorkspace()
+  const { activeWorkspaceId, setActiveWorkspace } = useActiveWorkspace()
   const [searchParams, setSearchParams] = useSearchParams()
 
   // Handle OAuth callback query params
   useEffect(() => {
     const oauthStatus = searchParams.get('oauth')
-    if (oauthStatus === 'success') {
-      toast.success('Google account connected successfully')
-      searchParams.delete('oauth')
-      setSearchParams(searchParams, { replace: true })
-    } else if (oauthStatus === 'error') {
-      const message = searchParams.get('message') || 'OAuth failed'
-      toast.error(`Google OAuth failed: ${message}`)
+    const callbackWorkspaceId = searchParams.get('workspaceId')
+    if (!oauthStatus) return
+
+    let cancelled = false
+
+    const syncWorkspace = async () => {
+      if (callbackWorkspaceId && callbackWorkspaceId !== activeWorkspaceId) {
+        try {
+          const workspace = await apiClient.get<Workspace>(`/workspaces/${callbackWorkspaceId}`)
+          if (!cancelled) {
+            setActiveWorkspace(workspace)
+          }
+        } catch {
+          // If lookup fails, still show the OAuth result and clean the URL.
+        }
+      }
+
+      if (oauthStatus === 'success') {
+        toast.success('Google account connected successfully')
+      } else if (oauthStatus === 'error') {
+        const message = searchParams.get('message') || 'OAuth failed'
+        toast.error(`Google OAuth failed: ${message}`)
+      }
+
       searchParams.delete('oauth')
       searchParams.delete('message')
+      searchParams.delete('workspaceId')
       setSearchParams(searchParams, { replace: true })
     }
-  }, [searchParams, setSearchParams])
+
+    syncWorkspace()
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeWorkspaceId, searchParams, setActiveWorkspace, setSearchParams])
 
   const { data: capabilities, isLoading } = useQuery({
     queryKey: ['workspace-capabilities', activeWorkspaceId],
@@ -288,7 +308,7 @@ function CapabilitiesGrid({ onCapabilityToggled }: { onCapabilityToggled: () => 
 
   const { data: googleOAuthConfig } = useQuery({
     queryKey: ['google-oauth-config'],
-    queryFn: () => apiClient.get<{ configured: boolean }>('/setup/google-oauth'),
+    queryFn: () => apiClient.get<{ configured: boolean }>('/global-settings/google-oauth'),
   })
   const googleOAuthConfigured = googleOAuthConfig?.configured ?? false
 
@@ -603,128 +623,6 @@ function CapabilityCard({
         />
       )}
     </>
-  )
-}
-
-function GlobalPermissions() {
-  const queryClient = useQueryClient()
-  const [newRule, setNewRule] = useState('')
-  const [localRules, setLocalRules] = useState<string[] | null>(null)
-
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin-permissions'],
-    queryFn: () => apiClient.get<{ autoApproveRules: string[] }>('/admin/permissions'),
-  })
-
-  const rules = localRules ?? data?.autoApproveRules ?? []
-  const isDirty = localRules !== null
-
-  const saveMutation = useMutation({
-    mutationFn: (autoApproveRules: string[]) =>
-      apiClient.patch('/admin/permissions', { autoApproveRules }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-permissions'] })
-      setLocalRules(null)
-    },
-  })
-
-  const addRule = () => {
-    if (!newRule.trim()) return
-    setLocalRules([...rules, newRule.trim()])
-    setNewRule('')
-  }
-
-  const removeRule = (index: number) => {
-    setLocalRules(rules.filter((_, i) => i !== index))
-  }
-
-  if (isLoading) return null
-
-  return (
-    <div>
-      <div className="flex items-center gap-2 mb-3">
-        <ShieldCheck className="size-5 text-muted-foreground" />
-        <div>
-          <h2 className="text-lg font-semibold">Tool Permissions</h2>
-          <p className="text-sm text-muted-foreground">
-            {rules.length > 0
-              ? 'Matching commands run automatically. Others require user approval.'
-              : 'No rules configured — all tool executions require user approval.'}
-          </p>
-        </div>
-      </div>
-
-      <Card>
-        <CardContent className="py-4 space-y-3">
-          {/* Rules list */}
-          {rules.length > 0 && (
-            <div className="space-y-1.5">
-              {rules.map((rule, i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-2 rounded-md border bg-muted/30 px-3 py-1.5"
-                >
-                  <code className="flex-1 text-xs font-mono">{rule}</code>
-                  <button
-                    type="button"
-                    onClick={() => removeRule(i)}
-                    className="text-muted-foreground hover:text-destructive transition-colors"
-                  >
-                    <X className="size-3.5" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Add rule */}
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={newRule}
-              onChange={(e) => setNewRule(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && addRule()}
-              placeholder="e.g. Bash(aws s3 ls *)"
-              className="flex-1 h-(--control-sm) rounded-md border bg-background px-3 text-sm font-mono placeholder:text-muted-foreground/50"
-            />
-            <Button variant="outline" onClick={addRule} disabled={!newRule.trim()}>
-              <Plus className="size-4" />
-              Add
-            </Button>
-          </div>
-
-          {/* Quick add examples */}
-          <div className="flex flex-wrap gap-1.5">
-            {EXAMPLE_PERMISSION_RULES.filter((r) => !rules.includes(r))
-              .slice(0, 4)
-              .map((rule) => (
-                <button
-                  key={rule}
-                  type="button"
-                  onClick={() => setLocalRules([...rules, rule])}
-                  className="rounded-full border px-2.5 py-0.5 text-[11px] font-mono text-muted-foreground hover:bg-muted transition-colors"
-                >
-                  + {rule}
-                </button>
-              ))}
-          </div>
-
-          {/* Save */}
-          {isDirty && (
-            <div className="flex justify-end">
-              <Button
-                size="sm"
-                onClick={() => saveMutation.mutate(rules)}
-                disabled={saveMutation.isPending}
-              >
-                <Save className="size-4" />
-                {saveMutation.isPending ? 'Saving...' : 'Save Permissions'}
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </div>
   )
 }
 

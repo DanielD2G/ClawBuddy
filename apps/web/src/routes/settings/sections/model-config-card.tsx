@@ -87,7 +87,7 @@ export function ModelConfigCard() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['model-config'],
-    queryFn: () => apiClient.get<ModelConfigData>('/settings/models'),
+    queryFn: () => apiClient.get<ModelConfigData>('/global-settings/models'),
   })
 
   const [models, setModels] = useState<Record<string, string>>({})
@@ -124,7 +124,7 @@ export function ModelConfigCard() {
 
   const saveMutation = useMutation({
     mutationFn: () =>
-      apiClient.patch('/settings/models', {
+      apiClient.patch('/global-settings/models', {
         provider: roleProviders.primary,
         ...models,
         roleProviders,

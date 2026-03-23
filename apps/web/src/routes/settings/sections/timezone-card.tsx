@@ -10,13 +10,13 @@ export function TimezoneCard() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['model-config'],
-    queryFn: () => apiClient.get<{ timezone?: string }>('/settings/models'),
+    queryFn: () => apiClient.get<{ timezone?: string }>('/global-settings/models'),
   })
 
   const timezone = data?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
 
   const saveMutation = useMutation({
-    mutationFn: (tz: string) => apiClient.patch('/settings/models', { timezone: tz }),
+    mutationFn: (tz: string) => apiClient.patch('/global-settings/models', { timezone: tz }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['model-config'] })
       toast.success('Timezone updated')

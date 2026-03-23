@@ -13,9 +13,8 @@ import folderRoutes from './routes/folders.js'
 import documentRoutes from './routes/documents.js'
 import searchRoutes from './routes/search.js'
 import chatRoutes from './routes/chat.js'
-import statsRoutes from './routes/stats.js'
-import settingsRoutes from './routes/settings.js'
-import adminRoutes from './routes/admin.js'
+import globalSettingsRoutes from './routes/global-settings.js'
+import dataRoutes from './routes/data.js'
 import setupRoutes from './routes/setup.js'
 import capabilityRoutes from './routes/capabilities.js'
 import fileRoutes from './routes/files.js'
@@ -43,26 +42,13 @@ const STATIC_GZIP_TYPES = new Set([
 async function gzipStaticResponse(c: Context, next: Next) {
   await next()
 
-  if (!['GET', 'HEAD'].includes(c.req.method)) {
-    return
-  }
-
-  if (c.req.path.startsWith('/api/')) {
-    return
-  }
-
-  if (!c.req.header('accept-encoding')?.includes('gzip')) {
-    return
-  }
-
-  if (c.res.headers.has('Content-Encoding') || !c.res.body) {
-    return
-  }
+  if (!['GET', 'HEAD'].includes(c.req.method)) return
+  if (c.req.path.startsWith('/api/')) return
+  if (!c.req.header('accept-encoding')?.includes('gzip')) return
+  if (!c.res || c.res.headers.has('Content-Encoding') || !c.res.body) return
 
   const contentType = c.res.headers.get('content-type')?.split(';')[0]?.trim()
-  if (!contentType || !STATIC_GZIP_TYPES.has(contentType)) {
-    return
-  }
+  if (!contentType || !STATIC_GZIP_TYPES.has(contentType)) return
 
   const headers = new Headers(c.res.headers)
   headers.set('Content-Encoding', 'gzip')
@@ -132,9 +118,8 @@ app.route('/api', folderRoutes)
 app.route('/api', documentRoutes)
 app.route('/api', searchRoutes)
 app.route('/api', chatRoutes)
-app.route('/api', statsRoutes)
-app.route('/api', settingsRoutes)
-app.route('/api', adminRoutes)
+app.route('/api', globalSettingsRoutes)
+app.route('/api', dataRoutes)
 app.route('/api', capabilityRoutes)
 app.route('/api', fileRoutes)
 app.route('/api', skillRoutes)
@@ -150,11 +135,10 @@ if (existsSync(INDEX_HTML_PATH)) {
   app.use('*', gzipStaticResponse)
   app.use('*', async (c, next) => {
     if (c.req.path.startsWith('/api/')) {
-      await next()
-      return
+      return next()
     }
 
-    await serveWebAsset(c, next)
+    return serveWebAsset(c, next)
   })
 
   app.get('*', async (c) => {
@@ -166,11 +150,8 @@ if (existsSync(INDEX_HTML_PATH)) {
       return c.notFound()
     }
 
-    return new Response(Bun.file(INDEX_HTML_PATH), {
-      headers: {
-        'Content-Type': 'text/html; charset=utf-8',
-      },
-    })
+    const html = await Bun.file(INDEX_HTML_PATH).text()
+    return c.html(html)
   })
 }
 

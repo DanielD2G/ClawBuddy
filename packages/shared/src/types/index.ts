@@ -13,24 +13,6 @@ export enum DocumentType {
   HTML = 'HTML',
 }
 
-export interface User {
-  id: string
-  name: string
-  email: string
-  image?: string | null
-  createdAt: Date
-  updatedAt: Date
-}
-
-export interface Folder {
-  id: string
-  name: string
-  workspaceId: string
-  parentId?: string | null
-  createdAt: Date
-  updatedAt: Date
-}
-
 export interface Document {
   id: string
   title: string
@@ -45,41 +27,6 @@ export interface Document {
   processingPct?: number | null
   createdAt: Date
   updatedAt: Date
-}
-
-export interface DocumentChunk {
-  id: string
-  documentId: string
-  content: string
-  qdrantId: string
-  chunkIndex: number
-  metadata?: Record<string, unknown>
-}
-
-export interface ChatSession {
-  id: string
-  workspaceId?: string | null
-  title?: string | null
-  folderScope: string[]
-  agentStatus: string
-  lastMessageAt: Date
-  createdAt: Date
-  updatedAt: Date
-}
-
-export interface ChatMessage {
-  id: string
-  sessionId: string
-  role: 'user' | 'assistant'
-  content: string
-  sources?: DocumentChunk[]
-  createdAt: Date
-}
-
-export interface ApiResponse<T = unknown> {
-  success: boolean
-  data?: T
-  error?: string
 }
 
 export * from './workspace-settings.js'
