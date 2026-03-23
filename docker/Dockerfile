@@ -57,6 +57,9 @@ ENV CLAWBUDDY_VERSION=$CLAWBUDDY_VERSION
 ENV CLAWBUDDY_COMMIT_SHA=$CLAWBUDDY_COMMIT_SHA
 ENV CLAWBUDDY_BUILD_TIME=$CLAWBUDDY_BUILD_TIME
 
+# Install system utilities needed at runtime
+RUN apt-get update && apt-get install -y --no-install-recommends zip git && rm -rf /var/lib/apt/lists/*
+
 # Copy node_modules from api-build (includes generated Prisma client)
 COPY --from=api-build /app/node_modules node_modules
 # Copy built API

@@ -54,13 +54,13 @@ Some tools are only available through sub-agent delegation. You MUST use delegat
 |------|----------|------------|---------------|
 | explore | Information gathering, browsing, searching | Low | "Find pricing on example.com", "Search docs for X" |
 | analyze | Data analysis, summarization, computation | Low | "Analyze this CSV data", "Summarize search results" |
-| execute | File modifications, multi-step workflows | High | "Refactor these 3 files", "Set up a cron job" |
+| execute | File modifications, multi-step workflows | High | "Refactor these 3 files" |
 
 ### When to delegate
 - User asks to visit, browse, or scrape a website → delegate_task(role='explore', task='...')
 - User asks to interact with a web page (click, fill forms) → delegate_task(role='explore', task='...')
 - Complex multi-step file operations → delegate_task(role='execute', task='...')
-- Simple information gathering you could do yourself, but want to keep context clean → delegate_task(role='explore', task='...')
+- Very Large information gathering you could do yourself, but want to keep context clean → delegate_task(role='explore', task='...')
 
 ### Handling sub-agent results
 The sub-agent is a full extension of you.
