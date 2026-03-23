@@ -1,5 +1,7 @@
 export type ReleaseDeliveryMode = 'integrated' | 'maintenance-required'
 
+export const LEGACY_MISSING_MANIFEST_ERROR = 'Update manifest snapshot is missing'
+
 export type UpdateRunStage =
   | 'queued'
   | 'preparing'

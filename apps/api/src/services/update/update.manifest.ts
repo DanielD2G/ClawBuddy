@@ -2,6 +2,7 @@ import type { LatestReleaseInfo, ReleaseManifest } from './update.types.js'
 
 const UPDATE_CACHE_TTL_MS = 15 * 60 * 1000
 const GITHUB_RELEASES_URL = 'https://api.github.com/repos/DanielD2G/ClawBuddy/releases/latest'
+const GITHUB_RELEASE_BY_TAG_URL = 'https://api.github.com/repos/DanielD2G/ClawBuddy/releases/tags/'
 const MANIFEST_ASSET_NAMES = ['clawbuddy-release-manifest.json', 'release-manifest.json']
 
 let releaseCache: { fetchedAt: number; value: LatestReleaseInfo | null } | null = null
@@ -62,7 +63,10 @@ function normalizeDigest(value: string | null | undefined): string | null {
   return value.startsWith('sha256:') ? value : `sha256:${value}`
 }
 
-function defaultManifest(version: string, url: string): ReleaseManifest {
+export function buildFallbackManifest(
+  version: string,
+  url: string | null | undefined,
+): ReleaseManifest {
   return {
     version,
     appImage: `ghcr.io/danield2g/clawbuddy:${version.replace(/^v/, '')}`,
@@ -73,13 +77,13 @@ function defaultManifest(version: string, url: string): ReleaseManifest {
     },
     deliveryMode: 'integrated',
     minUpdaterVersion: null,
-    notesUrl: url,
+    notesUrl: url ?? null,
   }
 }
 
 function parseManifest(raw: unknown, fallbackVersion: string, notesUrl: string): ReleaseManifest {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    return defaultManifest(fallbackVersion, notesUrl)
+    return buildFallbackManifest(fallbackVersion, notesUrl)
   }
 
   const source = raw as Record<string, unknown>
@@ -98,7 +102,7 @@ function parseManifest(raw: unknown, fallbackVersion: string, notesUrl: string):
     appImage:
       typeof source.appImage === 'string' && source.appImage.trim().length > 0
         ? source.appImage.trim()
-        : defaultManifest(fallbackVersion, notesUrl).appImage,
+        : buildFallbackManifest(fallbackVersion, notesUrl).appImage,
     imageDigest: normalizeDigest(
       typeof source.imageDigest === 'string' ? source.imageDigest.trim() : null,
     ),
@@ -133,6 +137,69 @@ async function fetchManifest(assetUrl: string, fallbackVersion: string, notesUrl
   return parseManifest(await manifestResponse.json(), fallbackVersion, notesUrl)
 }
 
+interface GitHubReleaseResponse {
+  tag_name?: string
+  name?: string
+  body?: string
+  html_url?: string
+  published_at?: string
+  assets?: Array<{ name?: string; browser_download_url?: string }>
+}
+
+function getGitHubHeaders() {
+  return {
+    Accept: 'application/vnd.github+json',
+    'User-Agent': 'ClawBuddy-Updater',
+  }
+}
+
+async function fetchGitHubRelease(url: string) {
+  const response = await fetch(url, {
+    headers: getGitHubHeaders(),
+    signal: AbortSignal.timeout(10_000),
+  })
+
+  if (response.status === 404) {
+    return null
+  }
+
+  if (!response.ok) {
+    throw new Error(`GitHub release lookup failed with ${response.status}`)
+  }
+
+  return (await response.json()) as GitHubReleaseResponse
+}
+
+async function parseGitHubRelease(
+  json: GitHubReleaseResponse | null,
+): Promise<LatestReleaseInfo | null> {
+  if (!json?.tag_name || !json.html_url || !json.published_at) {
+    return null
+  }
+
+  const version = normalizeVersion(json.tag_name)
+  if (!version) {
+    return null
+  }
+
+  const manifestAsset = json.assets?.find((asset) =>
+    asset.name ? MANIFEST_ASSET_NAMES.includes(asset.name) : false,
+  )
+  const manifest =
+    manifestAsset?.browser_download_url != null
+      ? await fetchManifest(manifestAsset.browser_download_url, version, json.html_url)
+      : buildFallbackManifest(version, json.html_url)
+
+  return {
+    version,
+    name: json.name?.trim() || version,
+    body: json.body?.trim() || '',
+    url: json.html_url,
+    publishedAt: json.published_at,
+    manifest,
+  }
+}
+
 export async function fetchLatestRelease(force = false): Promise<LatestReleaseInfo | null> {
   if (!force && releaseCache && Date.now() - releaseCache.fetchedAt < UPDATE_CACHE_TTL_MS) {
     return releaseCache.value
@@ -143,52 +210,7 @@ export async function fetchLatestRelease(force = false): Promise<LatestReleaseIn
   }
 
   releasePromise = (async () => {
-    const response = await fetch(GITHUB_RELEASES_URL, {
-      headers: {
-        Accept: 'application/vnd.github+json',
-        'User-Agent': 'ClawBuddy-Updater',
-      },
-      signal: AbortSignal.timeout(10_000),
-    })
-
-    if (!response.ok) {
-      throw new Error(`GitHub release lookup failed with ${response.status}`)
-    }
-
-    const json = (await response.json()) as {
-      tag_name?: string
-      name?: string
-      body?: string
-      html_url?: string
-      published_at?: string
-      assets?: Array<{ name?: string; browser_download_url?: string }>
-    }
-
-    if (!json.tag_name || !json.html_url || !json.published_at) {
-      return null
-    }
-
-    const version = normalizeVersion(json.tag_name)
-    if (!version) {
-      return null
-    }
-
-    const manifestAsset = json.assets?.find((asset) =>
-      asset.name ? MANIFEST_ASSET_NAMES.includes(asset.name) : false,
-    )
-    const manifest =
-      manifestAsset?.browser_download_url != null
-        ? await fetchManifest(manifestAsset.browser_download_url, version, json.html_url)
-        : defaultManifest(version, json.html_url)
-
-    const latest: LatestReleaseInfo = {
-      version,
-      name: json.name?.trim() || version,
-      body: json.body?.trim() || '',
-      url: json.html_url,
-      publishedAt: json.published_at,
-      manifest,
-    }
+    const latest = await parseGitHubRelease(await fetchGitHubRelease(GITHUB_RELEASES_URL))
 
     releaseCache = { fetchedAt: Date.now(), value: latest }
     return latest
@@ -203,4 +225,15 @@ export async function fetchLatestRelease(force = false): Promise<LatestReleaseIn
 
 export function clearReleaseCache() {
   releaseCache = null
+}
+
+export async function fetchReleaseByVersion(version: string): Promise<LatestReleaseInfo | null> {
+  const normalized = normalizeVersion(version)
+  if (!normalized) {
+    return null
+  }
+
+  return parseGitHubRelease(
+    await fetchGitHubRelease(`${GITHUB_RELEASE_BY_TAG_URL}${encodeURIComponent(normalized)}`),
+  )
 }

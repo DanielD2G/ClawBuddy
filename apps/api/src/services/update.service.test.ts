@@ -1,5 +1,11 @@
 import { describe, expect, test } from 'bun:test'
-import { isReleaseNewer, isVersionAtLeast, normalizeVersion } from './update/update.manifest.js'
+import {
+  buildFallbackManifest,
+  fetchReleaseByVersion,
+  isReleaseNewer,
+  isVersionAtLeast,
+  normalizeVersion,
+} from './update/update.manifest.js'
 import {
   buildTargetImageReference,
   extractDigestFromImage,
@@ -24,6 +30,43 @@ describe('version helpers', () => {
     expect(isVersionAtLeast('v0.4.2', 'v0.4.1')).toBe(true)
     expect(isVersionAtLeast('v0.4.1', 'v0.4.2')).toBe(false)
     expect(isVersionAtLeast('dev', 'v0.4.2')).toBe(false)
+  })
+
+  test('builds fallback manifests for legacy runs', () => {
+    expect(buildFallbackManifest('v0.4.4', 'https://example.com/release')).toEqual({
+      version: 'v0.4.4',
+      appImage: 'ghcr.io/danield2g/clawbuddy:0.4.4',
+      imageDigest: null,
+      migration: { mode: 'none', rollbackSafe: true },
+      deliveryMode: 'integrated',
+      minUpdaterVersion: null,
+      notesUrl: 'https://example.com/release',
+    })
+  })
+
+  test('fetches release metadata by tag for missing manifest recovery', async () => {
+    const originalFetch = globalThis.fetch
+
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          tag_name: 'v0.4.4',
+          name: 'v0.4.4',
+          body: 'Recovery release',
+          html_url: 'https://example.com/release',
+          published_at: '2026-03-22T00:00:00.000Z',
+          assets: [],
+        }),
+        { status: 200 },
+      )) as unknown as typeof fetch
+
+    try {
+      const release = await fetchReleaseByVersion('0.4.4')
+      expect(release?.version).toBe('v0.4.4')
+      expect(release?.manifest.appImage).toBe('ghcr.io/danield2g/clawbuddy:0.4.4')
+    } finally {
+      globalThis.fetch = originalFetch
+    }
   })
 })
 

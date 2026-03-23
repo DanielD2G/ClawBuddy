@@ -80,6 +80,25 @@ jobs:
             echo EOF
           } >> "$GITHUB_OUTPUT"
 
+      - name: Generate release manifest
+        run: |
+          VERSION="${{ needs.build.outputs.version }}"
+          IMAGE_TAG="${VERSION#v}"
+          cat > clawbuddy-release-manifest.json <<EOF
+          {
+            "version": "${VERSION}",
+            "appImage": "ghcr.io/danield2g/clawbuddy:${IMAGE_TAG}",
+            "imageDigest": null,
+            "migration": {
+              "mode": "none",
+              "rollbackSafe": true
+            },
+            "deliveryMode": "integrated",
+            "minUpdaterVersion": null,
+            "notesUrl": "https://github.com/${{ github.repository }}/releases/tag/${VERSION}"
+          }
+          EOF
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -87,3 +106,4 @@ jobs:
           name: ${{ needs.build.outputs.version }}
           body: ${{ steps.changelog.outputs.body }}
           generate_release_notes: false
+          files: clawbuddy-release-manifest.json

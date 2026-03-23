@@ -22,7 +22,12 @@ import type {
   UpdateRunStage,
   UpdateRunStatus,
 } from './update.types.js'
-import { normalizeVersion } from './update.manifest.js'
+import { LEGACY_MISSING_MANIFEST_ERROR } from './update.types.js'
+import {
+  buildFallbackManifest,
+  fetchReleaseByVersion,
+  normalizeVersion,
+} from './update.manifest.js'
 
 const ACTIVE_STATUSES: UpdateRunStatus[] = ['queued', 'running']
 const LEASE_TTL_MS = 30_000
@@ -307,14 +312,50 @@ async function claimNextRun(instanceId: string) {
   return prisma.appUpdateRun.findUniqueOrThrow({ where: { id: candidate.id } })
 }
 
-async function handlePreparing(run: AppUpdateRunRecord, instanceId: string) {
-  const manifest = parseManifestSnapshot(run.manifest)
-  if (!manifest) {
-    await markTerminalRun(run, 'failed', 'failed', 'Update manifest snapshot is missing', {
-      error: 'Update manifest snapshot is missing',
-    })
-    return
+async function hydrateMissingManifest(run: AppUpdateRunRecord) {
+  const existingManifest = parseManifestSnapshot(run.manifest)
+  if (existingManifest && run.targetImage) {
+    return { run, manifest: existingManifest }
   }
+
+  const release = await fetchReleaseByVersion(run.targetVersion).catch(() => null)
+  const manifest =
+    release?.manifest ?? buildFallbackManifest(run.targetVersion, run.targetReleaseUrl)
+  const targetImage = buildTargetImageReference(manifest)
+
+  const updated = await prisma.appUpdateRun.update({
+    where: { id: run.id },
+    data: {
+      manifest: manifest as unknown as Prisma.InputJsonValue,
+      targetImage,
+      targetImageDigest: manifest.imageDigest,
+      targetReleaseName: release?.name ?? run.targetReleaseName,
+      targetReleaseUrl: release?.url ?? run.targetReleaseUrl,
+      targetPublishedAt: release?.publishedAt
+        ? new Date(release.publishedAt)
+        : run.targetPublishedAt,
+      targetReleaseNotes: release?.body ?? run.targetReleaseNotes,
+      message:
+        run.message === LEGACY_MISSING_MANIFEST_ERROR
+          ? `Recovered release metadata for ${run.targetVersion}`
+          : run.message,
+      error: run.error === LEGACY_MISSING_MANIFEST_ERROR ? null : run.error,
+    },
+  })
+
+  await appendEvent(
+    run.id,
+    'preparing',
+    'running',
+    `Recovered missing release manifest for ${run.targetVersion}`,
+    { targetImage },
+  )
+
+  return { run: updated, manifest }
+}
+
+async function handlePreparing(run: AppUpdateRunRecord, instanceId: string) {
+  const { manifest } = await hydrateMissingManifest(run)
 
   const support = await getInstallSupport()
   if (!support.supported) {
@@ -381,13 +422,7 @@ async function handlePulling(run: AppUpdateRunRecord, instanceId: string) {
 }
 
 async function handleMigrating(run: AppUpdateRunRecord, instanceId: string) {
-  const manifest = parseManifestSnapshot(run.manifest)
-  if (!manifest) {
-    await markTerminalRun(run, 'failed', 'failed', 'Update manifest snapshot is missing', {
-      error: 'Update manifest snapshot is missing',
-    })
-    return
-  }
+  const { manifest } = await hydrateMissingManifest(run)
 
   if (manifest.migration.mode === 'none') {
     await appendEvent(run.id, 'migrating', 'done', 'No schema migration is required')
@@ -421,13 +456,10 @@ async function handleMigrating(run: AppUpdateRunRecord, instanceId: string) {
 }
 
 async function handleDeploying(run: AppUpdateRunRecord, instanceId: string) {
-  const manifest = parseManifestSnapshot(run.manifest)
-  if (!manifest || !run.targetImage) {
-    await markTerminalRun(run, 'failed', 'failed', 'Update manifest snapshot is missing', {
-      error: 'Update manifest snapshot is missing',
-    })
-    return
-  }
+  const hydrated = await hydrateMissingManifest(run)
+  const manifest = hydrated.manifest
+  run = hydrated.run
+  const targetImage = run.targetImage ?? buildTargetImageReference(manifest)
 
   const appService = await getManagedServiceByRole('app')
   if (!appService) {
@@ -439,14 +471,14 @@ async function handleDeploying(run: AppUpdateRunRecord, instanceId: string) {
 
   const observed = await getObservedServiceState(appService)
   if (!observedImageMatchesTarget(observed.image, manifest)) {
-    await updateServiceImage(appService, run.targetImage)
+    await updateServiceImage(appService, targetImage)
     await appendEvent(
       run.id,
       'deploying',
       'running',
       `Requested Swarm rollout for ${run.targetVersion}`,
       {
-        targetImage: run.targetImage,
+        targetImage,
       },
     )
   } else {
@@ -463,13 +495,7 @@ async function handleDeploying(run: AppUpdateRunRecord, instanceId: string) {
 }
 
 async function handleVerifying(run: AppUpdateRunRecord, instanceId: string) {
-  const manifest = parseManifestSnapshot(run.manifest)
-  if (!manifest) {
-    await markTerminalRun(run, 'failed', 'failed', 'Update manifest snapshot is missing', {
-      error: 'Update manifest snapshot is missing',
-    })
-    return
-  }
+  const { manifest } = await hydrateMissingManifest(run)
 
   const appService = await getManagedServiceByRole('app')
   const observed = await getObservedServiceState(appService)

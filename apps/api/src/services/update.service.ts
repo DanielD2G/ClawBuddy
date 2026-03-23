@@ -5,7 +5,9 @@ import { getBuildInfo } from '../lib/build-info.js'
 import { settingsService } from './settings.service.js'
 import { updateLauncherService } from './update/update.launcher.js'
 import {
+  buildFallbackManifest,
   clearReleaseCache,
+  fetchReleaseByVersion,
   fetchLatestRelease,
   isReleaseNewer,
   isVersionAtLeast,
@@ -23,6 +25,7 @@ import type {
   SerializedUpdateRun,
   UpdateEligibility,
 } from './update/update.types.js'
+import { LEGACY_MISSING_MANIFEST_ERROR } from './update/update.types.js'
 
 const UPDATE_FORCE = ['true', '1', 'yes'].includes(env.UPDATE_FORCE.toLowerCase())
 const ACTIVE_RUN_STATUSES = ['queued', 'running'] as const
@@ -69,6 +72,102 @@ async function getLastTerminalRun() {
 function serializeRun(run: UpdateRunRow | null): SerializedUpdateRun | null {
   if (!run) return null
   return serializeControllerRun(run)
+}
+
+async function getRunById(runId: string) {
+  return prisma.appUpdateRun.findUnique({
+    where: { id: runId },
+    include: {
+      events: {
+        orderBy: { createdAt: 'asc' },
+        take: RUN_EVENT_LIMIT,
+      },
+    },
+  })
+}
+
+async function hydrateRunManifest(run: UpdateRunRow | null) {
+  if (!run || run.manifest) {
+    return run
+  }
+
+  const release = await fetchReleaseByVersion(run.targetVersion).catch(() => null)
+  const manifest =
+    release?.manifest ?? buildFallbackManifest(run.targetVersion, run.targetReleaseUrl)
+
+  await prisma.appUpdateRun.update({
+    where: { id: run.id },
+    data: {
+      manifest: manifestToJson(manifest),
+      targetImage: run.targetImage ?? manifest.appImage,
+      targetImageDigest: run.targetImageDigest ?? manifest.imageDigest,
+      targetReleaseName: release?.name ?? run.targetReleaseName,
+      targetReleaseUrl: release?.url ?? run.targetReleaseUrl,
+      targetPublishedAt: release?.publishedAt
+        ? new Date(release.publishedAt)
+        : run.targetPublishedAt,
+      targetReleaseNotes: release?.body ?? run.targetReleaseNotes,
+      message:
+        run.message === LEGACY_MISSING_MANIFEST_ERROR
+          ? `Recovered release metadata for ${run.targetVersion}`
+          : run.message,
+      error: run.error === LEGACY_MISSING_MANIFEST_ERROR ? null : run.error,
+    },
+  })
+
+  if (!run.events.some((event) => event.message.includes('Recovered missing release manifest'))) {
+    await prisma.appUpdateEvent.create({
+      data: {
+        runId: run.id,
+        step: 'preparing',
+        status: 'running',
+        message: `Recovered missing release manifest for ${run.targetVersion}`,
+        details: { targetImage: manifest.appImage } as Prisma.InputJsonValue,
+      },
+    })
+  }
+
+  return getRunById(run.id)
+}
+
+async function reconcileInstalledTerminalRun(run: UpdateRunRow | null, currentVersion: string) {
+  if (
+    !run ||
+    run.status === 'succeeded' ||
+    currentVersion !== run.targetVersion ||
+    (run.error !== LEGACY_MISSING_MANIFEST_ERROR && run.message !== LEGACY_MISSING_MANIFEST_ERROR)
+  ) {
+    return run
+  }
+
+  const completedAt = run.completedAt ?? new Date()
+  await prisma.appUpdateRun.update({
+    where: { id: run.id },
+    data: {
+      status: 'succeeded',
+      stage: 'succeeded',
+      message: `ClawBuddy ${run.targetVersion} is already installed`,
+      error: null,
+      rollbackReason: null,
+      observedVersion: currentVersion,
+      completedAt,
+      heartbeatAt: new Date(),
+    },
+  })
+
+  if (!run.events.some((event) => event.message.includes('already installed'))) {
+    await prisma.appUpdateEvent.create({
+      data: {
+        runId: run.id,
+        step: 'succeeded',
+        status: 'done',
+        message: `Recovered stale failed run after confirming ${run.targetVersion} is installed`,
+        details: { observedVersion: currentVersion } as Prisma.InputJsonValue,
+      },
+    })
+  }
+
+  return getRunById(run.id)
 }
 
 function getCurrentVersionFromBuild() {
@@ -214,12 +313,17 @@ export const updateService = {
       )
     }
 
-    const [support, currentVersion, currentRun, lastTerminalRun] = await Promise.all([
+    const [support, currentVersion, rawCurrentRun, rawLastTerminalRun] = await Promise.all([
       getInstallSupport(),
       getCurrentInstalledVersion(),
       getCurrentRun(),
       getLastTerminalRun(),
     ])
+    const currentRun = await hydrateRunManifest(rawCurrentRun)
+    const lastTerminalRun = await reconcileInstalledTerminalRun(
+      await hydrateRunManifest(rawLastTerminalRun),
+      currentVersion,
+    )
 
     const eligibility = buildEligibility(latestRelease, currentVersion, support)
 
@@ -243,15 +347,11 @@ export const updateService = {
   },
 
   async getRun(runId: string) {
-    const run = await prisma.appUpdateRun.findUnique({
-      where: { id: runId },
-      include: {
-        events: {
-          orderBy: { createdAt: 'asc' },
-          take: RUN_EVENT_LIMIT,
-        },
-      },
-    })
+    const existing = await getRunById(runId)
+    const run = await reconcileInstalledTerminalRun(
+      await hydrateRunManifest(existing),
+      await getCurrentInstalledVersion(),
+    )
 
     return serializeRun(run)
   },
@@ -278,7 +378,7 @@ export const updateService = {
         throw new Error(`Another update is already in progress (${existingRun.targetVersion})`)
       }
 
-      return serializeRun(existingRun)
+      return serializeRun(await hydrateRunManifest(existingRun))
     }
 
     await prisma.appUpdateRun.updateMany({
@@ -308,7 +408,18 @@ export const updateService = {
       throw new Error(`Another update is already in progress (${activeRun.targetVersion})`)
     }
 
-    const manifest = existing.manifest as Prisma.InputJsonValue | null
+    const hydrated = await hydrateRunManifest(
+      await prisma.appUpdateRun.findUnique({
+        where: { id: runId },
+        include: {
+          events: {
+            orderBy: { createdAt: 'asc' },
+            take: RUN_EVENT_LIMIT,
+          },
+        },
+      }),
+    )
+    const manifest = hydrated?.manifest as Prisma.InputJsonValue | null
     if (!manifest) {
       throw new Error('This run cannot be retried because its manifest snapshot is missing')
     }
@@ -320,15 +431,15 @@ export const updateService = {
         message: `Retry queued for ${existing.targetVersion}`,
         currentVersion: await getCurrentInstalledVersion(),
         targetVersion: existing.targetVersion,
-        targetReleaseName: existing.targetReleaseName,
-        targetReleaseUrl: existing.targetReleaseUrl,
-        targetPublishedAt: existing.targetPublishedAt,
-        targetReleaseNotes: existing.targetReleaseNotes,
-        deliveryMode: existing.deliveryMode,
-        serviceRole: existing.serviceRole,
+        targetReleaseName: hydrated?.targetReleaseName ?? existing.targetReleaseName,
+        targetReleaseUrl: hydrated?.targetReleaseUrl ?? existing.targetReleaseUrl,
+        targetPublishedAt: hydrated?.targetPublishedAt ?? existing.targetPublishedAt,
+        targetReleaseNotes: hydrated?.targetReleaseNotes ?? existing.targetReleaseNotes,
+        deliveryMode: hydrated?.deliveryMode ?? existing.deliveryMode,
+        serviceRole: hydrated?.serviceRole ?? existing.serviceRole,
         manifest,
-        targetImage: existing.targetImage,
-        targetImageDigest: existing.targetImageDigest,
+        targetImage: hydrated?.targetImage ?? existing.targetImage,
+        targetImageDigest: hydrated?.targetImageDigest ?? existing.targetImageDigest,
       },
       include: {
         events: true,
