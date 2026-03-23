@@ -9,10 +9,10 @@ COPY patches/ patches/
 COPY apps/api/package.json apps/api/package.json
 COPY apps/web/package.json apps/web/package.json
 COPY packages/shared/package.json packages/shared/package.json
-COPY packages/tsconfig/ packages/tsconfig/
+COPY packages/tsconfig/package.json packages/tsconfig/package.json
 COPY packages/eslint-config/package.json packages/eslint-config/package.json
 
-RUN bun install; exit 0
+RUN bun install --frozen-lockfile; exit 0
 # Ensure playwright-core is installed (bun install errors are silenced above for optional native deps)
 RUN test -d node_modules/playwright-core || (bun add playwright-core@1.58.2 --no-save; exit 0)
 RUN test -d node_modules/playwright-core || (echo "FATAL: playwright-core not installed" && exit 1)

@@ -4,11 +4,18 @@ import { prisma } from '../lib/prisma.js'
 import { IMAGE_TAG_HASH_LENGTH, SANDBOX_BASE_DOCKERFILE, SANDBOX_BASE_IMAGE } from '../constants.js'
 
 const docker = new Docker()
+const SANDBOX_LAYER_IMAGE_PREFIX = 'clawbuddy-sandbox-layer-'
+const SKILL_TEST_IMAGE_PREFIX = 'clawbuddy-skill-test-'
 
 interface BuildResult {
   success: boolean
   logs: string
   tag?: string
+}
+
+interface BuildFromDockerfileOptions {
+  cacheFrom?: string[]
+  onLog?: (line: string) => void
 }
 
 type WorkspaceCapabilityRow = {
@@ -19,24 +26,57 @@ type WorkspaceCapabilityRow = {
 }
 
 export const imageBuilderService = {
+  createImageTag(prefix: string, ...parts: string[]) {
+    const hash = createHash('sha256')
+      .update(parts.join('\n'))
+      .digest('hex')
+      .slice(0, IMAGE_TAG_HASH_LENGTH)
+
+    return `${prefix}${hash}`
+  },
+
+  async imageExists(tag: string): Promise<boolean> {
+    try {
+      await docker.getImage(tag).inspect()
+      return true
+    } catch {
+      return false
+    }
+  },
+
+  async buildInstallationLayer(
+    parentImage: string,
+    installationScript: string,
+    tag: string,
+    onLog?: (line: string) => void,
+  ): Promise<BuildResult> {
+    const dockerfile = [
+      `FROM ${parentImage}`,
+      `RUN ${installationScript}`,
+      'WORKDIR /workspace',
+      'CMD ["sleep", "infinity"]',
+    ].join('\n')
+
+    return this.buildFromDockerfile(dockerfile, tag, {
+      cacheFrom: [tag, parentImage],
+      onLog,
+    })
+  },
+
   /**
    * Ensure the base sandbox image exists, building it from the Dockerfile if missing.
    */
   async ensureBaseImage(onLog?: (line: string) => void): Promise<void> {
-    try {
-      await docker.getImage(SANDBOX_BASE_IMAGE).inspect()
+    if (await this.imageExists(SANDBOX_BASE_IMAGE)) {
       return // already exists
-    } catch {
-      // Image doesn't exist — build it
     }
 
     onLog?.('Building base sandbox image...')
 
-    const result = await this.buildFromDockerfile(
-      SANDBOX_BASE_DOCKERFILE,
-      SANDBOX_BASE_IMAGE,
+    const result = await this.buildFromDockerfile(SANDBOX_BASE_DOCKERFILE, SANDBOX_BASE_IMAGE, {
+      cacheFrom: [SANDBOX_BASE_IMAGE],
       onLog,
-    )
+    })
 
     if (!result.success) {
       throw new Error(`Failed to build base sandbox image: ${result.logs}`)
@@ -55,22 +95,23 @@ export const imageBuilderService = {
   ): Promise<BuildResult> {
     await this.ensureBaseImage(onLog)
 
-    const testTag = `clawbuddy-skill-test-${Date.now()}`
-    const dockerfile = [`FROM ${SANDBOX_BASE_IMAGE}`, `RUN ${installationScript}`].join('\n')
+    const testTag = this.createImageTag(
+      SKILL_TEST_IMAGE_PREFIX,
+      SANDBOX_BASE_IMAGE,
+      installationScript,
+    )
 
     try {
-      const result = await this.buildFromDockerfile(dockerfile, testTag, onLog)
-
-      // Clean up test image on success
-      if (result.success) {
-        try {
-          await docker.getImage(testTag).remove({ force: true })
-        } catch {
-          // Ignore cleanup errors
+      if (await this.imageExists(testTag)) {
+        onLog?.('Reusing cached installation image...')
+        return {
+          success: true,
+          logs: 'Using cached installation image',
+          tag: testTag,
         }
       }
 
-      return result
+      return this.buildInstallationLayer(SANDBOX_BASE_IMAGE, installationScript, testTag, onLog)
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err)
       return { success: false, logs: `Build error: ${error}` }
@@ -101,50 +142,39 @@ export const imageBuilderService = {
       return SANDBOX_BASE_IMAGE
     }
 
-    // Generate deterministic tag from installation scripts
-    const hash = createHash('sha256')
-      .update(
-        [SANDBOX_BASE_IMAGE]
-          .concat(
-            capabilities.map(
-              (c: WorkspaceCapabilityRow['capability']) => `${c.slug}:${c.installationScript}`,
-            ),
-          )
-          .join('\n'),
-      )
-      .digest('hex')
-      .slice(0, IMAGE_TAG_HASH_LENGTH)
-    const tag = `clawbuddy-sandbox-skills-${hash}`
-
-    // Check if image already exists
-    try {
-      await docker.getImage(tag).inspect()
-      return tag
-    } catch {
-      // Image doesn't exist, build it
-    }
-
-    // Generate Dockerfile
-    const dockerfileLines = [`FROM ${SANDBOX_BASE_IMAGE}`, '']
+    let parentImage = SANDBOX_BASE_IMAGE
     for (const cap of capabilities) {
-      if (cap.installationScript) {
-        dockerfileLines.push(`# Skill: ${cap.slug}`)
-        dockerfileLines.push(`RUN ${cap.installationScript}`)
-        dockerfileLines.push('')
+      const installationScript = cap.installationScript
+      if (!installationScript) {
+        continue
       }
+
+      const tag = this.createImageTag(
+        SANDBOX_LAYER_IMAGE_PREFIX,
+        parentImage,
+        cap.slug,
+        installationScript,
+      )
+
+      if (await this.imageExists(tag)) {
+        onLog?.(`Reusing cached layer for ${cap.slug}...`)
+        parentImage = tag
+        continue
+      }
+
+      onLog?.(`Building layer for ${cap.slug}...`)
+      const result = await this.buildInstallationLayer(parentImage, installationScript, tag, onLog)
+
+      if (!result.success) {
+        console.error(`[ImageBuilder] Failed to build skill image:`, result.logs)
+        // Fall back to base image
+        return SANDBOX_BASE_IMAGE
+      }
+
+      parentImage = tag
     }
-    dockerfileLines.push('CMD ["sleep", "infinity"]')
 
-    const dockerfile = dockerfileLines.join('\n')
-    const result = await this.buildFromDockerfile(dockerfile, tag, onLog)
-
-    if (!result.success) {
-      console.error(`[ImageBuilder] Failed to build skill image:`, result.logs)
-      // Fall back to base image
-      return SANDBOX_BASE_IMAGE
-    }
-
-    return tag
+    return parentImage
   },
 
   /**
@@ -153,10 +183,11 @@ export const imageBuilderService = {
   async buildFromDockerfile(
     dockerfile: string,
     tag: string,
-    onLog?: (line: string) => void,
+    options: BuildFromDockerfileOptions = {},
   ): Promise<BuildResult> {
     // Dynamically import tar-stream to create in-memory tar
     const { pack } = await import('tar-stream')
+    const { cacheFrom = [], onLog } = options
 
     return new Promise<BuildResult>((resolve) => {
       const tarPack = pack()
@@ -165,61 +196,70 @@ export const imageBuilderService = {
 
       const logs: string[] = []
 
-      docker.buildImage(tarPack as unknown as NodeJS.ReadableStream, { t: tag }, (err, stream) => {
-        if (err) {
-          resolve({
-            success: false,
-            logs: `Docker build error: ${err.message}`,
-          })
-          return
-        }
+      docker.buildImage(
+        tarPack as unknown as NodeJS.ReadableStream,
+        {
+          t: tag,
+          rm: true,
+          forcerm: true,
+          cachefrom: JSON.stringify(cacheFrom),
+        },
+        (err, stream) => {
+          if (err) {
+            resolve({
+              success: false,
+              logs: `Docker build error: ${err.message}`,
+            })
+            return
+          }
 
-        if (!stream) {
-          resolve({ success: false, logs: 'No build stream returned' })
-          return
-        }
+          if (!stream) {
+            resolve({ success: false, logs: 'No build stream returned' })
+            return
+          }
 
-        stream.on('data', (chunk: Buffer) => {
-          const lines = chunk.toString('utf-8').trim().split('\n')
-          for (const line of lines) {
-            try {
-              const json = JSON.parse(line)
-              if (json.stream) {
-                const text = json.stream.replace(/\n$/, '')
-                if (text) {
-                  logs.push(text)
-                  onLog?.(text)
+          stream.on('data', (chunk: Buffer) => {
+            const lines = chunk.toString('utf-8').trim().split('\n')
+            for (const line of lines) {
+              try {
+                const json = JSON.parse(line)
+                if (json.stream) {
+                  const text = json.stream.replace(/\n$/, '')
+                  if (text) {
+                    logs.push(text)
+                    onLog?.(text)
+                  }
+                }
+                if (json.error) {
+                  logs.push(`ERROR: ${json.error}`)
+                  onLog?.(`ERROR: ${json.error}`)
+                }
+              } catch {
+                if (line.trim()) {
+                  logs.push(line)
+                  onLog?.(line)
                 }
               }
-              if (json.error) {
-                logs.push(`ERROR: ${json.error}`)
-                onLog?.(`ERROR: ${json.error}`)
-              }
-            } catch {
-              if (line.trim()) {
-                logs.push(line)
-                onLog?.(line)
-              }
             }
-          }
-        })
-
-        stream.on('end', () => {
-          const hasError = logs.some((l) => l.startsWith('ERROR:'))
-          resolve({
-            success: !hasError,
-            logs: logs.join('\n'),
-            tag: hasError ? undefined : tag,
           })
-        })
 
-        stream.on('error', (err: Error) => {
-          resolve({
-            success: false,
-            logs: [...logs, `Stream error: ${err.message}`].join('\n'),
+          stream.on('end', () => {
+            const hasError = logs.some((l) => l.startsWith('ERROR:'))
+            resolve({
+              success: !hasError,
+              logs: logs.join('\n'),
+              tag: hasError ? undefined : tag,
+            })
           })
-        })
-      })
+
+          stream.on('error', (err: Error) => {
+            resolve({
+              success: false,
+              logs: [...logs, `Stream error: ${err.message}`].join('\n'),
+            })
+          })
+        },
+      )
     })
   },
 
@@ -232,7 +272,10 @@ export const imageBuilderService = {
       for (const img of images) {
         const tags = img.RepoTags ?? []
         for (const tag of tags) {
-          if (tag.startsWith('clawbuddy-sandbox-skills-')) {
+          if (
+            tag.startsWith(SANDBOX_LAYER_IMAGE_PREFIX) ||
+            tag.startsWith(SKILL_TEST_IMAGE_PREFIX)
+          ) {
             try {
               await docker.getImage(tag).remove({ force: true })
             } catch {
