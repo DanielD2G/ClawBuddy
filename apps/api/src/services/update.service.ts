@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma.js'
 import { env } from '../env.js'
 import { getBuildInfo } from '../lib/build-info.js'
 import { settingsService } from './settings.service.js'
+import { telegramBotManager } from '../channels/telegram/telegram-bot-manager.js'
 
 const UPDATE_FORCE = ['true', '1', 'yes'].includes(env.UPDATE_FORCE.toLowerCase())
 
@@ -743,6 +744,15 @@ async function runAcceptedUpdate(runId: string) {
     await updateRunProgress(runId, (progress) => ({
       ...progress,
       pullApi: { status: 'done', progress: `Release image ready (${run.targetVersion})` },
+      apiDeploy: { status: 'running', progress: 'Stopping Telegram bots before deploy' },
+    }))
+
+    // Stop Telegram bots before deploying so the new instance can start its own
+    // polling without a 409 conflict from the old instance still running.
+    await telegramBotManager.stopAll()
+
+    await updateRunProgress(runId, (progress) => ({
+      ...progress,
       apiDeploy: { status: 'running', progress: `Deploying ClawBuddy ${run.targetVersion}` },
     }))
 
