@@ -10,19 +10,21 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { useActiveWorkspace } from '@/providers/workspace-provider'
-import { useUpdateWorkspace } from '@/hooks/use-workspaces'
+import { useUpdateWorkspaceSettings } from '@/hooks/use-workspace-settings'
 import { Zap, AlertTriangle } from 'lucide-react'
 import { toast } from 'sonner'
 
 export function AutoExecuteCard() {
   const { activeWorkspace, activeWorkspaceId } = useActiveWorkspace()
-  const updateWorkspace = useUpdateWorkspace()
+  const updateWorkspace = useUpdateWorkspaceSettings()
   const [showConfirm, setShowConfirm] = useState(false)
   const [confirmText, setConfirmText] = useState('')
 
   const isEnabled = activeWorkspace?.autoExecute ?? false
 
   const handleToggle = (checked: boolean) => {
+    if (!activeWorkspaceId) return
+
     if (checked) {
       setShowConfirm(true)
       setConfirmText('')
@@ -59,7 +61,11 @@ export function AutoExecuteCard() {
               </CardDescription>
             </div>
           </div>
-          <Switch checked={isEnabled} onCheckedChange={handleToggle} />
+          <Switch
+            checked={isEnabled}
+            onCheckedChange={handleToggle}
+            disabled={!activeWorkspaceId}
+          />
         </div>
       </CardHeader>
 

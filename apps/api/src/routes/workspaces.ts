@@ -5,6 +5,7 @@ import {
   workspaceExportSchema,
 } from '@clawbuddy/shared'
 import type { WorkspaceExport } from '@clawbuddy/shared'
+import { z } from 'zod'
 import { workspaceService } from '../services/workspace.service.js'
 import { capabilityService } from '../services/capability.service.js'
 import { sandboxService } from '../services/sandbox.service.js'
@@ -17,6 +18,26 @@ import { validateBody } from '../lib/validate.js'
 import { buildResolvedRoleProviders } from '../lib/llm-resolver.js'
 
 const app = new Hono()
+
+type ExportCapabilityRow = {
+  slug: string
+  configSchema: unknown
+  config: unknown
+}
+
+type ExportChannelRow = {
+  type: string
+  name: string
+  enabled: boolean
+  config: unknown
+}
+
+const updateWorkspaceSettingsSchema = z.object({
+  color: z.string().max(20).optional(),
+  settings: z.record(z.unknown()).nullish(),
+  autoExecute: z.boolean().optional(),
+  permissions: z.object({ allow: z.array(z.string()) }).nullish(),
+})
 
 app.get('/', async (c) => {
   const workspaces = await workspaceService.list()
@@ -110,6 +131,43 @@ app.get('/:id', async (c) => {
   return c.json({ success: true, data: workspace })
 })
 
+app.get('/:id/settings', async (c) => {
+  const { id } = c.req.param()
+  const workspace = await workspaceService.findById(id)
+  if (!workspace) {
+    return c.json({ success: false, error: 'Workspace not found' }, 404)
+  }
+
+  return c.json({
+    success: true,
+    data: {
+      id: workspace.id,
+      color: workspace.color,
+      settings: workspace.settings,
+      autoExecute: workspace.autoExecute,
+      permissions: workspace.permissions,
+    },
+  })
+})
+
+app.patch('/:id/settings', async (c) => {
+  const { id } = c.req.param()
+  const body = await c.req.json()
+  const parsed = validateBody(updateWorkspaceSettingsSchema, body)
+  const workspace = await workspaceService.update(id, parsed)
+
+  return c.json({
+    success: true,
+    data: {
+      id: workspace.id,
+      color: workspace.color,
+      settings: workspace.settings,
+      autoExecute: workspace.autoExecute,
+      permissions: workspace.permissions,
+    },
+  })
+})
+
 app.patch('/:id', async (c) => {
   const { id } = c.req.param()
   const body = await c.req.json()
@@ -139,8 +197,10 @@ app.get('/:id/export', async (c) => {
   }
 
   // Enabled capabilities with decrypted configs
-  const enabledCaps = await capabilityService.getEnabledCapabilitiesForWorkspace(id)
-  const capabilities = enabledCaps.map((cap) => {
+  const enabledCaps = (await capabilityService.getEnabledCapabilitiesForWorkspace(
+    id,
+  )) as ExportCapabilityRow[]
+  const capabilities = enabledCaps.map((cap: ExportCapabilityRow) => {
     const schema = cap.configSchema as
       | import('../capabilities/types.js').ConfigFieldDefinition[]
       | null
@@ -150,8 +210,10 @@ app.get('/:id/export', async (c) => {
   })
 
   // Channels with decrypted tokens
-  const rawChannels = await prisma.channel.findMany({ where: { workspaceId: id } })
-  const channels = rawChannels.map((ch) => {
+  const rawChannels = (await prisma.channel.findMany({
+    where: { workspaceId: id },
+  })) as ExportChannelRow[]
+  const channels = rawChannels.map((ch: ExportChannelRow) => {
     const config = ch.config as Record<string, string>
     let decryptedConfig: Record<string, unknown> = { ...config }
     if (config.botToken) {
@@ -189,22 +251,42 @@ app.get('/:id/export', async (c) => {
   }
 
   // Token usage summary
-  const usage = await prisma.tokenUsage.groupBy({
-    by: ['provider', 'model'],
-    _sum: { inputTokens: true, outputTokens: true },
+  const usageRows = await prisma.tokenUsage.findMany({
+    select: {
+      provider: true,
+      model: true,
+      inputTokens: true,
+      outputTokens: true,
+    },
   })
   const totals = await prisma.tokenUsage.aggregate({
     _sum: { inputTokens: true, outputTokens: true },
   })
+  const usageByModel = new Map<
+    string,
+    { provider: string; model: string; inputTokens: number; outputTokens: number }
+  >()
+  for (const row of usageRows) {
+    const key = `${row.provider}:${row.model}`
+    const existing = usageByModel.get(key)
+    if (existing) {
+      existing.inputTokens += row.inputTokens
+      existing.outputTokens += row.outputTokens
+      continue
+    }
+
+    usageByModel.set(key, {
+      provider: row.provider,
+      model: row.model,
+      inputTokens: row.inputTokens,
+      outputTokens: row.outputTokens,
+    })
+  }
+
   const tokenUsage = {
     totalInputTokens: totals._sum.inputTokens ?? 0,
     totalOutputTokens: totals._sum.outputTokens ?? 0,
-    byModel: usage.map((u) => ({
-      provider: u.provider,
-      model: u.model,
-      inputTokens: u._sum.inputTokens ?? 0,
-      outputTokens: u._sum.outputTokens ?? 0,
-    })),
+    byModel: Array.from(usageByModel.values()),
   }
 
   const exportData: WorkspaceExport = {

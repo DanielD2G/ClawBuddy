@@ -61,10 +61,10 @@ export const CATEGORY_LABELS: Record<string, string> = {
 
 // ── Permission example rules ────────────────────
 export const EXAMPLE_PERMISSION_RULES = [
-  'Bash(aws s3 ls *)',
-  'Bash(aws ecs describe-*)',
-  'Bash(kubectl get *)',
-  'Bash(docker ps *)',
+  'Aws(s3 ls *)',
+  'Aws(ecs describe-*)',
+  'Kubectl(get *)',
+  'Docker(ps *)',
   'Read(*)',
   'Write(*)',
   'Python(*)',

@@ -2,7 +2,7 @@ import { Navigate, Outlet } from 'react-router-dom'
 import { useSetupStatus } from '@/hooks/use-setup'
 import { Spinner } from '@/components/ui/spinner'
 
-export function ProtectedRoute() {
+export function SetupRoute() {
   const { onboardingComplete, isLoading: setupLoading } = useSetupStatus()
 
   if (setupLoading) {

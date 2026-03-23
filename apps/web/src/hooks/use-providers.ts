@@ -1,6 +1,10 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
-import type { ProviderConnectionInfo, ProviderMetadata } from './use-settings-base'
+import type {
+  ProviderConnectionInfo,
+  ProviderConnectionsMutationResponse,
+  ProviderMetadata,
+} from './use-settings-base'
 
 export interface ProvidersData {
   metadata: Record<string, ProviderMetadata>
@@ -27,9 +31,62 @@ export interface ProvidersData {
   }
 }
 
-export function useProviders() {
+export function useGlobalProviders() {
   return useQuery({
     queryKey: ['providers'],
-    queryFn: () => apiClient.get<ProvidersData>('/settings/providers'),
+    queryFn: () => apiClient.get<ProvidersData>('/global-settings/providers'),
   })
 }
+
+export function useSetGlobalProviderConnection() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ provider, value }: { provider: string; value: string }) =>
+      apiClient.put<ProviderConnectionsMutationResponse>(
+        `/global-settings/provider-connections/${provider}`,
+        {
+          value,
+        },
+      ),
+    onSuccess: (data) => {
+      queryClient.setQueryData<ProvidersData | undefined>(['providers'], (current) =>
+        current
+          ? {
+              ...current,
+              ...(data.providers ? data.providers : {}),
+            }
+          : current,
+      )
+      queryClient.invalidateQueries({ queryKey: ['providers'] })
+      queryClient.invalidateQueries({ queryKey: ['model-config'] })
+    },
+  })
+}
+
+export function useRemoveGlobalProviderConnection() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (provider: string) =>
+      apiClient.delete<ProviderConnectionsMutationResponse>(
+        `/global-settings/provider-connections/${provider}`,
+      ),
+    onSuccess: (data) => {
+      queryClient.setQueryData<ProvidersData | undefined>(['providers'], (current) =>
+        current
+          ? {
+              ...current,
+              ...(data.providers ? data.providers : {}),
+            }
+          : current,
+      )
+      queryClient.invalidateQueries({ queryKey: ['providers'] })
+      queryClient.invalidateQueries({ queryKey: ['model-config'] })
+    },
+  })
+}
+
+export const useProviders = useGlobalProviders
+export const useSetProviderConnection = useSetGlobalProviderConnection
+export const useRemoveProviderConnection = useRemoveGlobalProviderConnection

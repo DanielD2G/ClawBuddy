@@ -1,6 +1,5 @@
 import { Hono } from 'hono'
 import { capabilityService } from '../services/capability.service.js'
-import { prisma } from '../lib/prisma.js'
 
 const app = new Hono()
 
@@ -38,65 +37,6 @@ app.patch('/workspaces/:id/capabilities/:capId', async (c) => {
   const { config } = await c.req.json()
   const result = await capabilityService.updateCapabilityConfig(id, capId, config)
   return c.json({ success: true, data: result })
-})
-
-// ── Admin endpoints ─────────────────────────
-
-app.post('/admin/capabilities', async (c) => {
-  const body = await c.req.json()
-  const {
-    slug,
-    name,
-    description,
-    icon,
-    category,
-    toolDefinitions,
-    systemPrompt,
-    dockerImage,
-    packages,
-    networkAccess,
-    configSchema,
-  } = body
-  if (!slug || !name || !description || !toolDefinitions || !systemPrompt) {
-    return c.json({ success: false, error: 'Missing required fields' }, 400)
-  }
-  const capability = await prisma.capability.create({
-    data: {
-      slug,
-      name,
-      description,
-      icon,
-      category: category ?? 'general',
-      toolDefinitions,
-      systemPrompt,
-      dockerImage,
-      packages: packages ?? [],
-      networkAccess: networkAccess ?? false,
-      configSchema: configSchema ?? undefined,
-      builtin: false,
-    },
-  })
-  return c.json({ success: true, data: capability }, 201)
-})
-
-app.get('/admin/sandboxes', async (c) => {
-  const sandboxes = await prisma.sandboxSession.findMany({
-    where: { status: { in: ['pending', 'running'] } },
-    include: {
-      workspace: { select: { id: true, name: true } },
-      chatSession: { select: { id: true, title: true } },
-      _count: { select: { executions: true } },
-    },
-    orderBy: { createdAt: 'desc' },
-  })
-  return c.json({ success: true, data: sandboxes })
-})
-
-app.delete('/admin/sandboxes/:id', async (c) => {
-  const { id } = c.req.param()
-  const { sandboxService } = await import('../services/sandbox.service.js')
-  await sandboxService.destroySandbox(id)
-  return c.json({ success: true, data: { destroyed: true } })
 })
 
 export default app

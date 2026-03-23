@@ -9,6 +9,10 @@ import { MAX_FILE_UPLOAD_BYTES } from '../constants.js'
 import { sanitizeFileName } from '../lib/sanitize.js'
 import { secretRedactionService } from '../services/secret-redaction.service.js'
 import {
+  buildSessionConversationState,
+  getSessionAllowRules,
+} from '../services/session-state.service.js'
+import {
   abortAgentLoop,
   isAbortError,
   registerAgentLoop,
@@ -41,6 +45,10 @@ app.post('/chat', async (c) => {
 
   const { cleanedContent, mentionedSlugs } = mentionParserService.parse(validated.content)
 
+  if (!sessionId) {
+    throw new ValidationError('sessionId could not be resolved')
+  }
+
   const currentSessionId = sessionId
   const attachments = validated.attachments ?? undefined
   const inventory = await secretRedactionService.buildSecretInventory(workspaceId)
@@ -64,7 +72,7 @@ app.post('/chat/sessions/:sessionId/approve', async (c) => {
     approvalId: string
     decision: 'approved' | 'denied'
     allowRule?: string
-    scope?: 'session' | 'global'
+    scope?: 'session' | 'workspace'
   }
 
   if (!approvalId || !['approved', 'denied'].includes(decision)) {
@@ -86,22 +94,36 @@ app.post('/chat/sessions/:sessionId/approve', async (c) => {
 
   // Save allow rule if provided
   if (decision === 'approved' && allowRule && scope) {
-    if (scope === 'global') {
-      const settings = await prisma.globalSettings.findUnique({ where: { id: 'singleton' } })
-      const existing = (settings?.autoApproveRules as string[]) ?? []
-      if (!existing.includes(allowRule)) {
-        await prisma.globalSettings.upsert({
-          where: { id: 'singleton' },
-          create: { id: 'singleton', autoApproveRules: [...existing, allowRule] },
-          update: { autoApproveRules: [...existing, allowRule] },
+    if (scope === 'workspace') {
+      if (session.workspaceId) {
+        const workspace = await prisma.workspace.findUnique({
+          where: { id: session.workspaceId },
+          select: { permissions: true },
         })
+        const existing = (
+          (workspace?.permissions as { allow?: string[] } | null)?.allow ?? []
+        ).filter((rule): rule is string => typeof rule === 'string')
+        if (!existing.includes(allowRule)) {
+          await prisma.workspace.update({
+            where: { id: session.workspaceId },
+            data: {
+              permissions: {
+                allow: [...existing, allowRule],
+              },
+            },
+          })
+        }
       }
     } else if (scope === 'session') {
-      const existing = (session.sessionAllowRules as string[]) ?? []
+      const existing = getSessionAllowRules(session.sessionAllowRules)
       if (!existing.includes(allowRule)) {
         await prisma.chatSession.update({
           where: { id: sessionId },
-          data: { sessionAllowRules: [...existing, allowRule] },
+          data: {
+            sessionAllowRules: buildSessionConversationState(session.sessionAllowRules, {
+              allowRules: [...existing, allowRule],
+            }),
+          },
         })
       }
     }

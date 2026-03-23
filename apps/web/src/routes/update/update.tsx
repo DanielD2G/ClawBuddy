@@ -397,7 +397,7 @@ export function UpdatePage() {
             <CardDescription>{requestError ?? 'Could not load update status.'}</CardDescription>
           </CardHeader>
           <CardContent className="flex gap-3">
-            <Button variant="outline" onClick={() => navigate('/settings/general')}>
+            <Button variant="outline" onClick={() => navigate('/settings/globals/general')}>
               <ArrowLeft className="mr-1 size-4" />
               Back to settings
             </Button>
@@ -424,7 +424,7 @@ export function UpdatePage() {
             </p>
           </div>
           <div className="flex gap-3">
-            <Button variant="outline" onClick={() => navigate('/settings/general')}>
+            <Button variant="outline" onClick={() => navigate('/settings/globals/general')}>
               <ArrowLeft className="mr-1 size-4" />
               Back to settings
             </Button>

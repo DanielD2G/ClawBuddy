@@ -21,7 +21,7 @@ export function GoogleOAuthCard() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['google-oauth-config'],
-    queryFn: () => apiClient.get<{ configured: boolean }>('/setup/google-oauth'),
+    queryFn: () => apiClient.get<{ configured: boolean }>('/global-settings/google-oauth'),
   })
 
   const testMutation = useMutation({
@@ -31,7 +31,7 @@ export function GoogleOAuthCard() {
         message?: string
         apis?: { gmail: boolean; calendar: boolean; drive: boolean }
         connectedEmail?: string | null
-      }>('/setup/google-oauth/test', {}),
+      }>('/global-settings/google-oauth/test', {}),
   })
 
   return (

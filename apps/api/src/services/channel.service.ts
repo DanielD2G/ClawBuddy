@@ -2,6 +2,17 @@ import { prisma } from '../lib/prisma.js'
 import { encrypt, decrypt } from './crypto.service.js'
 import type { TelegramChannelConfig } from '../channels/types.js'
 
+type ChannelRow = {
+  id: string
+  workspaceId: string
+  type: string
+  name: string
+  enabled: boolean
+  config: Record<string, string>
+  createdAt: Date
+  updatedAt: Date
+}
+
 function maskToken(token: string): string {
   if (token.length <= 8) return '••••••••'
   return token.slice(0, 4) + '••••' + token.slice(-4)
@@ -29,7 +40,7 @@ export const channelService = {
   },
 
   async update(id: string, data: { name?: string; config?: Partial<TelegramChannelConfig> }) {
-    const channel = await prisma.channel.findUniqueOrThrow({ where: { id } })
+    const channel = (await prisma.channel.findUniqueOrThrow({ where: { id } })) as ChannelRow
     const currentConfig = channel.config as Record<string, string>
 
     let updatedConfig = { ...currentConfig }
@@ -52,7 +63,7 @@ export const channelService = {
   },
 
   async get(id: string) {
-    const channel = await prisma.channel.findUniqueOrThrow({ where: { id } })
+    const channel = (await prisma.channel.findUniqueOrThrow({ where: { id } })) as ChannelRow
     const config = channel.config as Record<string, string>
     return {
       ...channel,
@@ -66,15 +77,15 @@ export const channelService = {
   async getByWorkspaceAndType(workspaceId: string, type: string) {
     return prisma.channel.findUnique({
       where: { workspaceId_type: { workspaceId, type } },
-    })
+    }) as Promise<ChannelRow | null>
   },
 
-  async list(workspaceId?: string) {
-    const channels = await prisma.channel.findMany({
+  async list(workspaceId?: string): Promise<ChannelRow[]> {
+    const channels = (await prisma.channel.findMany({
       where: workspaceId ? { workspaceId } : undefined,
       orderBy: { createdAt: 'desc' },
-    })
-    return channels.map((ch) => {
+    })) as ChannelRow[]
+    return channels.map((ch: ChannelRow) => {
       const config = ch.config as Record<string, string>
       return {
         ...ch,

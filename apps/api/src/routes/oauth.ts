@@ -65,18 +65,20 @@ app.get('/google/callback', async (c) => {
   const error = c.req.query('error')
 
   if (error) {
-    return c.redirect(`/settings/capabilities?oauth=error&message=${encodeURIComponent(error)}`)
+    return c.redirect(
+      `/settings/workspace/capabilities?oauth=error&message=${encodeURIComponent(error)}`,
+    )
   }
 
   if (!code || !state) {
-    return c.redirect('/settings/capabilities?oauth=error&message=Missing+code+or+state')
+    return c.redirect('/settings/workspace/capabilities?oauth=error&message=Missing+code+or+state')
   }
 
   let stateData: { workspaceId: string; capabilitySlug: string }
   try {
     stateData = JSON.parse(decrypt(state))
   } catch {
-    return c.redirect('/settings/capabilities?oauth=error&message=Invalid+state')
+    return c.redirect('/settings/workspace/capabilities?oauth=error&message=Invalid+state')
   }
 
   const { clientId, clientSecret } = await getGoogleCredentials()
@@ -97,7 +99,9 @@ app.get('/google/callback', async (c) => {
   if (!tokenRes.ok) {
     const err = await tokenRes.text()
     console.error('[OAuth] Token exchange failed:', err)
-    return c.redirect('/settings/capabilities?oauth=error&message=Token+exchange+failed')
+    return c.redirect(
+      `/settings/workspace/capabilities?oauth=error&message=Token+exchange+failed&workspaceId=${stateData.workspaceId}`,
+    )
   }
 
   const tokens = (await tokenRes.json()) as {
@@ -109,7 +113,7 @@ app.get('/google/callback', async (c) => {
 
   if (!tokens.refresh_token) {
     return c.redirect(
-      '/settings/capabilities?oauth=error&message=No+refresh+token.+Try+revoking+access+at+myaccount.google.com',
+      `/settings/workspace/capabilities?oauth=error&message=No+refresh+token.+Try+revoking+access+at+myaccount.google.com&workspaceId=${stateData.workspaceId}`,
     )
   }
 
@@ -141,7 +145,9 @@ app.get('/google/callback', async (c) => {
   })
 
   if (!capability) {
-    return c.redirect('/settings/capabilities?oauth=error&message=Capability+not+found')
+    return c.redirect(
+      `/settings/workspace/capabilities?oauth=error&message=Capability+not+found&workspaceId=${stateData.workspaceId}`,
+    )
   }
 
   const schema = capability.configSchema as ConfigFieldDefinition[] | null
@@ -188,7 +194,9 @@ app.get('/google/callback', async (c) => {
     /* ok */
   }
 
-  return c.redirect(`/workspaces/${stateData.workspaceId}?oauth=success`)
+  return c.redirect(
+    `/settings/workspace/capabilities?oauth=success&workspaceId=${stateData.workspaceId}`,
+  )
 })
 
 // ── DELETE /google/disconnect ───────────────────────────────

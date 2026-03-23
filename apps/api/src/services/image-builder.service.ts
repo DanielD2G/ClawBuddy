@@ -11,6 +11,13 @@ interface BuildResult {
   tag?: string
 }
 
+type WorkspaceCapabilityRow = {
+  capability: {
+    slug: string
+    installationScript: string | null
+  }
+}
+
 export const imageBuilderService = {
   /**
    * Ensure the base sandbox image exists, building it from the Dockerfile if missing.
@@ -49,12 +56,7 @@ export const imageBuilderService = {
     await this.ensureBaseImage(onLog)
 
     const testTag = `clawbuddy-skill-test-${Date.now()}`
-    const dockerfile = [
-      `FROM ${SANDBOX_BASE_IMAGE}`,
-      'USER root',
-      `RUN ${installationScript}`,
-      'USER sandbox',
-    ].join('\n')
+    const dockerfile = [`FROM ${SANDBOX_BASE_IMAGE}`, `RUN ${installationScript}`].join('\n')
 
     try {
       const result = await this.buildFromDockerfile(dockerfile, testTag, onLog)
@@ -82,7 +84,7 @@ export const imageBuilderService = {
   async getOrBuildImage(workspaceId: string, onLog?: (line: string) => void): Promise<string> {
     await this.ensureBaseImage(onLog)
 
-    const workspaceCapabilities = await prisma.workspaceCapability.findMany({
+    const workspaceCapabilities = (await prisma.workspaceCapability.findMany({
       where: {
         workspaceId,
         enabled: true,
@@ -90,9 +92,9 @@ export const imageBuilderService = {
       },
       include: { capability: true },
       orderBy: { capability: { slug: 'asc' } },
-    })
+    })) as WorkspaceCapabilityRow[]
 
-    const capabilities = workspaceCapabilities.map((wc) => wc.capability)
+    const capabilities = workspaceCapabilities.map((wc: WorkspaceCapabilityRow) => wc.capability)
 
     // If no skills have installation scripts, use base image
     if (!capabilities.length) {
@@ -101,7 +103,15 @@ export const imageBuilderService = {
 
     // Generate deterministic tag from installation scripts
     const hash = createHash('sha256')
-      .update(capabilities.map((c) => `${c.slug}:${c.installationScript}`).join('\n'))
+      .update(
+        [SANDBOX_BASE_IMAGE]
+          .concat(
+            capabilities.map(
+              (c: WorkspaceCapabilityRow['capability']) => `${c.slug}:${c.installationScript}`,
+            ),
+          )
+          .join('\n'),
+      )
       .digest('hex')
       .slice(0, IMAGE_TAG_HASH_LENGTH)
     const tag = `clawbuddy-sandbox-skills-${hash}`
@@ -115,7 +125,7 @@ export const imageBuilderService = {
     }
 
     // Generate Dockerfile
-    const dockerfileLines = [`FROM ${SANDBOX_BASE_IMAGE}`, 'USER root', '']
+    const dockerfileLines = [`FROM ${SANDBOX_BASE_IMAGE}`, '']
     for (const cap of capabilities) {
       if (cap.installationScript) {
         dockerfileLines.push(`# Skill: ${cap.slug}`)
@@ -123,7 +133,6 @@ export const imageBuilderService = {
         dockerfileLines.push('')
       }
     }
-    dockerfileLines.push('USER sandbox')
     dockerfileLines.push('CMD ["sleep", "infinity"]')
 
     const dockerfile = dockerfileLines.join('\n')

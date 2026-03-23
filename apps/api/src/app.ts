@@ -13,9 +13,8 @@ import folderRoutes from './routes/folders.js'
 import documentRoutes from './routes/documents.js'
 import searchRoutes from './routes/search.js'
 import chatRoutes from './routes/chat.js'
-import statsRoutes from './routes/stats.js'
-import settingsRoutes from './routes/settings.js'
-import adminRoutes from './routes/admin.js'
+import globalSettingsRoutes from './routes/global-settings.js'
+import dataRoutes from './routes/data.js'
 import setupRoutes from './routes/setup.js'
 import capabilityRoutes from './routes/capabilities.js'
 import fileRoutes from './routes/files.js'
@@ -119,9 +118,8 @@ app.route('/api', folderRoutes)
 app.route('/api', documentRoutes)
 app.route('/api', searchRoutes)
 app.route('/api', chatRoutes)
-app.route('/api', statsRoutes)
-app.route('/api', settingsRoutes)
-app.route('/api', adminRoutes)
+app.route('/api', globalSettingsRoutes)
+app.route('/api', dataRoutes)
 app.route('/api', capabilityRoutes)
 app.route('/api', fileRoutes)
 app.route('/api', skillRoutes)

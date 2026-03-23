@@ -1,6 +1,4 @@
-import { useEffect } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
-import { toast } from 'sonner'
+import { useParams } from 'react-router-dom'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useWorkspace } from '@/hooks/use-workspaces'
 import { FileExplorer } from '@/components/explorer/file-explorer'
@@ -8,16 +6,6 @@ import { FileExplorer } from '@/components/explorer/file-explorer'
 export function WorkspacePage() {
   const { id } = useParams<{ id: string }>()
   const { data: workspace, isLoading } = useWorkspace(id!)
-  const [searchParams, setSearchParams] = useSearchParams()
-
-  useEffect(() => {
-    const oauth = searchParams.get('oauth')
-    if (oauth === 'success') {
-      toast.success('Google account connected successfully')
-      searchParams.delete('oauth')
-      setSearchParams(searchParams, { replace: true })
-    }
-  }, [searchParams, setSearchParams])
 
   if (isLoading) {
     return (

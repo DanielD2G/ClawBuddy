@@ -7,7 +7,7 @@ interface ParsedRule {
 }
 
 /**
- * Parse a permission rule string like "Bash(aws s3 ls *)" into type and pattern.
+ * Parse a permission rule string like "Docker(ps *)" into type and pattern.
  */
 function parseRule(rule: string): ParsedRule {
   const match = rule.match(/^(\w+)\((.+)\)$/)
@@ -28,11 +28,11 @@ function normalizeToolCall(toolCall: ToolCall): { type: string; value: string } 
     case 'run_bash':
       return { type: 'Bash', value: String(args.command ?? '') }
     case 'aws_command':
-      return { type: 'Bash', value: `aws ${String(args.command ?? '')}` }
+      return { type: 'Aws', value: String(args.command ?? '') }
     case 'kubectl_command':
-      return { type: 'Bash', value: `kubectl ${String(args.command ?? '')}` }
+      return { type: 'Kubectl', value: String(args.command ?? '') }
     case 'docker_command':
-      return { type: 'Bash', value: `docker ${String(args.command ?? '')}` }
+      return { type: 'Docker', value: String(args.command ?? '') }
     case 'run_python':
       return { type: 'Python', value: String(args.code ?? '') }
     case 'read_file':
@@ -55,9 +55,13 @@ function normalizeToolCall(toolCall: ToolCall): { type: string; value: string } 
  * Simple glob match — supports * as wildcard anywhere in the pattern.
  */
 function globMatch(pattern: string, value: string): boolean {
-  // Convert glob pattern to regex
-  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')
-  const regex = new RegExp(`^${escaped}$`)
+  const hasOptionalTrailingArgs = pattern.endsWith(' *')
+  const normalizedPattern = hasOptionalTrailingArgs ? pattern.slice(0, -2) : pattern
+
+  // Convert glob pattern to regex. A trailing " *" means "this command exactly,
+  // or this command followed by more arguments".
+  const escaped = normalizedPattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')
+  const regex = new RegExp(`^${escaped}${hasOptionalTrailingArgs ? '(?: .*)?' : ''}$`)
   return regex.test(value)
 }
 

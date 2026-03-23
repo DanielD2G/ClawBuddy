@@ -644,18 +644,30 @@ async function executeCreateCron(
 /**
  * List all cron jobs.
  */
-async function executeListCrons(): Promise<ExecutionResult> {
+async function executeListCrons(context: ExecutionContext): Promise<ExecutionResult> {
   const startTime = Date.now()
-  const jobs = await cronService.list()
+  const jobs = await cronService.list({
+    workspaceId: context.workspaceId,
+    sessionId: context.chatSessionId,
+    includeGlobal: true,
+    includeWorkspace: !!context.workspaceId,
+    includeConversation: !!context.workspaceId,
+  })
 
   if (!jobs.length) {
     return { output: 'No cron jobs configured.', durationMs: Date.now() - startTime }
   }
 
   const output = jobs
-    .map(
-      (j) =>
-        `- **${j.name}** (id: ${j.id})\n  Schedule: ${j.schedule} | Type: ${j.type} | Enabled: ${j.enabled}\n  Last run: ${j.lastRunAt?.toISOString() ?? 'never'} (${j.lastRunStatus ?? 'n/a'})`,
+    .map((j) =>
+      [
+        `- **${j.name}** (id: ${j.id})`,
+        `  Scope: ${j.scopeLabel}` +
+          (j.workspaceName ? ` | Workspace: ${j.workspaceName}` : '') +
+          (j.conversationTitle ? ` | Conversation: ${j.conversationTitle}` : ''),
+        `  Schedule: ${j.schedule} | Type: ${j.type} | Enabled: ${j.enabled}`,
+        `  Last run: ${j.lastRunAt?.toISOString() ?? 'never'} (${j.lastRunStatus ?? 'n/a'})`,
+      ].join('\n'),
     )
     .join('\n\n')
 
@@ -1157,7 +1169,7 @@ const toolHandlerRegistry = new Map<string, ToolHandler>([
   ['generate_file', executeGenerateFile],
   ['read_file', executeReadFile],
   ['create_cron', executeCreateCron],
-  ['list_crons', (_toolCall, _context) => executeListCrons()],
+  ['list_crons', (_toolCall, context) => executeListCrons(context)],
   ['delete_cron', (toolCall, _context) => executeDeleteCron(toolCall)],
   ['web_search', (toolCall, _context) => executeWebSearch(toolCall)],
   ['web_fetch', (toolCall, _context) => executeWebFetch(toolCall)],

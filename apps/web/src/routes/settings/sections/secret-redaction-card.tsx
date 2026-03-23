@@ -3,12 +3,12 @@ import { ShieldAlert, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
-import { useUpdateWorkspace } from '@/hooks/use-workspaces'
+import { useUpdateWorkspaceSettings } from '@/hooks/use-workspace-settings'
 import { useActiveWorkspace } from '@/providers/workspace-provider'
 
 export function SecretRedactionCard() {
   const { activeWorkspace, activeWorkspaceId } = useActiveWorkspace()
-  const updateWorkspace = useUpdateWorkspace()
+  const updateWorkspace = useUpdateWorkspaceSettings()
 
   const isEnabled = isSecretRedactionEnabled(activeWorkspace?.settings)
 
