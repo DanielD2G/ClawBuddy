@@ -32,6 +32,7 @@ import {
 import { toolDiscoveryService } from './tool-discovery.service.js'
 import type { ToolDefinition } from '../capabilities/types.js'
 import { stripNullBytes } from '../lib/sanitize.js'
+import { retryProviderTimeoutOnce } from '../lib/llm-retry.js'
 import type { SecretInventory } from './secret-redaction.service.js'
 import { secretRedactionService } from './secret-redaction.service.js'
 import { buildConversationMessages } from './agent-message-builder.js'
@@ -77,6 +78,14 @@ function resolveSubAgentMeta(
 }
 
 const MAX_CONVERSATION_LOADED_CAPABILITIES = 8
+const EMPTY_FINAL_RESPONSE_FALLBACK =
+  'I could not generate a response for that request. Please try again.'
+
+function getEmptyFinalResponseFallback(hasToolResults: boolean): string {
+  return hasToolResults
+    ? 'I found relevant results, but I could not generate a final response. Please try again.'
+    : EMPTY_FINAL_RESPONSE_FALLBACK
+}
 
 function stringArraysEqual(left: string[], right: string[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index])
@@ -610,7 +619,19 @@ When using sourcePath in generate_file, use the full path: /workspace/filename o
 
       log.logLLMRequest(messages, tools, i + 1)
       const llmStart = Date.now()
-      const response = await llm.chatWithTools(messages, { tools })
+      const response = await retryProviderTimeoutOnce(
+        () => llm.chatWithTools(messages, { tools }),
+        {
+          onRetry: () => {
+            log.debugLog('Retrying LLM request after provider timeout', {
+              providerId: llm.providerId,
+              modelId: llm.modelId,
+              iteration: i + 1,
+            })
+            emit?.('thinking', { message: 'Model timed out, retrying once...' })
+          },
+        },
+      )
       const llmMs = Date.now() - llmStart
       log.logLLMResponse(response, llmMs, i + 1)
 
@@ -679,29 +700,48 @@ When using sourcePath in generate_file, use the full path: /workspace/filename o
           accumulatedContent.trim().length > 0 &&
           safeResponseContent.trim().length > 0 &&
           contentOverlapRatio(accumulatedContent, safeResponseContent) > 0.5
+        const finalContent = isDuplicate
+          ? accumulatedContent.trim()
+          : (accumulatedContent + safeResponseContent).trim()
+
+        const fallbackContent = finalContent
+          ? null
+          : getEmptyFinalResponseFallback(
+              toolExecutionLog.length > 0 || collectedSources.length > 0,
+            )
 
         if (isDuplicate) {
           log.debugLog('Skipping duplicate final content', {
             accumulatedLength: accumulatedContent.length,
             finalLength: safeResponseContent.length,
           })
-        } else {
+        } else if (safeResponseContent.trim()) {
           emit?.('content', { text: safeResponseContent })
+        } else if (fallbackContent) {
+          log.debugLog('LLM returned empty final response; using fallback', {
+            totalToolExecutions: toolExecutionLog.length,
+            collectedSourceCount: collectedSources.length,
+          })
+          emit?.('content', { text: fallbackContent })
         }
 
-        const finalContent = isDuplicate
-          ? accumulatedContent.trim()
-          : (accumulatedContent + safeResponseContent).trim()
+        const resolvedFinalContent =
+          finalContent ||
+          getEmptyFinalResponseFallback(toolExecutionLog.length > 0 || collectedSources.length > 0)
 
-        // Save final assistant message to DB (only if non-duplicate and non-empty)
-        if (!isDuplicate && safeResponseContent.trim()) {
+        const contentToPersist = !isDuplicate ? safeResponseContent.trim() || fallbackContent : null
+
+        // Save final assistant message to DB when we have either model output or a fallback.
+        if (contentToPersist) {
           try {
             const finalMsg = await prisma.chatMessage.create({
               data: {
                 sessionId,
                 role: 'assistant',
-                content: stripNullBytes(safeResponseContent),
-                ...(collectedSources.length ? { sources: collectedSources } : {}),
+                content: stripNullBytes(contentToPersist),
+                ...(collectedSources.length && safeResponseContent.trim()
+                  ? { sources: collectedSources }
+                  : {}),
               },
             })
             lastSavedMessageId = finalMsg.id
@@ -712,7 +752,7 @@ When using sourcePath in generate_file, use the full path: /workspace/filename o
         }
 
         return {
-          content: finalContent,
+          content: resolvedFinalContent,
           toolExecutions: toolExecutionLog,
           sources: collectedSources.length ? collectedSources : undefined,
           lastMessageId: lastSavedMessageId,
@@ -1661,7 +1701,19 @@ When using sourcePath in generate_file, use the full path: /workspace/filename o
 
       log.logLLMRequest(messages, tools, i + 1)
       const llmStart = Date.now()
-      const response = await llm.chatWithTools(messages, { tools })
+      const response = await retryProviderTimeoutOnce(
+        () => llm.chatWithTools(messages, { tools }),
+        {
+          onRetry: () => {
+            log.debugLog('Retrying resumed LLM request after provider timeout', {
+              providerId: llm.providerId,
+              modelId: llm.modelId,
+              iteration: i + 1,
+            })
+            emit?.('thinking', { message: 'Model timed out, retrying once...' })
+          },
+        },
+      )
       const llmMs = Date.now() - llmStart
       log.logLLMResponse(response, llmMs, i + 1)
 
@@ -1707,24 +1759,45 @@ When using sourcePath in generate_file, use the full path: /workspace/filename o
           safeResponseContent.trim().length > 0 &&
           contentOverlapRatio(resumeAccumulatedContent, safeResponseContent) > 0.5
 
+        const combinedResumeContent = isDuplicateResume
+          ? resumeAccumulatedContent.trim()
+          : (resumeAccumulatedContent + safeResponseContent).trim()
+        const fallbackResumeContent = combinedResumeContent
+          ? null
+          : getEmptyFinalResponseFallback(
+              toolExecutionLog.length > 0 || collectedSourcesResume.length > 0,
+            )
+
         if (isDuplicateResume) {
           log.debugLog('Skipping duplicate final content (resume)', {
             accumulatedLength: resumeAccumulatedContent.length,
             finalLength: safeResponseContent.length,
           })
-        } else {
+        } else if (safeResponseContent.trim()) {
           emit?.('content', { text: safeResponseContent })
+        } else if (fallbackResumeContent) {
+          log.debugLog('LLM returned empty final response on resume; using fallback', {
+            totalToolExecutions: toolExecutionLog.length,
+            collectedSourceCount: collectedSourcesResume.length,
+          })
+          emit?.('content', { text: fallbackResumeContent })
         }
 
-        // Save final message (only if non-duplicate and non-empty)
-        if (!isDuplicateResume && safeResponseContent.trim()) {
+        const contentToPersist = !isDuplicateResume
+          ? safeResponseContent.trim() || fallbackResumeContent
+          : null
+
+        // Save final message when we have either model output or a fallback.
+        if (contentToPersist) {
           try {
             const finalMsg = await prisma.chatMessage.create({
               data: {
                 sessionId,
                 role: 'assistant',
-                content: stripNullBytes(safeResponseContent),
-                ...(collectedSourcesResume.length ? { sources: collectedSourcesResume } : {}),
+                content: stripNullBytes(contentToPersist),
+                ...(collectedSourcesResume.length && safeResponseContent.trim()
+                  ? { sources: collectedSourcesResume }
+                  : {}),
               },
             })
             lastSavedMessageId = finalMsg.id
@@ -1739,7 +1812,13 @@ When using sourcePath in generate_file, use the full path: /workspace/filename o
         })
 
         return {
-          content: isDuplicateResume ? resumeAccumulatedContent.trim() : safeResponseContent,
+          content:
+            combinedResumeContent ||
+            (isDuplicateResume
+              ? resumeAccumulatedContent.trim()
+              : getEmptyFinalResponseFallback(
+                  toolExecutionLog.length > 0 || collectedSourcesResume.length > 0,
+                )),
           toolExecutions: toolExecutionLog,
           sources: collectedSourcesResume.length ? collectedSourcesResume : undefined,
           lastMessageId: lastSavedMessageId,

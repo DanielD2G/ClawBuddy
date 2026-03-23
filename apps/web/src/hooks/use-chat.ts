@@ -154,6 +154,17 @@ function parseSSEEvents(buffer: string): {
   return { events, remaining }
 }
 
+function isPersistedAssistantErrorMessage(message: ChatMessage): boolean {
+  return message.role === 'assistant' && message.content.trim().startsWith('Error:')
+}
+
+function normalizeChatMessages(messages: ChatMessage[]): ChatMessage[] {
+  return messages.map((message) => ({
+    ...message,
+    isError: message.isError || isPersistedAssistantErrorMessage(message),
+  }))
+}
+
 export function useChat(workspaceId: string, onSessionCreated?: (sessionId: string) => void) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isPending, setIsPending] = useState(false)
@@ -185,6 +196,32 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
     }>(`/chat/sessions/${sessionId}/messages`)
   }, [])
 
+  const applySessionSnapshot = useCallback(
+    (snapshot: {
+      messages: ChatMessage[]
+      agentStatus: string
+      pendingApprovals: Array<{
+        id: string
+        toolName: string
+        capabilitySlug: string
+        input: Record<string, unknown>
+      }>
+    }) => {
+      setMessages(normalizeChatMessages(snapshot?.messages ?? []))
+      setPendingApprovals(mapPendingApprovals(snapshot?.pendingApprovals))
+
+      if (snapshot?.agentStatus === 'running') {
+        setIsPending(true)
+        setThinkingMessage('Processing...')
+        return
+      }
+
+      setIsPending(false)
+      setThinkingMessage(null)
+    },
+    [],
+  )
+
   const loadSession = useCallback(
     async (sessionId: string) => {
       // Abort any in-flight SSE stream from the previous session
@@ -192,24 +229,17 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
         abortRef.current.abort()
         abortRef.current = null
       }
-      setIsPending(false)
-      setThinkingMessage(null)
       sessionIdRef.current = sessionId
       try {
         const data = await fetchSessionSnapshot(sessionId)
-        setMessages(data?.messages ?? [])
-        // If agent is still processing, show pending state and poll for updates
-        if (data?.agentStatus === 'running') {
-          setIsPending(true)
-          setThinkingMessage('Processing...')
-        }
-        // Restore pending approvals if agent is paused awaiting approval
-        setPendingApprovals(mapPendingApprovals(data?.pendingApprovals))
+        applySessionSnapshot(data)
       } catch (error) {
         console.error('Failed to load session:', error)
+        setIsPending(false)
+        setThinkingMessage(null)
       }
     },
-    [fetchSessionSnapshot],
+    [applySessionSnapshot, fetchSessionSnapshot],
   )
 
   const processSSEStream = useCallback(
@@ -549,6 +579,9 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
         },
       ])
 
+      let shouldSyncSnapshot = false
+      let appliedSnapshot = false
+
       try {
         abortRef.current?.abort()
         const controller = new AbortController()
@@ -570,8 +603,9 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
 
         if (!res.ok) throw new Error('Chat request failed')
 
+        shouldSyncSnapshot = true
         streamingRef.current = true
-        const streamResult = await processSSEStream(
+        await processSSEStream(
           res,
           assistantId,
           (sid) => {
@@ -586,17 +620,6 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
           },
           controller.signal,
         )
-
-        const finalSessionId = sessionIdRef.current
-        if (finalSessionId && streamResult.receivedDone) {
-          try {
-            const snapshot = await fetchSessionSnapshot(finalSessionId)
-            setMessages(snapshot?.messages ?? [])
-            setPendingApprovals(mapPendingApprovals(snapshot?.pendingApprovals))
-          } catch (error) {
-            console.error('Failed to refresh session after stream:', error)
-          }
-        }
       } catch (error) {
         if (error instanceof DOMException && error.name === 'AbortError') return
         console.error('Chat error:', error)
@@ -612,11 +635,23 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
         )
       } finally {
         streamingRef.current = false
-        setIsPending(false)
-        setThinkingMessage(null)
+        const finalSessionId = sessionIdRef.current
+        if (shouldSyncSnapshot && finalSessionId) {
+          try {
+            const snapshot = await fetchSessionSnapshot(finalSessionId)
+            applySessionSnapshot(snapshot)
+            appliedSnapshot = true
+          } catch (error) {
+            console.error('Failed to refresh session after stream:', error)
+          }
+        }
+        if (!appliedSnapshot) {
+          setIsPending(false)
+          setThinkingMessage(null)
+        }
       }
     },
-    [workspaceId, queryClient, processSSEStream, fetchSessionSnapshot],
+    [workspaceId, queryClient, processSSEStream, fetchSessionSnapshot, applySessionSnapshot],
   )
 
   const abortAgent = useCallback(async () => {
@@ -643,11 +678,11 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
     // Refresh messages from server
     try {
       const snapshot = await fetchSessionSnapshot(sid)
-      if (snapshot?.messages) setMessages(snapshot.messages)
+      applySessionSnapshot(snapshot)
     } catch {
       // ignore
     }
-  }, [fetchSessionSnapshot])
+  }, [applySessionSnapshot, fetchSessionSnapshot])
 
   const getLatestAssistantMessageId = useCallback(() => {
     for (let i = messagesRef.current.length - 1; i >= 0; i--) {
@@ -711,6 +746,7 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
             ])
           }
 
+          let appliedSnapshot = false
           try {
             streamingRef.current = true
             await processSSEStream(res, assistantId, undefined, controller.signal)
@@ -722,14 +758,16 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
             if (finalSessionId) {
               try {
                 const snapshot = await fetchSessionSnapshot(finalSessionId)
-                setMessages(snapshot?.messages ?? [])
-                setPendingApprovals(mapPendingApprovals(snapshot?.pendingApprovals))
+                applySessionSnapshot(snapshot)
+                appliedSnapshot = true
               } catch (snapshotErr) {
                 console.error('Failed to refresh session after approval stream:', snapshotErr)
               }
             }
-            setIsPending(false)
-            setThinkingMessage(null)
+            if (!appliedSnapshot) {
+              setIsPending(false)
+              setThinkingMessage(null)
+            }
           }
         }
         // Otherwise it's JSON (still waiting for more approvals)
@@ -738,7 +776,7 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
         console.error('Approval error:', error)
       }
     },
-    [processSSEStream, fetchSessionSnapshot, getLatestAssistantMessageId],
+    [applySessionSnapshot, processSSEStream, fetchSessionSnapshot, getLatestAssistantMessageId],
   )
 
   // Poll for messages — aggressive (1.5s) when agent running but disconnected, normal (10s) otherwise
@@ -761,7 +799,7 @@ export function useChat(workspaceId: string, onSessionCreated?: (sessionId: stri
             input: Record<string, unknown>
           }>
         }>(`/chat/sessions/${sid}/messages`)
-        const msgs = data?.messages
+        const msgs = normalizeChatMessages(data?.messages ?? [])
         if (msgs && msgs.length > 0) {
           setMessages((prev) => {
             if (msgs.length > prev.length) {

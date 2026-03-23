@@ -1,13 +1,5 @@
 import { useState, type RefObject } from 'react'
-import {
-  ChevronDown,
-  ChevronRight,
-  CheckCircle2,
-  XCircle,
-  Loader2,
-  Download,
-  FileText,
-} from 'lucide-react'
+import { ChevronDown, ChevronRight, CheckCircle2, XCircle, Loader2, FileText } from 'lucide-react'
 import { CODE_PREVIEW_MAX_LEN } from '@/constants'
 
 export interface ToolExecution {
@@ -61,8 +53,6 @@ export function ToolExecutionBlock({
   const StatusIcon = config.icon
 
   const inputPreview = getInputPreview(execution)
-  const fileDownload = parseFileDownload(execution)
-
   return (
     <div className="rounded-lg border bg-muted/30 text-sm my-2">
       <button
@@ -106,21 +96,6 @@ export function ToolExecutionBlock({
         </div>
       )}
 
-      {/* Inline download button for generate_file */}
-      {fileDownload && !expanded && (
-        <div className="px-3 pb-2">
-          <a
-            href={fileDownload.downloadUrl}
-            download={fileDownload.filename}
-            onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
-          >
-            <Download className="size-3.5" />
-            {fileDownload.filename}
-          </a>
-        </div>
-      )}
-
       {/* Inline save confirmation for save_document */}
       {execution.toolName === 'save_document' &&
         execution.output &&
@@ -154,22 +129,8 @@ export function ToolExecutionBlock({
             </div>
           )}
 
-          {/* Download button */}
-          {fileDownload && (
-            <div>
-              <a
-                href={fileDownload.downloadUrl}
-                download={fileDownload.filename}
-                className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
-              >
-                <Download className="size-3.5" />
-                Download {fileDownload.filename}
-              </a>
-            </div>
-          )}
-
           {/* Output */}
-          {execution.output && !fileDownload && !execution.screenshot && (
+          {execution.output && execution.toolName !== 'generate_file' && !execution.screenshot && (
             <div>
               <span className="text-xs font-medium text-muted-foreground">Output</span>
               <pre className="mt-1 rounded bg-muted p-2 text-xs overflow-x-auto whitespace-pre-wrap max-h-64 overflow-y-auto">
@@ -232,17 +193,4 @@ function getInputPreview(execution: ToolExecution): string {
   if (args.filename) return String(args.filename)
   if (args.title) return String(args.title)
   return ''
-}
-
-function parseFileDownload(
-  execution: ToolExecution,
-): { filename: string; downloadUrl: string } | null {
-  if (execution.toolName !== 'generate_file' || !execution.output) return null
-  try {
-    const parsed = JSON.parse(execution.output)
-    if (parsed.filename && parsed.downloadUrl) return parsed
-  } catch {
-    /* not JSON */
-  }
-  return null
 }
