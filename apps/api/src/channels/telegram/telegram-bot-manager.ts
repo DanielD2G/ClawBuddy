@@ -1,14 +1,73 @@
+import { randomUUID } from 'node:crypto'
 import { Bot } from 'grammy'
+import { prisma } from '../../lib/prisma.js'
+import { decrypt } from '../../services/crypto.service.js'
 import { handleTelegramMessage, createNewSession } from './telegram-handler.js'
 import { markdownToTelegramHtml, splitHtmlMessage } from './format-telegram.js'
+
+const LEASE_TTL_MS = 20_000
+const HEARTBEAT_MS = 5_000
 
 interface BotEntry {
   bot: Bot
   workspaceId: string
+  botUsername: string
+  heartbeat: ReturnType<typeof setInterval>
 }
 
 class TelegramBotManager {
-  private bots = new Map<string, BotEntry>()
+  private readonly bots = new Map<string, BotEntry>()
+  private readonly instanceId =
+    process.env.CLAWBUDDY_RUNTIME_ID || process.env.HOSTNAME || randomUUID()
+
+  private leaseExpiryDate() {
+    return new Date(Date.now() + LEASE_TTL_MS)
+  }
+
+  private async acquireLease(channelId: string) {
+    const now = new Date()
+    const result = await prisma.channel.updateMany({
+      where: {
+        id: channelId,
+        OR: [
+          { runtimeLeaseOwner: this.instanceId },
+          { runtimeLeaseExpiresAt: null },
+          { runtimeLeaseExpiresAt: { lte: now } },
+        ],
+      },
+      data: {
+        runtimeLeaseOwner: this.instanceId,
+        runtimeLeaseExpiresAt: this.leaseExpiryDate(),
+      },
+    })
+
+    return result.count > 0
+  }
+
+  private async heartbeatLease(channelId: string) {
+    await prisma.channel.updateMany({
+      where: {
+        id: channelId,
+        runtimeLeaseOwner: this.instanceId,
+      },
+      data: {
+        runtimeLeaseExpiresAt: this.leaseExpiryDate(),
+      },
+    })
+  }
+
+  private async releaseLease(channelId: string) {
+    await prisma.channel.updateMany({
+      where: {
+        id: channelId,
+        runtimeLeaseOwner: this.instanceId,
+      },
+      data: {
+        runtimeLeaseOwner: null,
+        runtimeLeaseExpiresAt: null,
+      },
+    })
+  }
 
   /** Find the bot entry for a given workspace. */
   findByWorkspace(workspaceId: string): BotEntry | undefined {
@@ -62,21 +121,19 @@ class TelegramBotManager {
   }
 
   async startBot(channelId: string, botToken: string, workspaceId: string): Promise<string> {
-    // Stop existing bot for this channel if running
-    if (this.bots.has(channelId)) {
-      await this.stopBot(channelId)
+    const existing = this.bots.get(channelId)
+    if (existing) {
+      return existing.botUsername
     }
 
     const bot = new Bot(botToken)
 
-    // /new — create a new conversation
     bot.command('new', async (ctx) => {
       const telegramChatId = String(ctx.chat.id)
       await createNewSession(workspaceId, telegramChatId)
       await ctx.reply('New conversation started. How can I help you?')
     })
 
-    // /help — show available commands
     bot.command('help', async (ctx) => {
       await ctx.reply(
         'Available commands:\n' +
@@ -86,7 +143,6 @@ class TelegramBotManager {
       )
     })
 
-    // /start — welcome message (Telegram sends this when user first opens bot)
     bot.command('start', async (ctx) => {
       await ctx.reply(
         "Welcome! I'm your AI assistant.\n\n" +
@@ -96,12 +152,10 @@ class TelegramBotManager {
       )
     })
 
-    // Regular text messages
     bot.on('message:text', async (ctx) => {
       const telegramChatId = String(ctx.chat.id)
       const text = ctx.message.text
 
-      // Show "typing..." indicator, refreshed every 4s (Telegram expires it after 5s)
       await ctx.replyWithChatAction('typing')
       const typingInterval = setInterval(() => {
         ctx.replyWithChatAction('typing').catch(() => {})
@@ -113,7 +167,6 @@ class TelegramBotManager {
         }
 
         await handleTelegramMessage(workspaceId, telegramChatId, text, sendFn)
-
         clearInterval(typingInterval)
       } catch (err) {
         clearInterval(typingInterval)
@@ -122,38 +175,75 @@ class TelegramBotManager {
       }
     })
 
-    // Error handler
     bot.catch((err) => {
       console.error(`[Telegram] Bot error (channel ${channelId}):`, err)
     })
 
-    // Get bot info to store username
     const botInfo = await bot.api.getMe()
     const botUsername = botInfo.username
+    const leaseAcquired = await this.acquireLease(channelId)
 
-    // Start polling
+    if (!leaseAcquired) {
+      console.log(
+        `[Telegram] Lease for channel ${channelId} is owned by another instance. Skipping polling startup.`,
+      )
+      return botUsername
+    }
+
     bot.start({
       onStart: () => {
         console.log(`[Telegram] Bot @${botUsername} started for channel ${channelId}`)
       },
     })
 
-    this.bots.set(channelId, { bot, workspaceId })
+    const heartbeat = setInterval(() => {
+      void this.heartbeatLease(channelId).catch((error) => {
+        console.error(`[Telegram] Failed to heartbeat lease for ${channelId}:`, error)
+      })
+    }, HEARTBEAT_MS)
+
+    this.bots.set(channelId, { bot, workspaceId, botUsername, heartbeat })
     return botUsername
   }
 
   async stopBot(channelId: string): Promise<void> {
     const entry = this.bots.get(channelId)
-    if (entry) {
-      await entry.bot.stop()
-      this.bots.delete(channelId)
-      console.log(`[Telegram] Bot stopped for channel ${channelId}`)
+    if (!entry) {
+      return
     }
+
+    clearInterval(entry.heartbeat)
+    await entry.bot.stop()
+    this.bots.delete(channelId)
+    await this.releaseLease(channelId)
+    console.log(`[Telegram] Bot stopped for channel ${channelId}`)
   }
 
   async stopAll(): Promise<void> {
     const channelIds = [...this.bots.keys()]
     await Promise.allSettled(channelIds.map((id) => this.stopBot(id)))
+  }
+
+  async ensureLeaders(): Promise<void> {
+    const channels = await prisma.channel.findMany({
+      where: {
+        enabled: true,
+        type: 'telegram',
+      },
+    })
+
+    for (const channel of channels) {
+      if (this.bots.has(channel.id)) {
+        continue
+      }
+
+      try {
+        const config = channel.config as Record<string, string>
+        await this.startBot(channel.id, decrypt(config.botToken), channel.workspaceId)
+      } catch (error) {
+        console.error(`[Telegram] Failed to ensure leader for channel ${channel.id}:`, error)
+      }
+    }
   }
 
   isRunning(channelId: string): boolean {
@@ -169,7 +259,6 @@ function splitMessage(text: string, maxLength: number): string[] {
       parts.push(remaining)
       break
     }
-    // Try to split at a newline
     let splitIdx = remaining.lastIndexOf('\n', maxLength)
     if (splitIdx <= 0) splitIdx = maxLength
     parts.push(remaining.slice(0, splitIdx))

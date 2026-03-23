@@ -13,6 +13,8 @@ import {
 } from './helpers'
 
 const TIMEOUT = 180_000 // 3 min per test — LLM calls + sandbox setup can be slow
+const RUN_INTEGRATION_TESTS = process.env.RUN_INTEGRATION_TESTS === 'true'
+const describeIntegration = process.env.RUN_INTEGRATION_TESTS === 'true' ? describe : describe.skip
 
 let workspaceId: string
 
@@ -29,6 +31,10 @@ const ALL_CAPABILITIES = [
 ]
 
 beforeAll(async () => {
+  if (!RUN_INTEGRATION_TESTS) {
+    return
+  }
+
   console.log('🔧 Setting up test workspace...')
   const ws = await createWorkspace(`Integration Tests ${Date.now()}`)
   workspaceId = ws.id
@@ -46,6 +52,10 @@ beforeAll(async () => {
 }, TIMEOUT)
 
 afterAll(async () => {
+  if (!RUN_INTEGRATION_TESTS) {
+    return
+  }
+
   if (workspaceId) {
     await deleteWorkspace(workspaceId)
     console.log('🧹 Cleaned up test workspace')
@@ -54,7 +64,7 @@ afterAll(async () => {
 
 // ─── Bash ───
 
-describe('Bash', () => {
+describeIntegration('Bash', () => {
   test(
     'executes echo command',
     async () => {
@@ -69,7 +79,7 @@ describe('Bash', () => {
 
 // ─── Python ───
 
-describe('Python', () => {
+describeIntegration('Python', () => {
   test(
     'executes multi-line script (fibonacci)',
     async () => {
@@ -106,7 +116,7 @@ describe('Python', () => {
 
 // ─── Web Search ───
 
-describe('Web Search', () => {
+describeIntegration('Web Search', () => {
   test(
     'uses web_search tool',
     async () => {
@@ -137,7 +147,7 @@ describe('Web Search', () => {
 
 // ─── Browser Automation ───
 
-describe('Browser Automation', () => {
+describeIntegration('Browser Automation', () => {
   test(
     'navigates to example.com and reads content',
     async () => {
@@ -168,7 +178,7 @@ describe('Browser Automation', () => {
 
 // ─── Agent Memory ───
 
-describe('Agent Memory', () => {
+describeIntegration('Agent Memory', () => {
   test(
     'saves a document to memory',
     async () => {
@@ -185,7 +195,7 @@ describe('Agent Memory', () => {
 
 // ─── File Generation ───
 
-describe('File Generation', () => {
+describeIntegration('File Generation', () => {
   test(
     'generates a CSV file',
     async () => {
@@ -204,7 +214,7 @@ describe('File Generation', () => {
 
 // ─── AWS CLI ───
 
-describe('AWS CLI', () => {
+describeIntegration('AWS CLI', () => {
   test(
     'calls aws command (may fail without credentials)',
     async () => {
@@ -222,7 +232,7 @@ describe('AWS CLI', () => {
 
 // ─── GitHub CLI ───
 
-describe('GitHub CLI', () => {
+describeIntegration('GitHub CLI', () => {
   test(
     'calls gh command (may fail without token)',
     async () => {
@@ -240,7 +250,7 @@ describe('GitHub CLI', () => {
 
 // ─── Mentioned Capability Forced ───
 
-describe('Capability Mentions', () => {
+describeIntegration('Capability Mentions', () => {
   test(
     '/browser-automation forces browser tool usage',
     async () => {
@@ -256,7 +266,7 @@ describe('Capability Mentions', () => {
 
 // ─── Message Persistence ───
 
-describe('Persistence', () => {
+describeIntegration('Persistence', () => {
   test(
     'saves intermediate content and tool executions to DB',
     async () => {
@@ -288,7 +298,7 @@ describe('Persistence', () => {
 
 // ─── SSE Event Ordering ───
 
-describe('SSE Ordering', () => {
+describeIntegration('SSE Ordering', () => {
   test('content events appear between tool events (not all at end)', async () => {
     const result = await sendMessage(
       'First run `echo step-1` in bash, then run `echo step-2` in bash. Explain what each command does between calls.',

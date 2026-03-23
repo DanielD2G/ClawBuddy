@@ -1,4 +1,3 @@
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useNavigate } from 'react-router-dom'
@@ -6,331 +5,186 @@ import {
   AlertTriangle,
   ArrowLeft,
   CheckCircle2,
-  ChevronRight,
+  Clock3,
+  GitBranch,
   Loader2,
   RefreshCw,
   Rocket,
-  Sparkles,
+  Wrench,
   XCircle,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { apiClient } from '@/lib/api-client'
-import { webBuildInfo } from '@/lib/build-info'
-import { POLL_UPDATE_STATUS_MS } from '@/constants'
-import {
-  useAcceptUpdate,
-  useCheckForUpdates,
-  useDeclineUpdate,
-  type UpdateOverview,
-} from '@/hooks/use-update'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import { Spinner } from '@/components/ui/spinner'
-
-function summarizeReleaseNotes(notes: string | null | undefined) {
-  if (!notes?.trim()) {
-    return 'This release does not include notes yet. You can still open the GitHub release page for the full context.'
-  }
-
-  const lines = notes
-    .split('\n')
-    .map((line) => line.trimEnd())
-    .filter((line) => line.trim().length > 0)
-    .slice(0, 14)
-
-  return lines.join('\n')
-}
+  hasAvailableUpdate,
+  useCheckForUpdates,
+  useCreateUpdateRun,
+  useDeclineUpdate,
+  useRetryUpdateRun,
+  useUpdateOverview,
+  type UpdateEvent,
+  type UpdateRun,
+} from '@/hooks/use-update'
+import { webBuildInfo } from '@/lib/build-info'
 
 function formatDate(value: string | null | undefined) {
   if (!value) return 'Unknown'
   return new Date(value).toLocaleString()
 }
 
-type RolloutModalStatus = 'idle' | 'running' | 'ready' | 'failed'
+function summarizeReleaseNotes(notes: string | null | undefined) {
+  if (!notes?.trim()) {
+    return 'This release does not include notes yet. You can still open the release page for the full context.'
+  }
 
-interface PersistedRolloutState {
-  status: RolloutModalStatus
-  targetVersion: string | null
+  return notes
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .filter((line) => line.trim().length > 0)
+    .slice(0, 14)
+    .join('\n')
 }
 
-const UPDATE_ROLLOUT_STORAGE_KEY = 'clawbuddy.update.rollout'
-
-function readPersistedRolloutState(): PersistedRolloutState {
-  if (typeof window === 'undefined') {
-    return { status: 'idle', targetVersion: null }
-  }
-
-  try {
-    const raw = window.sessionStorage.getItem(UPDATE_ROLLOUT_STORAGE_KEY)
-    if (!raw) {
-      return { status: 'idle', targetVersion: null }
-    }
-
-    const parsed = JSON.parse(raw) as Partial<PersistedRolloutState>
-    const status =
-      parsed.status === 'running' ||
-      parsed.status === 'ready' ||
-      parsed.status === 'failed' ||
-      parsed.status === 'idle'
-        ? parsed.status
-        : 'idle'
-    const targetVersion = typeof parsed.targetVersion === 'string' ? parsed.targetVersion : null
-
-    if (status === 'idle' || !targetVersion) {
-      return { status: 'idle', targetVersion: null }
-    }
-
-    return { status, targetVersion }
-  } catch {
-    return { status: 'idle', targetVersion: null }
-  }
+function statusBadgeVariant(run: UpdateRun | null) {
+  if (!run) return 'outline' as const
+  if (run.status === 'succeeded') return 'default' as const
+  if (run.status === 'failed' || run.status === 'rolled_back') return 'destructive' as const
+  return 'secondary' as const
 }
 
-function StepBadge({ status }: { status: 'pending' | 'running' | 'done' | 'error' }) {
-  if (status === 'done') {
-    return (
-      <Badge variant="default">
-        <CheckCircle2 className="mr-1 size-3" /> Done
-      </Badge>
-    )
-  }
-
-  if (status === 'running') {
-    return (
-      <Badge variant="secondary">
-        <Loader2 className="mr-1 size-3 animate-spin" /> In progress
-      </Badge>
-    )
-  }
-
-  if (status === 'error') {
-    return (
-      <Badge variant="destructive">
-        <XCircle className="mr-1 size-3" /> Error
-      </Badge>
-    )
-  }
-
-  return <Badge variant="secondary">Waiting</Badge>
+function statusLabel(run: UpdateRun | null) {
+  if (!run) return 'No run'
+  if (run.status === 'succeeded') return 'Ready'
+  if (run.status === 'rolled_back') return 'Rolled back'
+  if (run.status === 'failed') return 'Failed'
+  if (run.status === 'queued') return 'Queued'
+  return 'Running'
 }
 
-function UpdateStepCard({
-  title,
-  description,
-  status,
-  icon: Icon,
-  children,
-}: {
-  title: string
-  description: string
-  status: 'pending' | 'running' | 'done' | 'error'
-  icon: typeof Sparkles
-  children?: ReactNode
-}) {
+function eventIcon(event: UpdateEvent) {
+  if (event.status === 'done') return <CheckCircle2 className="size-4 text-green-600" />
+  if (event.status === 'error') return <XCircle className="size-4 text-destructive" />
+  if (event.status === 'running')
+    return <Loader2 className="size-4 animate-spin text-muted-foreground" />
+  return <Clock3 className="size-4 text-muted-foreground" />
+}
+
+function RunSummary({ run }: { run: UpdateRun }) {
   return (
-    <Card>
+    <Card
+      className={
+        run.status === 'failed' || run.status === 'rolled_back' ? 'border-destructive/50' : ''
+      }
+    >
       <CardHeader>
         <div className="flex items-start justify-between gap-4">
           <div>
             <CardTitle className="flex items-center gap-2">
-              <Icon className="size-5" />
-              {title}
+              {run.status === 'succeeded' ? (
+                <CheckCircle2 className="size-5 text-green-600" />
+              ) : run.status === 'failed' || run.status === 'rolled_back' ? (
+                <AlertTriangle className="size-5 text-destructive" />
+              ) : (
+                <Loader2 className="size-5 animate-spin" />
+              )}
+              {run.status === 'succeeded'
+                ? `ClawBuddy ${run.targetVersion} is ready`
+                : run.status === 'rolled_back'
+                  ? `Update to ${run.targetVersion} rolled back`
+                  : run.status === 'failed'
+                    ? `Update to ${run.targetVersion} failed`
+                    : `Updating to ${run.targetVersion}`}
             </CardTitle>
-            <CardDescription>{description}</CardDescription>
+            <CardDescription>
+              {run.message ?? 'Waiting for the durable updater controller.'}
+            </CardDescription>
           </div>
-          <StepBadge status={status} />
+          <Badge variant={statusBadgeVariant(run)}>{statusLabel(run)}</Badge>
         </div>
       </CardHeader>
-      {children ? <CardContent>{children}</CardContent> : null}
-    </Card>
-  )
-}
+      <CardContent className="space-y-4">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-md border p-3">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Stage</p>
+            <p className="mt-1 font-medium">{run.stage}</p>
+          </div>
+          <div className="rounded-md border p-3">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+              Observed version
+            </p>
+            <p className="mt-1 font-medium">{run.observedVersion ?? 'Waiting'}</p>
+          </div>
+          <div className="rounded-md border p-3">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Target image</p>
+            <p className="mt-1 truncate text-sm">{run.targetImage ?? 'Unknown'}</p>
+          </div>
+          <div className="rounded-md border p-3">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Started</p>
+            <p className="mt-1 font-medium">{formatDate(run.startedAt)}</p>
+          </div>
+        </div>
 
-function ProgressLine({
-  label,
-  status,
-  progress,
-  error,
-}: {
-  label: string
-  status: 'pending' | 'running' | 'done' | 'error'
-  progress: string
-  error?: string
-}) {
-  return (
-    <div className="rounded-md border p-4 space-y-2">
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-sm font-medium">{label}</span>
-        <StepBadge status={status} />
-      </div>
-      <p className="text-xs text-muted-foreground truncate">{progress}</p>
-      {error ? <p className="text-xs text-destructive break-words">{error}</p> : null}
-    </div>
+        {run.rollbackReason ? (
+          <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+            {run.rollbackReason}
+          </div>
+        ) : null}
+
+        {run.error ? (
+          <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+            {run.error}
+          </div>
+        ) : null}
+
+        <div className="space-y-3">
+          <p className="text-sm font-medium">Run timeline</p>
+          {run.events.length > 0 ? (
+            <div className="space-y-3">
+              {run.events.map((event) => (
+                <div key={event.id} className="rounded-md border p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      {eventIcon(event)}
+                      <span>{event.step}</span>
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      {formatDate(event.createdAt)}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-sm text-muted-foreground">{event.message}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              The durable updater has not emitted timeline events yet.
+            </p>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
 export function UpdatePage() {
   const navigate = useNavigate()
-  const acceptUpdate = useAcceptUpdate()
+  const overviewQuery = useUpdateOverview()
+  const createRun = useCreateUpdateRun()
+  const retryRun = useRetryUpdateRun()
   const declineUpdate = useDeclineUpdate()
   const checkForUpdates = useCheckForUpdates()
-  const [overview, setOverview] = useState<UpdateOverview | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [requestError, setRequestError] = useState<string | null>(null)
-  const [rolloutState, setRolloutState] = useState<PersistedRolloutState>(() =>
-    readPersistedRolloutState(),
-  )
 
-  const loadOverview = useCallback(async (silent = false) => {
-    try {
-      const next = await apiClient.get<UpdateOverview>('/update')
-      setOverview(next)
-      setRequestError(null)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to load update status'
-      setRequestError(message)
-    } finally {
-      if (!silent) {
-        setIsLoading(false)
-      }
-    }
-  }, [])
-
-  const forceUpdate = overview?.forceUpdate ?? false
-  const activeRun = overview?.activeRun ?? null
+  const overview = overviewQuery.data
   const latestRelease = overview?.latestRelease ?? null
-  const [forceModal, setForceModal] = useState(false)
-  const hasPersistedRollout = rolloutState.status !== 'idle' && !!rolloutState.targetVersion
-  const targetVersion =
-    rolloutState.targetVersion ?? activeRun?.targetVersion ?? latestRelease?.version ?? null
-  const isRolloutBlocking = rolloutState.status === 'running'
-  const updateReady = rolloutState.status === 'ready'
-  const updateFailed = rolloutState.status === 'failed'
-  const showModal = hasPersistedRollout || (forceUpdate && forceModal)
-
-  useEffect(() => {
-    if (rolloutState.status === 'idle' || !rolloutState.targetVersion) {
-      window.sessionStorage.removeItem(UPDATE_ROLLOUT_STORAGE_KEY)
-      return
-    }
-
-    window.sessionStorage.setItem(UPDATE_ROLLOUT_STORAGE_KEY, JSON.stringify(rolloutState))
-  }, [rolloutState])
-
-  useEffect(() => {
-    void loadOverview(false)
-  }, [loadOverview])
-
-  useEffect(() => {
-    const interval = window.setInterval(() => {
-      void loadOverview(true)
-    }, POLL_UPDATE_STATUS_MS)
-
-    return () => window.clearInterval(interval)
-  }, [loadOverview])
-
-  useEffect(() => {
-    if (!activeRun?.targetVersion) {
-      return
-    }
-
-    const nextStatus: RolloutModalStatus =
-      activeRun.status === 'failed'
-        ? 'failed'
-        : activeRun.phase === 'completed'
-          ? 'ready'
-          : 'running'
-
-    setRolloutState((current) => {
-      if (current.targetVersion === activeRun.targetVersion && current.status === nextStatus) {
-        return current
-      }
-
-      return {
-        status: nextStatus,
-        targetVersion: activeRun.targetVersion,
-      }
-    })
-  }, [activeRun?.phase, activeRun?.status, activeRun?.targetVersion])
-
-  useEffect(() => {
-    if (activeRun?.status === 'failed' && activeRun.targetVersion) {
-      setRolloutState({
-        status: 'failed',
-        targetVersion: activeRun.targetVersion,
-      })
-    }
-  }, [activeRun])
-
-  useEffect(() => {
-    if (!rolloutState.targetVersion || rolloutState.status !== 'running') {
-      return
-    }
-
-    let cancelled = false
-    const interval = window.setInterval(async () => {
-      try {
-        const res = await fetch(`/api/health?t=${Date.now()}`, {
-          credentials: 'include',
-          cache: 'no-store',
-        })
-        const payload = (await res.json()) as {
-          data?: { version?: string; phase?: string; status?: string }
-        }
-
-        if (
-          !cancelled &&
-          res.ok &&
-          payload.data?.status === 'ok' &&
-          payload.data?.version === rolloutState.targetVersion
-        ) {
-          setRolloutState({
-            status: 'ready',
-            targetVersion: rolloutState.targetVersion,
-          })
-        }
-      } catch {
-        // Keep polling while the service restarts.
-      }
-    }, POLL_UPDATE_STATUS_MS)
-
-    return () => {
-      cancelled = true
-      window.clearInterval(interval)
-    }
-  }, [rolloutState.status, rolloutState.targetVersion])
-
-  const releaseStatus = useMemo(() => {
-    if (!overview?.supported) return 'error'
-    if (!latestRelease) return 'pending'
-    if (overview.currentVersion === latestRelease.version && !activeRun && !hasPersistedRollout)
-      return 'done'
-    return 'done'
-  }, [activeRun, hasPersistedRollout, latestRelease, overview?.currentVersion, overview?.supported])
-
-  const decisionStatus = useMemo(() => {
-    if (!overview?.supported) return 'error'
-    if (rolloutState.status === 'failed') return 'error'
-    if (rolloutState.status === 'running') return 'running'
-    if (rolloutState.status === 'ready') return 'done'
-    if (activeRun && activeRun.status === 'failed') return 'error'
-    if (activeRun) return 'done'
-    if (latestRelease && overview.currentVersion !== latestRelease.version) return 'running'
-    return 'done'
-  }, [activeRun, latestRelease, overview?.currentVersion, overview?.supported, rolloutState.status])
+  const currentRun = overview?.currentRun ?? null
+  const lastTerminalRun = overview?.lastTerminalRun ?? null
+  const displayedRun = currentRun ?? lastTerminalRun
 
   async function handleCheckNow() {
     try {
       const next = await checkForUpdates.mutateAsync()
-      setOverview(next)
       toast.success(
         next.latestRelease ? `Latest release: ${next.latestRelease.version}` : 'No release found',
       )
@@ -339,51 +193,39 @@ export function UpdatePage() {
     }
   }
 
-  async function handleAccept() {
+  async function handleStartUpdate() {
     try {
-      const next = await acceptUpdate.mutateAsync()
-      setOverview(next)
-      setRolloutState({
-        status: next.activeRun?.status === 'failed' ? 'failed' : 'running',
-        targetVersion: next.activeRun?.targetVersion ?? next.latestRelease?.version ?? null,
-      })
-      toast.success('Update started')
+      const run = await createRun.mutateAsync()
+      toast.success(`Queued update ${run.targetVersion}`)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to start the update')
+      toast.error(error instanceof Error ? error.message : 'Failed to queue update')
     }
   }
 
-  function handleCloseRolloutModal(open: boolean) {
-    if (isRolloutBlocking) {
-      return
+  async function handleRetry() {
+    if (!displayedRun) return
+
+    try {
+      const run = await retryRun.mutateAsync(displayedRun.id)
+      toast.success(`Retry queued for ${run.targetVersion}`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to retry update')
     }
-
-    if (!open && hasPersistedRollout) {
-      setRolloutState({ status: 'idle', targetVersion: null })
-    }
-
-    setForceModal(open)
-  }
-
-  function clearRolloutStateAndGoHome() {
-    setRolloutState({ status: 'idle', targetVersion: null })
-    window.location.href = '/'
   }
 
   async function handleDecline() {
     try {
-      const next = await declineUpdate.mutateAsync()
-      setOverview(next)
+      await declineUpdate.mutateAsync()
       toast.success('This version was dismissed from the global alert')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to dismiss this release')
     }
   }
 
-  if (isLoading) {
+  if (overviewQuery.isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
-        <Spinner className="text-brand" />
+        <Loader2 className="size-6 animate-spin text-muted-foreground" />
       </div>
     )
   }
@@ -394,14 +236,14 @@ export function UpdatePage() {
         <Card className="w-full max-w-xl">
           <CardHeader>
             <CardTitle>Updater unavailable</CardTitle>
-            <CardDescription>{requestError ?? 'Could not load update status.'}</CardDescription>
+            <CardDescription>Could not load update status.</CardDescription>
           </CardHeader>
           <CardContent className="flex gap-3">
             <Button variant="outline" onClick={() => navigate('/settings/globals/general')}>
               <ArrowLeft className="mr-1 size-4" />
               Back to settings
             </Button>
-            <Button onClick={() => void loadOverview(false)}>
+            <Button onClick={() => overviewQuery.refetch()}>
               <RefreshCw className="mr-1 size-4" />
               Retry
             </Button>
@@ -411,19 +253,27 @@ export function UpdatePage() {
     )
   }
 
+  const canStartIntegratedUpdate =
+    hasAvailableUpdate(overview) && !createRun.isPending && !currentRun && !overview.forceUpdate
+  const canRetry =
+    !!displayedRun &&
+    !currentRun &&
+    (displayedRun.status === 'failed' || displayedRun.status === 'rolled_back') &&
+    !retryRun.isPending
+
   return (
     <div className="min-h-screen bg-background">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 py-12">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-12">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div className="space-y-2">
             <Badge variant="outline">Current version: {overview.currentVersion}</Badge>
             <h1 className="text-3xl font-semibold tracking-tight">Update ClawBuddy</h1>
             <p className="max-w-2xl text-sm text-muted-foreground">
-              This page stays focused on the rollout itself so it can keep tracking progress while
-              the service restarts and the new build comes online.
+              The updater page is now fully server-driven. Progress, retries, rollback reasons, and
+              verification all come from the durable controller instead of browser-local state.
             </p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             <Button variant="outline" onClick={() => navigate('/settings/globals/general')}>
               <ArrowLeft className="mr-1 size-4" />
               Back to settings
@@ -432,252 +282,143 @@ export function UpdatePage() {
               <RefreshCw className="mr-1 size-4" />
               {checkForUpdates.isPending ? 'Checking...' : 'Check now'}
             </Button>
-            {forceUpdate && (
-              <Button variant="outline" onClick={() => setForceModal(true)}>
-                <Rocket className="mr-1 size-4" />
-                Preview modal
-              </Button>
-            )}
           </div>
         </div>
 
-        {!overview.supported ? (
-          <Card className="border-destructive/50">
+        <div className="grid gap-4 xl:grid-cols-[1.15fr,0.85fr]">
+          <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <AlertTriangle className="size-5 text-destructive" />
-                Integrated updates are unavailable here
+                <GitBranch className="size-5" />
+                Latest release
               </CardTitle>
               <CardDescription>
-                {overview.supportReason ??
-                  'This environment is not a managed ClawBuddy Swarm install.'}
+                Review the latest stable release and its delivery mode.
               </CardDescription>
             </CardHeader>
-          </Card>
-        ) : null}
-
-        <div className="grid gap-4 xl:grid-cols-[1.1fr,0.9fr]">
-          <UpdateStepCard
-            title="Check New Version"
-            description="Review the latest stable GitHub release before starting."
-            icon={Sparkles}
-            status={releaseStatus}
-          >
-            <div className="space-y-4">
-              <div className="flex flex-col gap-3 rounded-md border p-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-md border p-4">
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">Installed</p>
-                  <p className="text-lg font-semibold">{overview.currentVersion}</p>
-                </div>
-                <ChevronRight className="hidden size-5 text-muted-foreground sm:block" />
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                    Latest release
+                  <p className="mt-1 text-lg font-semibold">{overview.currentVersion}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Build {webBuildInfo.version} · Commit {webBuildInfo.commitSha.slice(0, 7)}
                   </p>
-                  <p className="text-lg font-semibold">{latestRelease?.version ?? 'Unavailable'}</p>
-                  <p className="text-xs text-muted-foreground">
+                </div>
+                <div className="rounded-md border p-4">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Latest stable
+                  </p>
+                  <p className="mt-1 text-lg font-semibold">
+                    {latestRelease?.version ?? 'Unavailable'}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
                     {latestRelease
                       ? formatDate(latestRelease.publishedAt)
-                      : 'GitHub release lookup failed'}
+                      : 'GitHub lookup unavailable'}
                   </p>
                 </div>
               </div>
 
               {latestRelease ? (
-                <div className="space-y-3">
+                <>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant="outline">{latestRelease.name}</Badge>
+                    <Badge
+                      variant={
+                        latestRelease.manifest?.deliveryMode === 'maintenance-required'
+                          ? 'destructive'
+                          : 'secondary'
+                      }
+                    >
+                      {latestRelease.manifest?.deliveryMode === 'maintenance-required'
+                        ? 'Maintenance release'
+                        : 'Integrated release'}
+                    </Badge>
+                    {latestRelease.manifest?.migration.mode === 'prisma-db-push' ? (
+                      <Badge variant="outline">Explicit migration</Badge>
+                    ) : null}
+                  </div>
+
                   <div className="rounded-md border p-4">
-                    <div className="mb-3 flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-medium">{latestRelease.name}</p>
-                        <p className="text-xs text-muted-foreground">{latestRelease.url}</p>
-                      </div>
-                      <Badge variant="outline">Stable channel</Badge>
-                    </div>
                     <div className="prose prose-sm max-w-none dark:prose-invert prose-p:my-2 prose-li:my-1">
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>
                         {summarizeReleaseNotes(latestRelease.body)}
                       </ReactMarkdown>
                     </div>
                   </div>
-                  {overview.currentVersion === latestRelease.version && !activeRun ? (
-                    <p className="text-sm text-muted-foreground">
-                      This instance is already on the latest stable release.
-                    </p>
-                  ) : null}
-                </div>
+                </>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  GitHub release information is not available right now. You can retry the check
-                  from this page or from Settings.
+                  GitHub release information is not available right now.
                 </p>
               )}
-            </div>
-          </UpdateStepCard>
+            </CardContent>
+          </Card>
 
-          <UpdateStepCard
-            title="Accept or Decline"
-            description="Start the rollout or dismiss this release from the global toast."
-            icon={Rocket}
-            status={decisionStatus}
-          >
-            <div className="space-y-4">
-              <div className="rounded-md border p-4">
-                <p className="text-sm text-muted-foreground">
-                  Build: {webBuildInfo.version} · Commit {webBuildInfo.commitSha.slice(0, 7)}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                {overview.eligibility.deliveryMode === 'maintenance-required' ? (
+                  <Wrench className="size-5" />
+                ) : (
+                  <Rocket className="size-5" />
+                )}
+                Delivery status
+              </CardTitle>
+              <CardDescription>
+                Decide whether this release can be applied by the durable in-app updater.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {!overview.supported ? (
+                <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
+                  {overview.supportReason ??
+                    'Integrated updates are unavailable on this installation.'}
+                </div>
+              ) : overview.eligibility.reason ? (
+                <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
+                  {overview.eligibility.reason}
+                </div>
+              ) : (
+                <div className="rounded-md border border-green-500/40 bg-green-500/5 p-4 text-sm text-green-700 dark:text-green-400">
+                  The durable updater can apply this release in-place.
+                </div>
+              )}
+
+              {overview.dismissedVersion ? (
+                <p className="text-xs text-muted-foreground">
+                  Dismissed globally: {overview.dismissedVersion}
                 </p>
-                {overview.dismissedVersion ? (
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    Dismissed globally: {overview.dismissedVersion}
-                  </p>
-                ) : null}
-              </div>
+              ) : null}
 
               <div className="flex flex-wrap gap-3">
-                <Button
-                  onClick={handleAccept}
-                  disabled={
-                    !latestRelease ||
-                    !overview.supported ||
-                    acceptUpdate.isPending ||
-                    rolloutState.status === 'running' ||
-                    (!!activeRun && activeRun.status !== 'failed') ||
-                    overview.currentVersion === latestRelease.version
-                  }
-                >
+                <Button onClick={handleStartUpdate} disabled={!canStartIntegratedUpdate}>
                   <Rocket className="mr-1 size-4" />
-                  {acceptUpdate.isPending ? 'Starting...' : 'Accept update'}
+                  {createRun.isPending ? 'Queueing...' : 'Start integrated update'}
                 </Button>
                 <Button
                   variant="outline"
                   onClick={handleDecline}
-                  disabled={
-                    !latestRelease ||
-                    declineUpdate.isPending ||
-                    (!!activeRun && activeRun.status !== 'failed')
-                  }
+                  disabled={!latestRelease || declineUpdate.isPending || !!currentRun}
                 >
                   {declineUpdate.isPending ? 'Saving...' : 'Decline for now'}
                 </Button>
+                <Button variant="outline" onClick={handleRetry} disabled={!canRetry}>
+                  {retryRun.isPending ? 'Queueing retry...' : 'Retry last run'}
+                </Button>
               </div>
 
-              {activeRun ? (
-                <p className="text-sm text-muted-foreground">
-                  Active rollout: {activeRun.targetVersion}. This page will keep polling until the
-                  updated service reports the target version.
-                </p>
-              ) : hasPersistedRollout ? (
-                <p className="text-sm text-muted-foreground">
-                  Rollout in progress for {rolloutState.targetVersion}. The modal will stay open
-                  until the API is healthy again or the update rolls back.
+              {latestRelease?.manifest?.minUpdaterVersion ? (
+                <p className="text-xs text-muted-foreground">
+                  Minimum updater version: {latestRelease.manifest.minUpdaterVersion}
                 </p>
               ) : null}
-            </div>
-          </UpdateStepCard>
+            </CardContent>
+          </Card>
         </div>
 
-        {activeRun?.error ? (
-          <Card className="border-destructive/50">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <AlertTriangle className="size-5 text-destructive" />
-                Update failed
-              </CardTitle>
-              <CardDescription>{activeRun.error}</CardDescription>
-            </CardHeader>
-          </Card>
-        ) : null}
-
-        <Dialog open={showModal} onOpenChange={handleCloseRolloutModal}>
-          <DialogContent
-            showCloseButton={forceUpdate || updateReady || updateFailed}
-            onEscapeKeyDown={(e) => {
-              if (isRolloutBlocking) e.preventDefault()
-            }}
-            onPointerDownOutside={(e) => {
-              if (isRolloutBlocking) e.preventDefault()
-            }}
-            onInteractOutside={(e) => {
-              if (isRolloutBlocking) e.preventDefault()
-            }}
-            className="sm:max-w-lg max-h-[85vh] overflow-y-auto"
-          >
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                {updateReady ? (
-                  <CheckCircle2 className="size-5 text-green-500" />
-                ) : updateFailed ? (
-                  <AlertTriangle className="size-5 text-destructive" />
-                ) : (
-                  <Loader2 className="size-5 animate-spin" />
-                )}
-                {updateReady
-                  ? `ClawBuddy ${targetVersion} is ready`
-                  : updateFailed
-                    ? `Update to ${targetVersion ?? 'the latest version'} failed`
-                    : `Updating to ${targetVersion ?? 'vX.X.X'}`}
-              </DialogTitle>
-              <DialogDescription>
-                {updateReady
-                  ? 'The new version is healthy again. You can go back home once you are ready.'
-                  : updateFailed
-                    ? (activeRun?.error ??
-                      activeRun?.phaseMessage ??
-                      'Docker rolled the deployment back before the service became healthy.')
-                    : `${activeRun?.phaseMessage ?? 'Waiting for the API to become healthy again'}. Please keep this page open while the rollout completes.`}
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="space-y-3">
-              <ProgressLine
-                label="Pull release image"
-                {...(activeRun?.progress.pullApi ?? {
-                  status: forceUpdate ? 'done' : 'pending',
-                  progress: forceUpdate ? 'Release image ready (v0.1.8)' : 'Waiting',
-                })}
-              />
-              <ProgressLine
-                label="Deploy unified service"
-                {...(activeRun?.progress.apiDeploy ?? {
-                  status: updateFailed
-                    ? 'error'
-                    : forceUpdate || hasPersistedRollout
-                      ? updateReady
-                        ? 'done'
-                        : 'running'
-                      : 'pending',
-                  progress: updateReady
-                    ? `ClawBuddy ${targetVersion} is deployed`
-                    : updateFailed
-                      ? (activeRun?.error ??
-                        activeRun?.phaseMessage ??
-                        'The service rolled back before it became healthy')
-                      : forceUpdate || hasPersistedRollout
-                        ? 'Waiting for Docker to report the service as healthy'
-                        : 'Waiting for the image pull',
-                  error: updateFailed
-                    ? (activeRun?.error ??
-                      'The rollout rolled back before the service became healthy')
-                    : undefined,
-                })}
-              />
-            </div>
-
-            {updateReady ? (
-              <Button className="w-full" onClick={clearRolloutStateAndGoHome}>
-                <RefreshCw className="mr-1 size-4" />
-                Go to home
-              </Button>
-            ) : updateFailed ? (
-              <p className="text-xs text-destructive">
-                The rollout did not complete successfully. ClawBuddy stayed on the previous version.
-              </p>
-            ) : requestError ? (
-              <p className="text-xs text-muted-foreground">
-                {requestError} — the rollout may still be progressing while the API restarts.
-              </p>
-            ) : null}
-          </DialogContent>
-        </Dialog>
+        {displayedRun ? <RunSummary run={displayedRun} /> : null}
       </div>
     </div>
   )

@@ -13,6 +13,8 @@ import {
 const TIMEOUT = 180_000
 const MASK = '********'
 const GH_SECRET = 'ghp_test_secret_for_redaction'
+const RUN_INTEGRATION_TESTS = process.env.RUN_INTEGRATION_TESTS === 'true'
+const describeIntegration = RUN_INTEGRATION_TESTS ? describe : describe.skip
 
 let autoWorkspaceId: string
 let approvalWorkspaceId: string
@@ -20,6 +22,10 @@ let unmaskedAutoWorkspaceId: string
 let unmaskedApprovalWorkspaceId: string
 
 beforeAll(async () => {
+  if (!RUN_INTEGRATION_TESTS) {
+    return
+  }
+
   const autoWs = await createWorkspace(`Secrets Auto ${Date.now()}`)
   autoWorkspaceId = autoWs.id
   await enableCapabilityWithConfig(autoWorkspaceId, 'bash')
@@ -46,13 +52,17 @@ beforeAll(async () => {
 }, TIMEOUT)
 
 afterAll(async () => {
+  if (!RUN_INTEGRATION_TESTS) {
+    return
+  }
+
   if (autoWorkspaceId) await deleteWorkspace(autoWorkspaceId)
   if (approvalWorkspaceId) await deleteWorkspace(approvalWorkspaceId)
   if (unmaskedAutoWorkspaceId) await deleteWorkspace(unmaskedAutoWorkspaceId)
   if (unmaskedApprovalWorkspaceId) await deleteWorkspace(unmaskedApprovalWorkspaceId)
 }, 30_000)
 
-describe('Secret Redaction', () => {
+describeIntegration('Secret Redaction', () => {
   test(
     'redacts secret values from SSE and persisted tool executions',
     async () => {

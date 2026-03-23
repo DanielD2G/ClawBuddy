@@ -63,7 +63,7 @@ COPY --from=api-build /app/node_modules node_modules
 COPY --from=api-build /app/apps/api/dist apps/api/dist
 # Copy built frontend
 COPY --from=web-build /app/apps/web/dist /app/web
-# Copy prisma schema (needed for db push at bootstrap)
+# Copy prisma schema (used by the updater service for explicit migrations)
 COPY --from=api-build /app/apps/api/prisma apps/api/prisma
 # Copy skills directory (synced to DB on startup)
 COPY --from=api-build /app/apps/api/skills apps/api/skills
@@ -71,4 +71,4 @@ COPY --from=api-build /app/apps/api/skills apps/api/skills
 COPY --from=api-build /app/package.json package.json
 
 EXPOSE 4000
-CMD ["sh", "-c", "PRISMA_BIN=$(find node_modules -path '*/prisma/build/index.js' | head -1) && bun $PRISMA_BIN db push --schema=apps/api/prisma/schema.prisma --skip-generate && bun apps/api/dist/index.js"]
+CMD ["bun", "apps/api/dist/index.js"]
