@@ -16,6 +16,8 @@ import { DataOverviewPage } from '@/routes/settings/data'
 import { BrowserSettingsPage } from '@/routes/settings/browser'
 import { ChannelsSettingsPage } from '@/routes/settings/channels'
 import { UpdatePage } from '@/routes/update/update'
+import { DashboardListPage } from '@/routes/dashboards/index'
+import { DashboardViewPage } from '@/routes/dashboards/view'
 
 export function App() {
   return (
@@ -26,6 +28,8 @@ export function App() {
         <Route path="/update" element={<UpdatePage />} />
         <Route path="/" element={<DashboardLayout />}>
           <Route index element={<DashboardPage />} />
+          <Route path="dashboards" element={<DashboardListPage />} />
+          <Route path="dashboards/:id" element={<DashboardViewPage />} />
           <Route path="workspaces" element={<WorkspacesPage />} />
           <Route path="workspaces/:id" element={<WorkspacePage />} />
           <Route path="workspaces/:id/documents/:docId" element={<DocumentPage />} />

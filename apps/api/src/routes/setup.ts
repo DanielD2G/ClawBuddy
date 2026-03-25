@@ -698,6 +698,7 @@ app.post('/complete', async (c) => {
     'python',
     'web-fetch',
     'sub-agent-delegation',
+    'dashboard-management',
   ]
 
   // Auto-enable capabilities whose required API key is available

@@ -25,6 +25,13 @@ export const chatService = {
 
   async listSessions() {
     const sessions = await prisma.chatSession.findMany({
+      where: {
+        // Exclude dashboard-internal sessions — they're shown inline on the dashboard view
+        OR: [
+          { source: null },
+          { source: { not: 'dashboard' } },
+        ],
+      },
       orderBy: { lastMessageAt: 'desc' },
     })
     const sessionIds = sessions.map((s) => s.id)

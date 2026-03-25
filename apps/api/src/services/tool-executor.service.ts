@@ -7,6 +7,7 @@ import { sandboxService } from './sandbox.service.js'
 import { ingestionService } from './ingestion.service.js'
 import { storageService } from './storage.service.js'
 import { cronService } from './cron.service.js'
+import { dashboardService } from './dashboard.service.js'
 import { settingsService } from './settings.service.js'
 import { browserService } from './browser.service.js'
 import type { ToolCall } from '../providers/llm.interface.js'
@@ -1160,6 +1161,282 @@ async function executeReadFile(
 }
 
 // ---------------------------------------------------------------------------
+// Dashboard tool handlers
+// ---------------------------------------------------------------------------
+
+async function executeCreateDashboard(
+  toolCall: ToolCall,
+  context: ExecutionContext,
+): Promise<ExecutionResult> {
+  const startTime = Date.now()
+  const args = toolCall.arguments as Record<string, unknown>
+
+  const dashboard = await dashboardService.create({
+    workspaceId: context.workspaceId,
+    title: String(args.title ?? 'Untitled Dashboard'),
+    description: args.description ? String(args.description) : undefined,
+    components: (args.components as Array<Record<string, unknown>> | undefined)?.map((c) => ({
+      type: String(c.type ?? 'kpi'),
+      title: c.title ? String(c.title) : undefined,
+      config: (c.config as Record<string, unknown>) ?? {},
+      data: (c.data as Record<string, unknown>) ?? undefined,
+      position: c.position as { x: number; y: number; w: number; h: number } | undefined,
+      prompt: c.prompt ? String(c.prompt) : undefined,
+      script: c.script ? String(c.script) : undefined,
+      scriptLanguage: c.scriptLanguage ? String(c.scriptLanguage) : undefined,
+      notes: c.notes ? String(c.notes) : undefined,
+    })) ?? [],
+    cronSchedule: args.cronSchedule ? String(args.cronSchedule) : undefined,
+    sessionId: context.chatSessionId,
+  })
+
+  const componentSummary = dashboard.components
+    .map((c) => `  - ${c.type}${c.title ? `: ${c.title}` : ''} (id: ${c.id})`)
+    .join('\n')
+
+  return {
+    output: [
+      `Dashboard "${dashboard.title}" created successfully (id: ${dashboard.id}).`,
+      `Components:\n${componentSummary}`,
+      dashboard.cronJobId
+        ? `Cron job linked for automatic refresh (cronJobId: ${dashboard.cronJobId}).`
+        : '',
+      `View it at: /dashboards/${dashboard.id}`,
+    ]
+      .filter(Boolean)
+      .join('\n'),
+    durationMs: Date.now() - startTime,
+  }
+}
+
+async function executeUpdateDashboardData(
+  toolCall: ToolCall,
+  _context: ExecutionContext,
+): Promise<ExecutionResult> {
+  const startTime = Date.now()
+  const args = toolCall.arguments as Record<string, unknown>
+  const dashboardId = String(args.dashboardId ?? '')
+  const updates = (args.updates as Array<Record<string, unknown>>) ?? []
+
+  const dashboard = await dashboardService.updateDashboardData(
+    dashboardId,
+    updates.map((u) => ({
+      componentId: String(u.componentId),
+      data: u.data as Record<string, unknown> | undefined,
+      insight: u.insight ? String(u.insight) : undefined,
+    })),
+  )
+
+  return {
+    output: `Dashboard "${dashboard.title}" updated. ${updates.length} component(s) refreshed at ${new Date().toISOString()}.`,
+    durationMs: Date.now() - startTime,
+  }
+}
+
+async function executeListDashboards(context: ExecutionContext): Promise<ExecutionResult> {
+  const startTime = Date.now()
+  const dashboards = await dashboardService.list(context.workspaceId)
+
+  if (!dashboards.length) {
+    return { output: 'No dashboards in this workspace.', durationMs: Date.now() - startTime }
+  }
+
+  const output = dashboards
+    .map(
+      (d) =>
+        `- **${d.title}** (id: ${d.id}) — ${d.components.length} component(s)${d.cronJobId ? ' [auto-refresh]' : ''} — /dashboards/${d.id}`,
+    )
+    .join('\n')
+
+  return { output, durationMs: Date.now() - startTime }
+}
+
+async function executeAddDashboardComponents(
+  toolCall: ToolCall,
+  _context: ExecutionContext,
+): Promise<ExecutionResult> {
+  const startTime = Date.now()
+  const args = toolCall.arguments as Record<string, unknown>
+  const dashboardId = String(args.dashboardId ?? '')
+  const components = (args.components as Array<Record<string, unknown>>) ?? []
+
+  const added = []
+  for (const c of components) {
+    const component = await dashboardService.addComponent(dashboardId, {
+      type: String(c.type ?? 'kpi'),
+      title: c.title ? String(c.title) : undefined,
+      config: (c.config as Record<string, unknown>) ?? {},
+      data: (c.data as Record<string, unknown>) ?? undefined,
+      position: c.position as { x: number; y: number; w: number; h: number } | undefined,
+      prompt: c.prompt ? String(c.prompt) : undefined,
+      script: c.script ? String(c.script) : undefined,
+      scriptLanguage: c.scriptLanguage ? String(c.scriptLanguage) : undefined,
+      notes: c.notes ? String(c.notes) : undefined,
+    })
+    added.push(component)
+  }
+
+  // If the dashboard has a linked cron, update the refresh prompt with new components
+  const dashboard = await dashboardService.getById(dashboardId)
+  if (dashboard.cronJobId) {
+    try {
+      const { cronService } = await import('./cron.service.js')
+      const { dashboardService } = await import('./dashboard.service.js')
+      const prompt = dashboardService.buildDynamicRefreshPrompt(dashboard)
+      await cronService.update(dashboard.cronJobId, { prompt })
+    } catch {
+      // Non-critical — cron prompt update failure shouldn't block
+    }
+  }
+
+  const summary = added
+    .map((c) => `  - ${c.type}${c.title ? `: ${c.title}` : ''} (id: ${c.id})`)
+    .join('\n')
+
+  return {
+    output: `Added ${added.length} component(s) to dashboard ${dashboardId}:\n${summary}`,
+    durationMs: Date.now() - startTime,
+  }
+}
+
+async function executeRemoveDashboardComponents(toolCall: ToolCall): Promise<ExecutionResult> {
+  const startTime = Date.now()
+  const args = toolCall.arguments as Record<string, unknown>
+  const componentIds = (args.componentIds as string[]) ?? []
+
+  let removed = 0
+  for (const id of componentIds) {
+    try {
+      await dashboardService.deleteComponent(id)
+      removed++
+    } catch {
+      // Component may not exist
+    }
+  }
+
+  return {
+    output: `Removed ${removed} component(s) from dashboard.`,
+    durationMs: Date.now() - startTime,
+  }
+}
+
+async function executeGetDashboard(toolCall: ToolCall): Promise<ExecutionResult> {
+  const startTime = Date.now()
+  const args = toolCall.arguments as Record<string, unknown>
+  const id = String(args.id ?? '')
+
+  try {
+    const dashboard = await dashboardService.getById(id)
+    const componentList = dashboard.components
+      .map((c, i) => {
+        let line = `  ${i + 1}. **${c.type}**${c.title ? `: ${c.title}` : ''} (id: ${c.id})`
+        if (c.prompt) line += `\n     Prompt: "${c.prompt}"`
+        if (c.script) line += `\n     Script: [${c.scriptLanguage ?? 'unknown'}] ${c.script.length} chars`
+        if (c.notes) line += `\n     Notes: "${c.notes.slice(0, 200)}${c.notes.length > 200 ? '…' : ''}"`
+        // Include data summary for each component
+        if (c.data) {
+          const json = JSON.stringify(c.data)
+          line += `\n     Data: ${json.length > 800 ? json.slice(0, 800) + '…' : json}`
+        }
+        if (c.type === 'ai_insights' && c.lastInsight) {
+          const preview = c.lastInsight.slice(0, 300)
+          line += `\n     Last insight: ${preview}${c.lastInsight.length > 300 ? '…' : ''}`
+        }
+        return line
+      })
+      .join('\n')
+
+    return {
+      output: [
+        `Dashboard: **${dashboard.title}** (id: ${dashboard.id})`,
+        dashboard.description ? `Description: ${dashboard.description}` : '',
+        dashboard.cronJobId ? `Cron: linked (${dashboard.cronJobId})` : 'Cron: none',
+        `Last refresh: ${dashboard.lastRefreshAt ? new Date(dashboard.lastRefreshAt).toISOString() : 'never'}`,
+        `Components (${dashboard.components.length}):`,
+        componentList,
+      ]
+        .filter(Boolean)
+        .join('\n'),
+      durationMs: Date.now() - startTime,
+    }
+  } catch {
+    return {
+      output: '',
+      error: `Dashboard ${id} not found.`,
+      durationMs: Date.now() - startTime,
+    }
+  }
+}
+
+async function executeReorderDashboardComponents(toolCall: ToolCall): Promise<ExecutionResult> {
+  const startTime = Date.now()
+  const args = toolCall.arguments as Record<string, unknown>
+  const dashboardId = String(args.dashboardId ?? '')
+  const componentIds = (args.componentIds as string[]) ?? []
+
+  const dashboard = await dashboardService.reorderComponents(dashboardId, componentIds)
+
+  const summary = dashboard.components
+    .map((c, i) => `  ${i + 1}. ${c.type}${c.title ? `: ${c.title}` : ''} (${c.id})`)
+    .join('\n')
+
+  return {
+    output: `Components reordered:\n${summary}`,
+    durationMs: Date.now() - startTime,
+  }
+}
+
+async function executeDeleteDashboard(toolCall: ToolCall): Promise<ExecutionResult> {
+  const startTime = Date.now()
+  const args = toolCall.arguments as Record<string, unknown>
+  const id = String(args.id ?? '')
+
+  try {
+    await dashboardService.delete(id)
+    return {
+      output: `Dashboard ${id} deleted successfully.`,
+      durationMs: Date.now() - startTime,
+    }
+  } catch (err) {
+    return {
+      output: '',
+      error: err instanceof Error ? err.message : String(err),
+      durationMs: Date.now() - startTime,
+    }
+  }
+}
+
+async function executeUpdateDashboardComponent(toolCall: ToolCall): Promise<ExecutionResult> {
+  const startTime = Date.now()
+  const args = toolCall.arguments as Record<string, unknown>
+  const componentId = String(args.componentId ?? '')
+
+  const updates: Record<string, unknown> = {}
+  if (args.title !== undefined) updates.title = String(args.title)
+  if (args.prompt !== undefined) updates.prompt = String(args.prompt)
+  if (args.script !== undefined) updates.script = args.script === '' ? null : String(args.script)
+  if (args.scriptLanguage !== undefined) updates.scriptLanguage = args.scriptLanguage === '' ? null : String(args.scriptLanguage)
+  if (args.notes !== undefined) updates.notes = args.notes === '' ? null : String(args.notes)
+  if (args.config !== undefined) updates.config = args.config as Record<string, unknown>
+
+  try {
+    const component = await dashboardService.updateComponent(componentId, updates)
+
+    const fields = Object.keys(updates).join(', ')
+    return {
+      output: `Component "${component.title ?? componentId}" updated (fields: ${fields}).${updates.script !== undefined ? ' Script will be used on next refresh.' : ''}${updates.notes !== undefined ? ' Notes saved for future reference.' : ''}`,
+      durationMs: Date.now() - startTime,
+    }
+  } catch (err) {
+    return {
+      output: '',
+      error: err instanceof Error ? err.message : String(err),
+      durationMs: Date.now() - startTime,
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Tool handler registry — maps tool names to their handler functions
 // ---------------------------------------------------------------------------
 
@@ -1171,6 +1448,15 @@ const toolHandlerRegistry = new Map<string, ToolHandler>([
   ['create_cron', executeCreateCron],
   ['list_crons', (_toolCall, context) => executeListCrons(context)],
   ['delete_cron', (toolCall, _context) => executeDeleteCron(toolCall)],
+  ['create_dashboard', executeCreateDashboard],
+  ['update_dashboard_data', executeUpdateDashboardData],
+  ['list_dashboards', (_toolCall, context) => executeListDashboards(context)],
+  ['get_dashboard', (toolCall, _context) => executeGetDashboard(toolCall)],
+  ['add_dashboard_components', executeAddDashboardComponents],
+  ['remove_dashboard_components', (toolCall, _context) => executeRemoveDashboardComponents(toolCall)],
+  ['reorder_dashboard_components', (toolCall, _context) => executeReorderDashboardComponents(toolCall)],
+  ['update_dashboard_component', (toolCall, _context) => executeUpdateDashboardComponent(toolCall)],
+  ['delete_dashboard', (toolCall, _context) => executeDeleteDashboard(toolCall)],
   ['web_search', (toolCall, _context) => executeWebSearch(toolCall)],
   ['web_fetch', (toolCall, _context) => executeWebFetch(toolCall)],
   ['run_browser_script', executeBrowserScript],
