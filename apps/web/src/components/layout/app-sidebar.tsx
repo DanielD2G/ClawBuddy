@@ -5,6 +5,7 @@ import {
   SquarePen,
   MessageSquare,
   FolderOpen,
+  LayoutDashboard,
   Trash2,
   ChevronsUpDown,
   Check,
@@ -27,6 +28,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useChatSessions, useDeleteChatSession } from '@/hooks/use-chat-sessions'
+import { useWorkspaceCapabilities } from '@/hooks/use-capabilities'
 import {
   useWorkspaces,
   useWorkspaceContainerStatus,
@@ -79,6 +81,9 @@ export function AppSidebar() {
   const { data: containerStatus } = useWorkspaceContainerStatus(activeWorkspace?.id ?? '')
   const startContainer = useStartWorkspaceContainer()
   const stopContainer = useStopWorkspaceContainer()
+
+  const { data: capabilities } = useWorkspaceCapabilities(activeWorkspace?.id)
+  const hasDashboards = capabilities?.some((c) => c.slug === 'dashboard-management' && c.enabled) ?? false
 
   const isRunning = containerStatus?.status === 'running'
 
@@ -164,6 +169,22 @@ export function AppSidebar() {
               <span>New chat</span>
             </Link>
           </li>
+          {hasDashboards && (
+            <li>
+              <Link
+                to="/dashboards"
+                onClick={closeMobileDrawer}
+                className={cn(
+                  'flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-sidebar-accent',
+                  pathname.startsWith('/dashboards') &&
+                    'bg-sidebar-accent text-sidebar-accent-foreground font-medium',
+                )}
+              >
+                <LayoutDashboard className="size-4 shrink-0" />
+                <span>Dashboards</span>
+              </Link>
+            </li>
+          )}
           {activeWorkspace && (
             <li>
               <Link

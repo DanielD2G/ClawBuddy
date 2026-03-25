@@ -4,7 +4,11 @@ import { prisma } from '../lib/prisma.js'
 import { CRON_HANDLERS } from './cron-handlers.js'
 import { agentService } from '../services/agent.service.js'
 import { createTelegramEmit } from '../channels/telegram/telegram-emit.js'
+import { findCronHook } from './cron-lifecycle.js'
 import type { SSEEmit } from '../lib/sse.js'
+
+// Register lifecycle hooks — self-registering on import
+import './dashboard-cron-hooks.js'
 
 export const CRON_QUEUE_NAME = 'cron-jobs'
 
@@ -36,6 +40,9 @@ const worker = new Worker<CronJobData>(
 
     console.log(`[Cron] Executing "${cronJob.name}" (${cronJob.type})`)
 
+    // Find a lifecycle hook that matches this cron job (if any)
+    const hook = await findCronHook(cronJobId)
+
     try {
       if (cronJob.type === 'internal') {
         const handler = cronJob.handler ? CRON_HANDLERS[cronJob.handler] : null
@@ -58,11 +65,19 @@ const worker = new Worker<CronJobData>(
 
         // Use the session from the originating chat, or create one as fallback
         let sessionId = cronJob.sessionId
+        let sessionSource: string | undefined
         if (!sessionId) {
+          // Let the hook decide the session source tag
+          const hookMeta = hook ? await hook.onSessionCreated?.({
+            cronJobId, cronJobName: cronJob.name, workspaceId, sessionId: '',
+          }) : undefined
+          sessionSource = hookMeta?.source
+
           const session = await prisma.chatSession.create({
             data: {
               workspaceId,
               title: `[Cron] ${cronJob.name}`,
+              source: sessionSource ?? 'cron',
             },
           })
           sessionId = session.id
@@ -72,12 +87,25 @@ const worker = new Worker<CronJobData>(
           })
         }
 
+        const lifecycleCtx = { cronJobId, cronJobName: cronJob.name, workspaceId, sessionId }
+
+        // Notify hook that execution is about to start
+        await hook?.onBefore?.(lifecycleCtx)
+
+        // Let hook tag/link an existing session (only if we didn't just create it)
+        if (hook && !sessionSource) {
+          await hook.onSessionCreated?.(lifecycleCtx)
+        }
+
+        // Let hook optionally override the prompt
+        const agentPrompt = (await hook?.buildPrompt?.(lifecycleCtx)) ?? cronJob.prompt
+
         // Save the cron prompt as a user message so it appears in the conversation
         await prisma.chatMessage.create({
           data: {
             sessionId,
             role: 'user',
-            content: `[Cron: ${cronJob.name}] ${cronJob.prompt}`,
+            content: `[Cron: ${cronJob.name}] ${agentPrompt}`,
           },
         })
 
@@ -98,7 +126,7 @@ const worker = new Worker<CronJobData>(
         // Run agent (headless unless Telegram-linked, auto-approve tools since no user to decide)
         // Agent loop saves ChatMessages per-iteration directly to DB
         try {
-          await agentService.runAgentLoop(sessionId, cronJob.prompt, workspaceId, cronEmit, {
+          await agentService.runAgentLoop(sessionId, agentPrompt, workspaceId, cronEmit, {
             autoApprove: true,
             historyIncludesCurrentUserMessage: true,
           })
@@ -116,6 +144,12 @@ const worker = new Worker<CronJobData>(
         }
       }
 
+      // Notify hook of success
+      if (hook) {
+        const ctx = { cronJobId, cronJobName: cronJob.name, workspaceId: cronJob.workspaceId ?? '', sessionId: cronJob.sessionId ?? '' }
+        await hook.onSuccess?.(ctx)
+      }
+
       await prisma.cronJob.update({
         where: { id: cronJobId },
         data: {
@@ -129,6 +163,12 @@ const worker = new Worker<CronJobData>(
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err)
       console.error(`[Cron] "${cronJob.name}" failed:`, errorMsg)
+
+      // Notify hook of error
+      if (hook) {
+        const ctx = { cronJobId, cronJobName: cronJob.name, workspaceId: cronJob.workspaceId ?? '', sessionId: cronJob.sessionId ?? '' }
+        await hook.onError?.(ctx, err)
+      }
 
       await prisma.cronJob.update({
         where: { id: cronJobId },

@@ -30,3 +30,4 @@ export interface Document {
 }
 
 export * from './workspace-settings.js'
+export * from '../dashboard.types.js'

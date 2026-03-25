@@ -20,6 +20,7 @@ import capabilityRoutes from './routes/capabilities.js'
 import fileRoutes from './routes/files.js'
 import skillRoutes from './routes/skills.js'
 import cronRoutes from './routes/cron.js'
+import dashboardRoutes from './routes/dashboards.js'
 import oauthRoutes from './routes/oauth.js'
 import browserRoutes from './routes/browser.js'
 import channelRoutes from './routes/channels.js'
@@ -124,6 +125,7 @@ app.route('/api', capabilityRoutes)
 app.route('/api', fileRoutes)
 app.route('/api', skillRoutes)
 app.route('/api', cronRoutes)
+app.route('/api', dashboardRoutes)
 app.route('/api/oauth', oauthRoutes)
 app.route('/api/browser', browserRoutes)
 app.route('/api/channels', channelRoutes)

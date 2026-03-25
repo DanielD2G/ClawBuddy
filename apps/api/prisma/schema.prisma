@@ -361,3 +361,46 @@ model CronJob {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
+
+// ── Dashboards ──────────────────────────────────────────────
+
+model Dashboard {
+  id            String   @id @default(cuid())
+  workspaceId   String
+  sessionId     String?
+  title         String
+  description   String?  @db.Text
+  layout        Json?
+  cronJobId      String?
+  refreshStatus  String    @default("idle")
+  lastRefreshAt  DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  components DashboardComponent[]
+
+  @@index([workspaceId])
+}
+
+model DashboardComponent {
+  id             String    @id @default(cuid())
+  dashboardId    String
+  dashboard      Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+  type           String
+  title          String?
+  config         Json
+  data           Json?
+  previousData   Json?     /// Snapshot of data before last refresh — allows viewing old values
+  position       Json?
+  order          Int       @default(0)
+  prompt         String?   @db.Text  @map("insightPrompt")
+  script         String?   @db.Text  /// User-defined script (python/bash/etc.) to regenerate this component's data
+  scriptLanguage String?              /// Language hint: "python", "bash", "javascript", "sql", etc.
+  notes          String?   @db.Text  /// Free-form notes/context for the agent to use during regeneration
+  lastInsight    String?   @db.Text
+  lastInsightAt  DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([dashboardId])
+}

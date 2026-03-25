@@ -7,6 +7,7 @@ export const POLL_BROWSER_HEALTH_MS = 10000
 export const POLL_BROWSER_SESSIONS_MS = 5000
 export const POLL_CONTAINER_STATUS_MS = 10000
 export const POLL_CRON_JOBS_MS = 15_000
+export const POLL_DASHBOARDS_MS = 10_000
 export const POLL_DOCUMENT_STATUS_MS = 2000
 export const POLL_DOCKER_IMAGES_MS = 1500
 export const POLL_UPDATE_STATUS_MS = 2000
@@ -93,6 +94,10 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   kubectl_command: 'Kubectl',
   docker_command: 'Docker',
   delegate_task: 'Sub-Agent',
+  create_dashboard: 'Create Dashboard',
+  update_dashboard_data: 'Update Dashboard',
+  list_dashboards: 'List Dashboards',
+  delete_dashboard: 'Delete Dashboard',
 }
 
 export function formatToolDisplayName(toolName: string): string {
