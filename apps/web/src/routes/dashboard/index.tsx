@@ -12,8 +12,8 @@ import { MentionInput } from '@/components/chat/mention-input'
 import { ChatAttachMenu } from '@/components/chat/chat-attach-menu'
 
 const GREETING_PHRASES = [
-  'How can I help you today?',
-  'What would you like to know?',
+  'How can I help you?',
+  'What do you need?',
   'Ready when you are.',
   'What are you working on?',
   'Ask me anything.',
@@ -56,7 +56,7 @@ function TypingGreeting() {
   }, [tick, isDeleting])
 
   return (
-    <h1 className="mb-8 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+    <h1 className="mb-4 text-2xl font-semibold tracking-tight text-foreground sm:text-4xl whitespace-nowrap text-center">
       {text}
       <span className="ml-0.5 inline-block w-[2px] h-[1.1em] align-text-bottom bg-brand animate-pulse" />
     </h1>
@@ -106,52 +106,58 @@ export function DashboardPage() {
       <TypingGreeting />
 
       <form onSubmit={handleSubmit} className="w-full max-w-[680px]">
-        {/* Input bar */}
+        {/* Input bar — morphs from pill to rounded rect when text wraps */}
         <div
           className={`
-            relative flex items-center gap-3 rounded-full
-            bg-muted/60 px-5 py-3
+            relative flex flex-col
+            bg-muted/60 px-3 pt-3 pb-2
             border border-border/40
             backdrop-blur-sm
-            transition-all duration-200
+            transition-all duration-300 ease-out
+            ${input.includes('\n') || input.length > 60 ? 'rounded-2xl' : 'rounded-[1.5rem]'}
             ${focused ? 'border-border/80 bg-muted/80 shadow-lg shadow-black/5' : ''}
           `}
         >
-          <ChatAttachMenu
-            onSelectFile={(title) => setInput((v) => `${v}@${title} `)}
-            onSelectTool={(slug) => setInput((v) => `${v}/${slug} `)}
-            capabilities={enabledCapabilities}
-            documents={allDocsForMenu}
-          />
+          {/* Text area */}
+          <div className="flex-1 min-w-0 px-1">
+            <MentionInput
+              value={input}
+              onChange={setInput}
+              onFocus={() => setFocused(true)}
+              onBlur={() => setFocused(false)}
+              placeholder="Ask anything..."
+              onDocumentMentionsChange={setMentionedDocIds}
+              capabilities={enabledCapabilities}
+              documents={readyDocuments}
+              folders={allFolders}
+            />
+          </div>
 
-          <MentionInput
-            value={input}
-            onChange={setInput}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-            placeholder="Ask anything — use / for tools, @ for files"
-            onDocumentMentionsChange={setMentionedDocIds}
-            capabilities={enabledCapabilities}
-            documents={readyDocuments}
-            folders={allFolders}
-          />
+          {/* Bottom row: attach + send */}
+          <div className="flex items-center justify-between mt-1">
+            <ChatAttachMenu
+              onSelectFile={(title) => setInput((v) => `${v}@${title} `)}
+              onSelectTool={(slug) => setInput((v) => `${v}/${slug} `)}
+              capabilities={enabledCapabilities}
+              documents={allDocsForMenu}
+            />
 
-          {/* Send button */}
-          <button
-            type="submit"
-            disabled={!input.trim()}
-            className={`
-              flex size-10 shrink-0 items-center justify-center rounded-full
-              transition-all duration-200
-              ${
-                input.trim()
-                  ? 'bg-brand text-brand-foreground shadow-md hover:opacity-90'
-                  : 'bg-muted-foreground/20 text-muted-foreground/50 cursor-not-allowed'
-              }
-            `}
-          >
-            <Send className="size-[18px]" strokeWidth={2} />
-          </button>
+            <button
+              type="submit"
+              disabled={!input.trim()}
+              className={`
+                flex size-8 shrink-0 items-center justify-center rounded-full
+                transition-all duration-200
+                ${
+                  input.trim()
+                    ? 'bg-brand text-brand-foreground shadow-md hover:opacity-90'
+                    : 'bg-muted-foreground/20 text-muted-foreground/50 cursor-not-allowed'
+                }
+              `}
+            >
+              <Send className="size-4" strokeWidth={2} />
+            </button>
+          </div>
         </div>
       </form>
 
