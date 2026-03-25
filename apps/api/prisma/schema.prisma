@@ -112,11 +112,14 @@ model Channel {
   name        String
   enabled     Boolean   @default(false)
   config      Json
+  runtimeLeaseOwner     String?
+  runtimeLeaseExpiresAt DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
   @@unique([workspaceId, type])
   @@index([workspaceId])
+  @@index([type, runtimeLeaseExpiresAt])
 }
 
 model ChatMessage {
@@ -174,22 +177,54 @@ model AppUpdateRun {
   id                 String   @id @default(cuid())
   status             String   @default("pending")
   phase              String   @default("pending")
+  stage              String   @default("queued")
+  message            String?
   currentVersion     String?
   targetVersion      String
   targetReleaseName  String?
   targetReleaseUrl   String?
   targetPublishedAt  DateTime?
   targetReleaseNotes String?  @db.Text
+  deliveryMode       String   @default("integrated")
+  serviceRole        String   @default("app")
+  manifest           Json?
+  targetImage        String?
+  targetImageDigest  String?
+  observedVersion    String?
+  observedImage      String?
+  observedImageDigest String?
   phaseMessage       String?
   progress           Json?
   error              String?  @db.Text
+  rollbackReason     String?  @db.Text
+  leaseOwner         String?
+  leaseExpiresAt     DateTime?
+  heartbeatAt        DateTime?
+  verificationDeadlineAt DateTime?
   startedAt          DateTime?
   completedAt        DateTime?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
+  events             AppUpdateEvent[]
+
   @@index([status])
+  @@index([stage])
   @@index([targetVersion])
+  @@index([leaseExpiresAt])
+}
+
+model AppUpdateEvent {
+  id        String       @id @default(cuid())
+  runId      String
+  run        AppUpdateRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  step       String
+  status     String
+  message    String       @db.Text
+  details    Json?
+  createdAt  DateTime     @default(now())
+
+  @@index([runId, createdAt])
 }
 
 // ── Capabilities System ─────────────────────────────────────

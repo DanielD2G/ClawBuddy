@@ -21,6 +21,7 @@ import {
 import { sendChatMessageSchema, createChatSessionSchema } from '@clawbuddy/shared'
 import { validateBody } from '../lib/validate.js'
 import { ValidationError } from '../lib/errors.js'
+import { getProviderErrorMessage } from '../lib/llm-retry.js'
 
 const app = new Hono()
 
@@ -182,7 +183,18 @@ app.post('/chat/sessions/:sessionId/approve', async (c) => {
         emit('done', { sessionId })
         return
       }
-      throw err
+      const persistedErrorMessage = await chatService.persistAssistantErrorMessage(sessionId, err)
+      await prisma.chatSession
+        .update({
+          where: { id: sessionId },
+          data: { agentStatus: 'idle' },
+        })
+        .catch(() => {})
+      emit('error', { message: getProviderErrorMessage(err) })
+      emit('done', {
+        sessionId,
+        ...(persistedErrorMessage ? { messageId: persistedErrorMessage.id } : {}),
+      })
     } finally {
       unregisterAgentLoop(sessionId)
     }

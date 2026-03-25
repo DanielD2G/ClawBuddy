@@ -92,9 +92,7 @@ describe('splitHtmlMessage', () => {
     const parts = splitHtmlMessage(input, 200)
 
     expect(parts.length).toBeGreaterThan(1)
-    // First part should end with </b>
-    expect(parts[0]).toEndWith('</b>')
-    // Second part should start with <b>
-    expect(parts[1]).toStartWith('<b>')
+    expect(parts[0]?.endsWith('</b>')).toBe(true)
+    expect(parts[1]?.startsWith('<b>')).toBe(true)
   })
 })

@@ -1,32 +1,173 @@
 import { describe, expect, test } from 'bun:test'
-import { extractVersionFromImage, isReleaseNewer } from './update.service.js'
+import {
+  buildFallbackManifest,
+  fetchReleaseByVersion,
+  isReleaseNewer,
+  isVersionAtLeast,
+  normalizeVersion,
+} from './update/update.manifest.js'
+import {
+  buildTargetImageReference,
+  extractDigestFromImage,
+  extractVersionFromImage,
+  observedImageMatchesTarget,
+} from './update/update.swarm.js'
+import { serializeControllerRun } from './update/update.controller.js'
 
-describe('extractVersionFromImage', () => {
-  test('extracts a semver tag from a tagged image reference', () => {
-    expect(extractVersionFromImage('ghcr.io/danield2g/clawbuddy-api:v0.5.1')).toBe('v0.5.1')
+describe('version helpers', () => {
+  test('normalizes tagged versions', () => {
+    expect(normalizeVersion('0.4.2')).toBe('v0.4.2')
+    expect(normalizeVersion('v0.4.2')).toBe('v0.4.2')
   })
 
-  test('ignores digests and still returns the semantic tag', () => {
-    expect(
-      extractVersionFromImage('ghcr.io/danield2g/clawbuddy-web:v1.2.3@sha256:1234567890abcdef'),
-    ).toBe('v1.2.3')
+  test('detects newer stable releases', () => {
+    expect(isReleaseNewer('v0.4.0', 'v0.4.1')).toBe(true)
+    expect(isReleaseNewer('v0.4.1', 'v0.4.1')).toBe(false)
+    expect(isReleaseNewer('legacy/latest', 'v0.4.1')).toBe(true)
   })
 
-  test('returns latest when the image does not expose a semantic version yet', () => {
-    expect(extractVersionFromImage('ghcr.io/danield2g/clawbuddy-api:latest')).toBe('vlatest')
+  test('checks minimum updater versions', () => {
+    expect(isVersionAtLeast('v0.4.2', 'v0.4.1')).toBe(true)
+    expect(isVersionAtLeast('v0.4.1', 'v0.4.2')).toBe(false)
+    expect(isVersionAtLeast('dev', 'v0.4.2')).toBe(false)
+  })
+
+  test('builds fallback manifests for legacy runs', () => {
+    expect(buildFallbackManifest('v0.4.4', 'https://example.com/release')).toEqual({
+      version: 'v0.4.4',
+      appImage: 'ghcr.io/danield2g/clawbuddy:0.4.4',
+      imageDigest: null,
+      migration: { mode: 'none', rollbackSafe: true },
+      deliveryMode: 'integrated',
+      minUpdaterVersion: null,
+      notesUrl: 'https://example.com/release',
+    })
+  })
+
+  test('fetches release metadata by tag for missing manifest recovery', async () => {
+    const originalFetch = globalThis.fetch
+
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          tag_name: 'v0.4.4',
+          name: 'v0.4.4',
+          body: 'Recovery release',
+          html_url: 'https://example.com/release',
+          published_at: '2026-03-22T00:00:00.000Z',
+          assets: [],
+        }),
+        { status: 200 },
+      )) as unknown as typeof fetch
+
+    try {
+      const release = await fetchReleaseByVersion('0.4.4')
+      expect(release?.version).toBe('v0.4.4')
+      expect(release?.manifest.appImage).toBe('ghcr.io/danield2g/clawbuddy:0.4.4')
+    } finally {
+      globalThis.fetch = originalFetch
+    }
   })
 })
 
-describe('isReleaseNewer', () => {
-  test('detects when the target version is newer than the installed one', () => {
-    expect(isReleaseNewer('v0.4.0', 'v0.4.1')).toBe(true)
+describe('swarm image helpers', () => {
+  test('extracts versions and digests from image references', () => {
+    expect(extractVersionFromImage('ghcr.io/danield2g/clawbuddy:0.5.1')).toBe('v0.5.1')
+    expect(
+      extractDigestFromImage('ghcr.io/danield2g/clawbuddy:0.5.1@sha256:1234567890abcdef'),
+    ).toBe('sha256:1234567890abcdef')
   })
 
-  test('does not flag the same version as newer', () => {
-    expect(isReleaseNewer('v0.4.1', 'v0.4.1')).toBe(false)
+  test('builds target image references with digests when provided', () => {
+    expect(
+      buildTargetImageReference({
+        version: 'v0.4.2',
+        appImage: 'ghcr.io/danield2g/clawbuddy:0.4.2',
+        imageDigest: 'sha256:abc123',
+        migration: { mode: 'none', rollbackSafe: true },
+        deliveryMode: 'integrated',
+        minUpdaterVersion: null,
+        notesUrl: null,
+      }),
+    ).toBe('ghcr.io/danield2g/clawbuddy:0.4.2@sha256:abc123')
   })
 
-  test('treats legacy installs as needing an update when a stable release exists', () => {
-    expect(isReleaseNewer('legacy/latest', 'v0.4.1')).toBe(true)
+  test('requires digest matches when the manifest declares one', () => {
+    const manifest = {
+      version: 'v0.4.2',
+      appImage: 'ghcr.io/danield2g/clawbuddy:0.4.2',
+      imageDigest: 'sha256:abc123',
+      migration: { mode: 'none' as const, rollbackSafe: true },
+      deliveryMode: 'integrated' as const,
+      minUpdaterVersion: null,
+      notesUrl: null,
+    }
+
+    expect(
+      observedImageMatchesTarget('ghcr.io/danield2g/clawbuddy:0.4.2@sha256:abc123', manifest),
+    ).toBe(true)
+    expect(
+      observedImageMatchesTarget('ghcr.io/danield2g/clawbuddy:0.4.2@sha256:def456', manifest),
+    ).toBe(false)
+  })
+})
+
+describe('controller serialization', () => {
+  test('serializes manifest snapshots and event timelines', () => {
+    const run = serializeControllerRun({
+      id: 'run_1',
+      status: 'running',
+      phase: 'pending',
+      stage: 'verifying',
+      message: 'Waiting for health',
+      currentVersion: 'v0.4.1',
+      targetVersion: 'v0.4.2',
+      targetReleaseName: 'v0.4.2',
+      targetReleaseUrl: 'https://example.com/release',
+      targetPublishedAt: new Date('2026-03-22T00:00:00.000Z'),
+      targetReleaseNotes: 'Notes',
+      deliveryMode: 'integrated',
+      serviceRole: 'app',
+      manifest: {
+        version: 'v0.4.2',
+        appImage: 'ghcr.io/danield2g/clawbuddy:0.4.2',
+        imageDigest: null,
+        migration: { mode: 'none', rollbackSafe: true },
+        deliveryMode: 'integrated',
+        minUpdaterVersion: null,
+        notesUrl: 'https://example.com/release',
+      },
+      targetImage: 'ghcr.io/danield2g/clawbuddy:0.4.2',
+      targetImageDigest: null,
+      observedVersion: 'v0.4.2',
+      observedImage: 'ghcr.io/danield2g/clawbuddy:0.4.2',
+      observedImageDigest: null,
+      rollbackReason: null,
+      phaseMessage: null,
+      progress: null,
+      error: null,
+      leaseOwner: 'updater-1',
+      leaseExpiresAt: new Date('2026-03-22T00:05:00.000Z'),
+      heartbeatAt: new Date('2026-03-22T00:04:50.000Z'),
+      verificationDeadlineAt: new Date('2026-03-22T00:10:00.000Z'),
+      startedAt: new Date('2026-03-22T00:04:00.000Z'),
+      completedAt: null,
+      createdAt: new Date('2026-03-22T00:04:00.000Z'),
+      updatedAt: new Date('2026-03-22T00:04:50.000Z'),
+      events: [
+        {
+          id: 'event_1',
+          step: 'deploying',
+          status: 'running',
+          message: 'Requested Swarm rollout',
+          details: null,
+          createdAt: new Date('2026-03-22T00:04:30.000Z'),
+        },
+      ],
+    })
+
+    expect(run.manifest?.version).toBe('v0.4.2')
+    expect(run.events).toHaveLength(1)
+    expect(run.events[0]?.step).toBe('deploying')
   })
 })

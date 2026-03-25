@@ -8,6 +8,15 @@ app.get('/update', async (c) => {
   return ok(c, await updateService.getOverview())
 })
 
+app.get('/update/runs/:id', async (c) => {
+  const run = await updateService.getRun(c.req.param('id'))
+  if (!run) {
+    return fail(c, 'Update run not found', 404)
+  }
+
+  return ok(c, run)
+})
+
 app.post('/update/check', async (c) => {
   try {
     return ok(c, await updateService.forceCheck())
@@ -16,10 +25,25 @@ app.post('/update/check', async (c) => {
   }
 })
 
+app.post('/update/runs', async (c) => {
+  try {
+    return ok(c, await updateService.createRunForLatestRelease(), 201)
+  } catch (error) {
+    return fail(c, error instanceof Error ? error.message : 'Failed to queue update', 409)
+  }
+})
+
+app.post('/update/runs/:id/retry', async (c) => {
+  try {
+    return ok(c, await updateService.retryRun(c.req.param('id')))
+  } catch (error) {
+    return fail(c, error instanceof Error ? error.message : 'Failed to retry update', 409)
+  }
+})
+
 app.post('/update/accept', async (c) => {
   try {
-    await updateService.acceptLatestRelease()
-    return ok(c, await updateService.getOverview(true))
+    return ok(c, await updateService.acceptLatestRelease())
   } catch (error) {
     return fail(c, error instanceof Error ? error.message : 'Failed to start update', 409)
   }

@@ -24,6 +24,7 @@ import type {
   SubAgentRoleConfig,
 } from './sub-agent.types.js'
 import type { SSEEvent } from '../lib/sse.js'
+import { retryProviderTimeoutOnce } from '../lib/llm-retry.js'
 import { OUTPUT_TRUNCATE_THRESHOLD, PARALLEL_SAFE_TOOLS } from '../constants.js'
 
 // ── Helpers ─────────────────────────────────────────────────
@@ -217,7 +218,17 @@ export const subAgentService = {
         subAgent: request.role,
       })
 
-      const response = await llm.chatWithTools(messages, { tools })
+      const response = await retryProviderTimeoutOnce(
+        () => llm.chatWithTools(messages, { tools }),
+        {
+          onRetry: () => {
+            emit?.('thinking', {
+              message: `Sub-agent (${request.role}) timed out, retrying once...`,
+              subAgent: request.role,
+            })
+          },
+        },
+      )
 
       // Track token usage
       if (response.usage) {

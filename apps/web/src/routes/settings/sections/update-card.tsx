@@ -13,7 +13,7 @@ function formatDate(value: string | null | undefined) {
 
 export function UpdateCard() {
   const navigate = useNavigate()
-  const { data } = useUpdateOverview(false)
+  const { data } = useUpdateOverview()
   const checkForUpdates = useCheckForUpdates()
 
   async function handleCheckNow() {
@@ -30,7 +30,7 @@ export function UpdateCard() {
   }
 
   const latest = data?.latestRelease ?? null
-  const hasUpdate = !!latest && data?.currentVersion !== latest.version
+  const hasUpdate = !!latest && data?.eligibility.canUpdate
 
   return (
     <Card>
@@ -46,7 +46,11 @@ export function UpdateCard() {
             </CardDescription>
           </div>
           <Badge variant={hasUpdate ? 'default' : 'outline'}>
-            {hasUpdate ? 'Update available' : 'Stable channel'}
+            {hasUpdate
+              ? 'Update available'
+              : latest?.manifest?.deliveryMode === 'maintenance-required'
+                ? 'Maintenance release'
+                : 'Stable channel'}
           </Badge>
         </div>
       </CardHeader>
@@ -70,6 +74,10 @@ export function UpdateCard() {
             Integrated updates are unavailable here.
             {data?.supportReason ? ` ${data.supportReason}` : ''}
           </div>
+        ) : data?.eligibility.reason ? (
+          <div className="rounded-md border border-destructive/40 p-3 text-sm text-muted-foreground">
+            {data.eligibility.reason}
+          </div>
         ) : null}
 
         {latest?.name ? (
@@ -91,7 +99,7 @@ export function UpdateCard() {
           </Button>
           <Button
             onClick={() => navigate('/update')}
-            disabled={(!hasUpdate || !data?.supported) && !data?.forceUpdate}
+            disabled={(!latest || !data?.supported) && !data?.forceUpdate}
           >
             <Rocket className="mr-1 size-4" />
             Open updater

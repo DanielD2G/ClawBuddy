@@ -44,6 +44,27 @@ function getContentBlocks(msg: ChatMessage): ContentBlock[] {
   return blocks
 }
 
+function hasVisibleTextContent(msg: ChatMessage): boolean {
+  return getContentBlocks(msg).some(
+    (block) => block.type === 'text' && block.text.trim().length > 0,
+  )
+}
+
+function getSourceSignature(msg: ChatMessage | null): string {
+  if (!msg?.sources?.length) return ''
+
+  const seen = new Set<string>()
+  return msg.sources
+    .filter((source) => {
+      const key = `${source.workspaceId ?? ''}:${source.documentId}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    .map((source) => `${source.workspaceId ?? ''}:${source.documentId}`)
+    .join('|')
+}
+
 export function ChatPage() {
   const { sessionId } = useParams<{ sessionId?: string }>()
   const { activeWorkspaceId: workspaceId } = useActiveWorkspace()
@@ -193,8 +214,17 @@ export function ChatPage() {
           <div className="flex flex-col">
             {messages.map((msg, idx) => {
               const prevMsg = idx > 0 ? messages[idx - 1] : null
+              const nextMsg = idx < messages.length - 1 ? messages[idx + 1] : null
               const isConsecutiveAssistant =
                 msg.role === 'assistant' && prevMsg?.role === 'assistant'
+              const shouldRenderSources =
+                msg.role === 'assistant' &&
+                Boolean(msg.sources?.length) &&
+                hasVisibleTextContent(msg) &&
+                !(
+                  nextMsg?.role === 'assistant' &&
+                  getSourceSignature(nextMsg) === getSourceSignature(msg)
+                )
 
               const isCronMessage = msg.role === 'user' && msg.content.startsWith('[Cron:')
               const cronName = isCronMessage
@@ -329,11 +359,10 @@ export function ChatPage() {
                         </div>
                       )}
 
-                      {msg.sources &&
-                        msg.sources.length > 0 &&
+                      {shouldRenderSources &&
                         (() => {
                           const seen = new Set<string>()
-                          const unique = msg.sources.filter((s) => {
+                          const unique = (msg.sources ?? []).filter((s) => {
                             const key = s.documentTitle
                             if (seen.has(key)) return false
                             seen.add(key)

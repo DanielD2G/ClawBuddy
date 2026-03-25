@@ -444,6 +444,121 @@ get_api_service_name() {
   printf '%s_api' "$APP_STACK_NAME"
 }
 
+run_app_schema_bootstrap() {
+  local api_service_name
+  local image_ref
+  api_service_name=$(get_api_service_name)
+  image_ref=$(docker service inspect "$api_service_name" --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}' 2>/dev/null || true)
+
+  [[ -n "$image_ref" ]] || fail "Could not resolve the current API image for schema bootstrap."
+
+  info "Applying explicit schema bootstrap..."
+  docker run --rm \
+    --network "$SHARED_NETWORK_NAME" \
+    -e DATABASE_URL=postgresql://clawbuddy:clawbuddy@postgres:5432/clawbuddy \
+    "$image_ref" \
+    sh -c 'PRISMA_BIN=$(find node_modules -path "*/prisma/build/index.js" | head -1) && bun "$PRISMA_BIN" db push --schema=apps/api/prisma/schema.prisma --skip-generate' \
+    >/dev/null
+  ok "Schema bootstrap complete"
+}
+
+extract_json_string() {
+  local key="$1"
+  local payload="$2"
+  echo "$payload" | sed -n "s/.*\"${key}\":\"\\([^\"]*\\)\".*/\\1/p" | head -1
+}
+
+extract_json_bool() {
+  local key="$1"
+  local payload="$2"
+  echo "$payload" | sed -n "s/.*\"${key}\":\\(true\\|false\\).*/\\1/p" | head -1
+}
+
+try_integrated_update_via_api() {
+  local api_base="http://localhost:4321/api"
+  local overview
+  local delivery_mode
+  local can_update
+  local reason
+  local create_response
+  local run_id
+
+  info "Checking whether the durable in-app updater can handle this release..."
+  overview=$(curl -fsSL -X POST "$api_base/update/check" -H 'Content-Type: application/json' -d '{}' 2>/dev/null || true)
+  if [[ -z "$overview" ]] || [[ "$overview" != *'"success":true'* ]]; then
+    warn "Integrated updater is not reachable. Falling back to maintenance update path."
+    return 1
+  fi
+
+  delivery_mode=$(extract_json_string "deliveryMode" "$overview")
+  can_update=$(extract_json_bool "canUpdate" "$overview")
+  reason=$(extract_json_string "reason" "$overview")
+
+  if [[ "$delivery_mode" != "integrated" || "$can_update" != "true" ]]; then
+    if [[ -n "$reason" ]]; then
+      warn "Integrated updater declined this release: $reason"
+    else
+      warn "This release requires the maintenance update path."
+    fi
+    return 1
+  fi
+
+  info "Queueing integrated update run..."
+  create_response=$(curl -fsSL -X POST "$api_base/update/runs" -H 'Content-Type: application/json' -d '{}' 2>/dev/null || true)
+  run_id=$(extract_json_string "id" "$create_response")
+
+  if [[ -z "$run_id" ]]; then
+    warn "Could not create an integrated update run. Falling back to maintenance update path."
+    return 1
+  fi
+
+  ok "Integrated update run queued (${run_id})"
+  info "Waiting for the durable updater controller to finish..."
+
+  local timeout=600
+  local elapsed=0
+
+  while [[ $elapsed -lt $timeout ]]; do
+    local run_payload
+    local status
+    local stage
+    local message
+
+    run_payload=$(curl -fsSL "$api_base/update/runs/$run_id" 2>/dev/null || true)
+    if [[ -z "$run_payload" ]] || [[ "$run_payload" != *'"success":true'* ]]; then
+      sleep 5
+      elapsed=$((elapsed + 5))
+      continue
+    fi
+
+    status=$(extract_json_string "status" "$run_payload")
+    stage=$(extract_json_string "stage" "$run_payload")
+    message=$(extract_json_string "message" "$run_payload")
+
+    echo -ne "\r  Status: ${status:-unknown} (${stage:-unknown})"
+    if [[ -n "$message" ]]; then
+      echo -ne " — ${message}"
+    fi
+
+    if [[ "$status" == "succeeded" ]]; then
+      echo -ne "\r                                                                      \r"
+      ok "Integrated update completed successfully"
+      return 0
+    fi
+
+    if [[ "$status" == "failed" || "$status" == "rolled_back" ]]; then
+      echo -ne "\r                                                                      \r"
+      fail "Integrated update ended with status ${status}. ${message:-Check the update page for details.}"
+    fi
+
+    sleep 5
+    elapsed=$((elapsed + 5))
+  done
+
+  echo -ne "\r                                                                      \r"
+  fail "Integrated update did not reach a terminal state within ${timeout}s."
+}
+
 # ── Banner ───────────────────────────────────────────
 
 show_banner() {
@@ -983,6 +1098,7 @@ step_start_services() {
   info "Deploying application stack..."
   deploy_stack "$APP_STACK_NAME" "$APP_COMPOSE_FILE"
   echo ""
+  run_app_schema_bootstrap
 
   info "Waiting for API to become healthy..."
   local timeout=180
@@ -1083,6 +1199,10 @@ do_update() {
   normalize_env_file .env
   validate_stack_env_file .env
 
+  if try_integrated_update_via_api; then
+    return
+  fi
+
   # Backup current stack files
   [[ -f "$INFRA_COMPOSE_FILE" ]] && cp "$INFRA_COMPOSE_FILE" "${INFRA_COMPOSE_FILE}.bak"
   [[ -f "$APP_COMPOSE_FILE" ]] && cp "$APP_COMPOSE_FILE" "${APP_COMPOSE_FILE}.bak"
@@ -1120,6 +1240,7 @@ do_update() {
   info "Deploying updated application stack..."
   deploy_stack "$APP_STACK_NAME" "$APP_COMPOSE_FILE"
   echo ""
+  run_app_schema_bootstrap
 
   # Wait for health
   info "Waiting for API to become healthy..."

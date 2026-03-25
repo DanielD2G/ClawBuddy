@@ -78,15 +78,22 @@ app.delete('/skills/:slug', async (c) => {
  * Force rebuild the skill Docker image for a workspace.
  */
 app.post('/skills/rebuild-image', async (c) => {
-  const { workspaceId } = await c.req.json()
+  const { workspaceId, clearCache } = await c.req.json()
   if (!workspaceId) {
     return c.json({ success: false, error: 'workspaceId is required' }, 400)
   }
 
   return streamSSE(c, async (stream) => {
     try {
-      await imageBuilderService.invalidateImages()
-      await stream.writeSSE({ event: 'build_log', data: 'Invalidated old images' })
+      if (clearCache) {
+        await imageBuilderService.invalidateImages()
+        await stream.writeSSE({ event: 'build_log', data: 'Cleared cached images' })
+      } else {
+        await stream.writeSSE({
+          event: 'build_log',
+          data: 'Reusing cached layers when available...',
+        })
+      }
 
       const tag = await imageBuilderService.getOrBuildImage(workspaceId, (line) => {
         stream.writeSSE({ event: 'build_log', data: line })

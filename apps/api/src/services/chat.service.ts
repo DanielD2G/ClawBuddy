@@ -8,6 +8,7 @@ import { agentService } from './agent.service.js'
 import { capabilityService } from './capability.service.js'
 import type { SSEEmit } from '../lib/sse.js'
 import { isAbortError, registerAgentLoop, unregisterAgentLoop } from '../lib/agent-abort.js'
+import { getProviderErrorMessage } from '../lib/llm-retry.js'
 import {
   CHAT_TITLE_MAX_LEN,
   TITLE_TEMPERATURE,
@@ -72,6 +73,28 @@ export const chatService = {
     return prisma.chatSession.findUnique({
       where: { id: sessionId },
     })
+  },
+
+  formatAssistantErrorMessage(error: unknown) {
+    return `Error: ${getProviderErrorMessage(error)}`
+  },
+
+  async persistAssistantErrorMessage(sessionId: string, error: unknown) {
+    const content = this.formatAssistantErrorMessage(error)
+
+    try {
+      const message = await prisma.chatMessage.create({
+        data: {
+          sessionId,
+          role: 'assistant',
+          content,
+        },
+      })
+      return message
+    } catch (persistErr) {
+      console.error('[ChatService] Failed to persist assistant error message:', persistErr)
+      return null
+    }
   },
 
   async deleteSession(sessionId: string) {
@@ -359,6 +382,7 @@ export const chatService = {
 
       console.error('[ChatService] Agent loop error:', err)
 
+      const persistedErrorMessage = await this.persistAssistantErrorMessage(sessionId, err)
       await prisma.chatSession
         .update({
           where: { id: sessionId },
@@ -366,9 +390,12 @@ export const chatService = {
         })
         .catch(() => {})
 
-      const errorMsg = err instanceof Error ? err.message : 'An unexpected error occurred'
+      const errorMsg = getProviderErrorMessage(err)
       emit('error', { message: errorMsg })
-      emit('done', { sessionId })
+      emit('done', {
+        sessionId,
+        ...(persistedErrorMessage ? { messageId: persistedErrorMessage.id } : {}),
+      })
     } finally {
       unregisterAgentLoop(sessionId)
     }
