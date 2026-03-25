@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { hasAvailableUpdate, useUpdateOverview } from '@/hooks/use-update'
@@ -9,6 +9,7 @@ export function UpdateNotifier() {
   const navigate = useNavigate()
   const location = useLocation()
   const { data } = useUpdateOverview()
+  const dismissedVersionRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (location.pathname.startsWith('/update')) {
@@ -18,6 +19,11 @@ export function UpdateNotifier() {
 
     if (!hasAvailableUpdate(data) || !data?.latestRelease) {
       toast.dismiss(UPDATE_TOAST_ID)
+      return
+    }
+
+    // Don't re-show if user already dismissed this version in this session
+    if (dismissedVersionRef.current === data.latestRelease.version) {
       return
     }
 
@@ -31,7 +37,10 @@ export function UpdateNotifier() {
       },
       cancel: {
         label: 'Later',
-        onClick: () => toast.dismiss(UPDATE_TOAST_ID),
+        onClick: () => {
+          dismissedVersionRef.current = data.latestRelease!.version
+          toast.dismiss(UPDATE_TOAST_ID)
+        },
       },
     })
   }, [data, location.pathname, navigate])
