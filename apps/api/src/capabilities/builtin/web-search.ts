@@ -26,6 +26,6 @@ export const webSearch: CapabilityDefinition = {
     },
   ],
   systemPrompt:
-    'You have access to web_search for real-time web information. Use it when the user asks about current events, live data, recent news, prices, weather, or anything that needs up-to-date information. Do NOT use it for general knowledge questions you can already answer.\n\n**IMPORTANT: web_search is ALWAYS preferred over browser automation for finding information.** Only use browser automation (run_browser_script) when you need to interact with a specific website (fill forms, click buttons, log in, navigate pages). For any search or information lookup query, ALWAYS use web_search first.',
+    'You have access to web_search for real-time web information. Use it when the user asks about current events, live data, recent news, prices, weather, or anything that needs up-to-date information. Do NOT use it for general knowledge questions you can already answer.\n\n**IMPORTANT: If you already have a specific URL or domain**, use web_fetch instead — web_search is for DISCOVERING pages, not for reading pages you already know about. For example, if the user says "get data from dolarhoy.com", use web_fetch("https://dolarhoy.com/...") directly, do NOT search for "dolarhoy.com dolar price".\n\n**web_search vs browser automation:** web_search is preferred over browser automation for finding information. Only use browser automation (run_browser_script) when you need to interact with a specific website (fill forms, click buttons, log in).',
   sandbox: {},
 }
