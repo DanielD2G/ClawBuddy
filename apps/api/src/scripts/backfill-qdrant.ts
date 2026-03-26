@@ -5,13 +5,14 @@
 import { prisma } from '../lib/prisma.js'
 import { qdrant } from '../lib/qdrant.js'
 import { QDRANT_COLLECTION_NAME } from '@clawbuddy/shared'
+import { logger } from '../lib/logger.js'
 
 async function backfill() {
   const chunks = await prisma.documentChunk.findMany({
     include: { document: { select: { workspaceId: true } } },
   })
 
-  console.log(`Found ${chunks.length} chunks to backfill`)
+  logger.info(`Found ${chunks.length} chunks to backfill`)
 
   let updated = 0
   for (const chunk of chunks) {
@@ -26,15 +27,15 @@ async function backfill() {
       })
       updated++
     } catch (err) {
-      console.error(`Failed to update point ${chunk.qdrantId}:`, err)
+      logger.error(`Failed to update point ${chunk.qdrantId}`, err)
     }
   }
 
-  console.log(`Backfilled ${updated}/${chunks.length} Qdrant points`)
+  logger.info(`Backfilled ${updated}/${chunks.length} Qdrant points`)
   process.exit(0)
 }
 
 backfill().catch((err) => {
-  console.error('Backfill failed:', err)
+  logger.error('Backfill failed', err)
   process.exit(1)
 })

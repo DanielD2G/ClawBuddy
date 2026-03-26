@@ -15,7 +15,7 @@ import { settingsService } from './settings.service.js'
 import { toolExecutorService } from './tool-executor.service.js'
 import { secretRedactionService } from './secret-redaction.service.js'
 import type { SecretInventory } from './secret-redaction.service.js'
-import { recordTokenUsage, checkToolArgSize } from './agent.service.js'
+import { recordTokenUsage, checkToolArgSize } from './agent-token.service.js'
 import { SUB_AGENT_ROLES } from './sub-agent-roles.js'
 import type {
   SubAgentModelTier,

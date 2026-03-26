@@ -3,6 +3,7 @@ import { PassThrough } from 'stream'
 import path from 'node:path'
 import { pack, extract } from 'tar-stream'
 import { prisma } from '../lib/prisma.js'
+import { logger } from '../lib/logger.js'
 
 const docker = new Docker()
 
@@ -40,21 +41,44 @@ async function resolveImage(workspaceId: string): Promise<string> {
   let image: string
   try {
     image = await imageBuilderService.getOrBuildImage(workspaceId)
-  } catch {
+  } catch (err) {
+    logger.warn('[Sandbox] Failed to build custom image, falling back to base', {
+      workspaceId,
+      error: err instanceof Error ? err.message : String(err),
+    })
     image = SANDBOX_BASE_IMAGE
   }
 
   try {
     await docker.getImage(image).inspect()
-  } catch {
+  } catch (err) {
+    logger.warn('[Sandbox] Image not found, falling back to fallback image', {
+      workspaceId,
+      image,
+      error: err instanceof Error ? err.message : String(err),
+    })
     image = SANDBOX_FALLBACK_IMAGE
     try {
       await docker.getImage(image).inspect()
     } catch {
+      const DOCKER_PULL_TIMEOUT_MS = 5 * 60 * 1000 // 5 min
       await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          reject(new Error(`Docker pull for "${image}" timed out after 5 minutes`))
+        }, DOCKER_PULL_TIMEOUT_MS)
         docker.pull(image, (err: Error | null, stream: NodeJS.ReadableStream) => {
-          if (err) return reject(err)
-          docker.modem.followProgress(stream, (err) => (err ? reject(err) : resolve()))
+          if (err) {
+            clearTimeout(timer)
+            return reject(err)
+          }
+          docker.modem.followProgress(stream, (followErr) => {
+            clearTimeout(timer)
+            if (followErr) {
+              reject(followErr)
+            } else {
+              resolve()
+            }
+          })
         })
       })
     }
@@ -96,8 +120,11 @@ export const sandboxService = {
         const container = docker.getContainer(workspace.containerId)
         const info = await container.inspect()
         if (info.State.Running) return workspace.containerId
-      } catch {
-        // Container is gone, will recreate below
+      } catch (err) {
+        logger.warn('[Sandbox] Running container gone, will recreate', {
+          workspaceId,
+          error: err instanceof Error ? err.message : String(err),
+        })
       }
     }
 
@@ -106,8 +133,11 @@ export const sandboxService = {
       try {
         const old = docker.getContainer(workspace.containerId)
         await old.remove({ force: true })
-      } catch {
-        /* already gone */
+      } catch (err) {
+        logger.warn('[Sandbox] Failed to remove old container', {
+          workspaceId,
+          error: err instanceof Error ? err.message : String(err),
+        })
       }
     }
 
@@ -211,8 +241,9 @@ export const sandboxService = {
       },
     })
 
-    console.log(
+    logger.info(
       `[Sandbox] Created workspace container for ${workspaceId}: ${container.id.slice(0, 12)}`,
+      { workspaceId },
     )
     return container.id
   },
@@ -242,7 +273,9 @@ export const sandboxService = {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       if (msg.includes('no such container') || msg.includes('is not running')) {
-        console.warn(`[Sandbox] Workspace container gone for ${workspaceId}, recreating...`)
+        logger.warn(`[Sandbox] Workspace container gone for ${workspaceId}, recreating...`, {
+          workspaceId,
+        })
         await this.getOrCreateWorkspaceContainer(workspaceId, { networkAccess: true })
         const ws = await prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId } })
         return this._execInContainerDirect(ws.containerId!, command, options)
@@ -309,8 +342,10 @@ export const sandboxService = {
           try {
             const inspection = await exec.inspect()
             exitCode = inspection.ExitCode ?? 0
-          } catch {
-            // Fallback
+          } catch (err) {
+            logger.warn('[Sandbox] Failed to inspect exec exit code', {
+              error: err instanceof Error ? err.message : String(err),
+            })
           }
 
           const rawStdout = stripNullBytes(Buffer.concat(stdoutChunks).toString('utf-8'))
@@ -420,10 +455,23 @@ export const sandboxService = {
     if (workspace.containerId) {
       try {
         const container = docker.getContainer(workspace.containerId)
-        await container.stop({ t: SANDBOX_STOP_TIMEOUT_S }).catch(() => {})
-        await container.remove({ force: true }).catch(() => {})
-      } catch {
-        /* already gone */
+        await container.stop({ t: SANDBOX_STOP_TIMEOUT_S }).catch((err) =>
+          logger.warn('[Sandbox] Failed to stop workspace container', {
+            workspaceId,
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        )
+        await container.remove({ force: true }).catch((err) =>
+          logger.warn('[Sandbox] Failed to remove workspace container', {
+            workspaceId,
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        )
+      } catch (err) {
+        logger.warn('[Sandbox] Container already gone during stop', {
+          workspaceId,
+          error: err instanceof Error ? err.message : String(err),
+        })
       }
     }
     await prisma.workspace.update({
@@ -450,7 +498,11 @@ export const sandboxService = {
           })
           return { status: 'stopped', containerId: null }
         }
-      } catch {
+      } catch (err) {
+        logger.warn('[Sandbox] Container inspect failed, marking stopped', {
+          workspaceId,
+          error: err instanceof Error ? err.message : String(err),
+        })
         await prisma.workspace.update({
           where: { id: workspaceId },
           data: { containerStatus: 'stopped', containerId: null },
@@ -472,10 +524,23 @@ export const sandboxService = {
     if (session.containerId) {
       try {
         const container = docker.getContainer(session.containerId)
-        await container.stop({ t: SANDBOX_STOP_TIMEOUT_S }).catch(() => {})
-        await container.remove({ force: true }).catch(() => {})
-      } catch {
-        // Container may already be gone
+        await container.stop({ t: SANDBOX_STOP_TIMEOUT_S }).catch((err) =>
+          logger.warn('[Sandbox] Failed to stop sandbox container', {
+            sandboxSessionId,
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        )
+        await container.remove({ force: true }).catch((err) =>
+          logger.warn('[Sandbox] Failed to remove sandbox container', {
+            sandboxSessionId,
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        )
+      } catch (err) {
+        logger.warn('[Sandbox] Container already gone during destroy', {
+          sandboxSessionId,
+          error: err instanceof Error ? err.message : String(err),
+        })
       }
     }
 
@@ -520,9 +585,13 @@ export const sandboxService = {
     })
 
     for (const workspace of idleWorkspaces) {
-      console.log(`[Sandbox] Stopping idle workspace container for ${workspace.id}`)
+      logger.info(`[Sandbox] Stopping idle workspace container for ${workspace.id}`, {
+        workspaceId: workspace.id,
+      })
       await this.stopWorkspaceContainer(workspace.id).catch((err) => {
-        console.error(`[Sandbox] Failed to stop idle container for ${workspace.id}:`, err)
+        logger.error(`[Sandbox] Failed to stop idle container for ${workspace.id}`, err, {
+          workspaceId: workspace.id,
+        })
       })
     }
 
@@ -558,15 +627,25 @@ export const sandboxService = {
         if (!activeContainerIds.has(container.Id) && !workspaceContainerIds.has(container.Id)) {
           const startedAt = container.Created ? container.Created * 1000 : 0
           if (Date.now() - startedAt > SANDBOX_IDLE_TIMEOUT_MS) {
-            console.log(`[Sandbox] Removing orphaned container ${container.Id.slice(0, 12)}`)
+            logger.info(`[Sandbox] Removing orphaned container ${container.Id.slice(0, 12)}`)
             const c = docker.getContainer(container.Id)
-            await c.stop({ t: 5 }).catch(() => {})
-            await c.remove({ force: true }).catch(() => {})
+            await c.stop({ t: 5 }).catch((err) =>
+              logger.warn('[Sandbox] Failed to stop orphaned container', {
+                containerId: container.Id.slice(0, 12),
+                error: err instanceof Error ? err.message : String(err),
+              }),
+            )
+            await c.remove({ force: true }).catch((err) =>
+              logger.warn('[Sandbox] Failed to remove orphaned container', {
+                containerId: container.Id.slice(0, 12),
+                error: err instanceof Error ? err.message : String(err),
+              }),
+            )
           }
         }
       }
     } catch (err) {
-      console.error('[Sandbox] Failed to clean orphaned containers:', err)
+      logger.error('[Sandbox] Failed to clean orphaned containers', err)
     }
   },
 }

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { logger } from './lib/logger.js'
 
 const envSchema = z.object({
   DATABASE_URL: z.string(),
@@ -51,7 +52,7 @@ const hasAnyProviderConnection = !!(
   env.LOCAL_PROVIDER_BASE_URL
 )
 if (!hasAnyProviderConnection) {
-  console.warn(
-    '⚠️  No AI provider connections configured. Set at least one of: OPENAI_API_KEY, GEMINI_API_KEY, ANTHROPIC_API_KEY, LOCAL_PROVIDER_BASE_URL',
+  logger.warn(
+    'No AI provider connections configured. Set at least one of: OPENAI_API_KEY, GEMINI_API_KEY, ANTHROPIC_API_KEY, LOCAL_PROVIDER_BASE_URL',
   )
 }

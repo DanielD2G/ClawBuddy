@@ -20,6 +20,7 @@ interface OpenAICompatibleLLMOptions extends OpenAICompatibleClientOptions {
   providerId: string
   model: string
   useMaxCompletionTokens?: (model: string) => boolean
+  isFixedTemperature?: (model: string) => boolean
 }
 
 interface OpenAICompatibleEmbeddingOptions extends OpenAICompatibleClientOptions {
@@ -62,6 +63,7 @@ export class OpenAICompatibleLLMProvider implements LLMProvider {
   private client: OpenAI
   private model: string
   private useMaxCompletionTokens?: (model: string) => boolean
+  private isFixedTemperature?: (model: string) => boolean
   readonly modelId: string
   readonly providerId: string
 
@@ -71,6 +73,7 @@ export class OpenAICompatibleLLMProvider implements LLMProvider {
     this.modelId = options.model
     this.providerId = options.providerId
     this.useMaxCompletionTokens = options.useMaxCompletionTokens
+    this.isFixedTemperature = options.isFixedTemperature
   }
 
   private tokenLimit(maxTokens: number | undefined): Record<string, number | undefined> {
@@ -159,10 +162,11 @@ export class OpenAICompatibleLLMProvider implements LLMProvider {
       },
     }))
 
+    const fixedTemp = this.isFixedTemperature?.(this.model)
     const response = await this.client.chat.completions.create({
       model: this.model,
       messages: openaiMessages as unknown as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
-      temperature: options?.temperature ?? 0.7,
+      ...(fixedTemp ? {} : { temperature: options?.temperature ?? 0.7 }),
       ...this.tokenLimit(options?.maxTokens),
       ...(tools?.length ? { tools } : {}),
     })
@@ -200,10 +204,11 @@ export class OpenAICompatibleLLMProvider implements LLMProvider {
         content: getTextContent(m.content),
       }))
 
+    const fixedTemp = this.isFixedTemperature?.(this.model)
     const response = await this.client.chat.completions.create({
       model: this.model,
       messages: openaiMessages,
-      temperature: options?.temperature ?? 0.7,
+      ...(fixedTemp ? {} : { temperature: options?.temperature ?? 0.7 }),
       ...this.tokenLimit(options?.maxTokens),
       stream: true,
     })

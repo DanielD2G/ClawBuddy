@@ -5,6 +5,7 @@ import { CRON_HANDLERS } from './cron-handlers.js'
 import { agentService } from '../services/agent.service.js'
 import { createTelegramEmit } from '../channels/telegram/telegram-emit.js'
 import type { SSEEmit } from '../lib/sse.js'
+import { logger } from '../lib/logger.js'
 
 export const CRON_QUEUE_NAME = 'cron-jobs'
 
@@ -26,7 +27,7 @@ const worker = new Worker<CronJobData>(
     })
 
     if (!cronJob) {
-      console.warn(`[Cron] Job ${cronJobId} not found in DB, skipping`)
+      logger.warn(`[Cron] Job ${cronJobId} not found in DB, skipping`)
       return
     }
 
@@ -34,7 +35,7 @@ const worker = new Worker<CronJobData>(
       return
     }
 
-    console.log(`[Cron] Executing "${cronJob.name}" (${cronJob.type})`)
+    logger.info(`[Cron] Executing "${cronJob.name}" (${cronJob.type})`)
 
     try {
       if (cronJob.type === 'internal') {
@@ -125,10 +126,10 @@ const worker = new Worker<CronJobData>(
         },
       })
 
-      console.log(`[Cron] "${cronJob.name}" completed successfully`)
+      logger.info(`[Cron] "${cronJob.name}" completed successfully`)
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err)
-      console.error(`[Cron] "${cronJob.name}" failed:`, errorMsg)
+      logger.error(`[Cron] "${cronJob.name}" failed`, errorMsg)
 
       await prisma.cronJob.update({
         where: { id: cronJobId },
@@ -147,11 +148,11 @@ const worker = new Worker<CronJobData>(
 )
 
 worker.on('completed', (job) => {
-  console.log(`[Cron] Job ${job.id} completed`)
+  logger.info(`[Cron] Job ${job.id} completed`)
 })
 
 worker.on('failed', (job, err) => {
-  console.error(`[Cron] Job ${job?.id} failed:`, err.message)
+  logger.error(`[Cron] Job ${job?.id} failed`, err)
 })
 
 export { worker as cronWorker }

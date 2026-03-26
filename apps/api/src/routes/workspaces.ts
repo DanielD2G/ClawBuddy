@@ -16,6 +16,7 @@ import { decrypt } from '../services/crypto.service.js'
 import { decryptConfigFields } from '../services/config-validation.service.js'
 import { validateBody } from '../lib/validate.js'
 import { buildResolvedRoleProviders } from '../lib/llm-resolver.js'
+import { logger } from '../lib/logger.js'
 
 const app = new Hono()
 
@@ -181,7 +182,10 @@ app.delete('/:id', async (c) => {
   try {
     await sandboxService.stopWorkspaceContainer(id)
   } catch (err) {
-    console.warn(`[Workspaces] Failed to stop container for workspace ${id}:`, err)
+    logger.warn(`[Workspaces] Failed to stop container for workspace ${id}`, {
+      workspaceId: id,
+      error: String(err),
+    })
   }
   await workspaceService.delete(id)
   return c.json({ success: true, data: { id } })

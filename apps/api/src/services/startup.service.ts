@@ -12,6 +12,7 @@ import { channelService } from './channel.service.js'
 import { telegramBotManager } from '../channels/telegram/telegram-bot-manager.js'
 import { decrypt } from './crypto.service.js'
 import { updateLauncherService } from './update/update.launcher.js'
+import { logger } from '../lib/logger.js'
 
 const STARTUP_RETRY_DELAY_MS = 5_000
 const REDIS_TIMEOUT_MS = 5_000
@@ -202,7 +203,7 @@ export const startupService = {
 
         this.ensureTelegramBootLoop()
         void updateLauncherService.resumeIfNeeded().catch((error) => {
-          console.error('[Update] Failed to resume on-demand updater:', getErrorMessage(error))
+          logger.error('[Update] Failed to resume on-demand updater', error)
         })
         return
       } catch (error) {
@@ -219,8 +220,9 @@ export const startupService = {
           at: new Date().toISOString(),
         }
 
-        console.error(
+        logger.error(
           `[Startup] Attempt ${state.attempt} failed during ${startupError.check}: ${startupError.message}`,
+          error,
         )
         await delay(STARTUP_RETRY_DELAY_MS)
       }
@@ -254,6 +256,16 @@ export const startupService = {
     }, 15_000)
   },
 
+  /**
+   * Clear internal intervals for graceful shutdown.
+   */
+  shutdown() {
+    if (telegramBootInterval) {
+      clearInterval(telegramBootInterval)
+      telegramBootInterval = null
+    }
+  },
+
   async bootTelegramChannels() {
     try {
       const channels = await channelService.getAllEnabled()
@@ -270,11 +282,11 @@ export const startupService = {
             channel.workspaceId,
           )
         } catch (error) {
-          console.error(`[Telegram] Failed to start bot for channel ${channel.id}:`, error)
+          logger.error(`[Telegram] Failed to start bot for channel ${channel.id}`, error)
         }
       }
     } catch (error) {
-      console.error('[Telegram] Failed to boot channels:', error)
+      logger.error('[Telegram] Failed to boot channels', error)
     }
   },
 }

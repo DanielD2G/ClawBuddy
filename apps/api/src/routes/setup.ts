@@ -19,6 +19,7 @@ import Docker from 'dockerode'
 import { buildProviderState } from '../services/provider-state.service.js'
 import { handleProviderConnectionTest } from './provider-connection-test.js'
 import { SANDBOX_BASE_IMAGE } from '../constants.js'
+import { logger } from '../lib/logger.js'
 
 const app = new Hono()
 
@@ -357,7 +358,7 @@ app.post('/preflight', async (c) => {
       checks.push({ name, ...result, durationMs: Date.now() - start })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      console.error(`[Preflight] ${name} failed (${Date.now() - start}ms):`, message)
+      logger.error(`[Preflight] ${name} failed (${Date.now() - start}ms)`, message)
       checks.push({
         name,
         status: 'fail',
@@ -576,8 +577,10 @@ app.post('/import', async (c) => {
       subAgentExecuteMaxIterations: parsed.modelConfig.subAgentExecuteMaxIterations,
       timezone: parsed.modelConfig.timezone ?? undefined,
     })
-  } catch {
-    // Model config may fail if provider keys aren't set yet — that's OK during setup
+  } catch (err) {
+    logger.warn('[Setup] Model config import skipped (provider keys may not be set)', {
+      error: err instanceof Error ? err.message : String(err),
+    })
   }
 
   // Return parsed data for the frontend to pre-fill the wizard
@@ -709,8 +712,11 @@ app.post('/complete', async (c) => {
   for (const slug of baseSlugs) {
     try {
       await capabilityService.enableCapability(workspace.id, slug)
-    } catch {
-      // Capability may not exist yet if sync hasn't run
+    } catch (err) {
+      logger.warn('[Setup] Failed to enable base capability', {
+        slug,
+        error: err instanceof Error ? err.message : String(err),
+      })
     }
   }
 
@@ -721,8 +727,11 @@ app.post('/complete', async (c) => {
       try {
         const config = capabilityConfigs?.[slug]
         await capabilityService.enableCapability(workspace.id, slug, config)
-      } catch {
-        // Capability may not exist yet if sync hasn't run
+      } catch (err) {
+        logger.warn('[Setup] Failed to enable capability', {
+          slug,
+          error: err instanceof Error ? err.message : String(err),
+        })
       }
     }
   }
@@ -749,14 +758,14 @@ app.post('/complete', async (c) => {
         await channelService.update(channel.id, { config: { botUsername } })
         await channelService.enable(channel.id)
       } catch (err) {
-        console.error('[Setup] Failed to auto-enable Telegram channel:', err)
+        logger.error('[Setup] Failed to auto-enable Telegram channel', err)
       }
     }
   }
 
   // Index capabilities with the user's chosen embedding model (non-blocking)
   toolDiscoveryService.indexCapabilities().catch((err) => {
-    console.error('[Setup] Failed to index capabilities:', err)
+    logger.error('[Setup] Failed to index capabilities', err)
   })
 
   return c.json({

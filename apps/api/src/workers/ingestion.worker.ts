@@ -8,6 +8,7 @@ import { searchService } from '../services/search.service.js'
 import { CHUNK_SIZE, CHUNK_OVERLAP } from '@clawbuddy/shared'
 import { randomUUID } from 'crypto'
 import { sanitizeSurrogates } from '../lib/sanitize.js'
+import { logger } from '../lib/logger.js'
 
 interface IngestionJobData {
   documentId: string
@@ -20,7 +21,7 @@ const worker = new Worker<IngestionJobData>(
   QUEUE_NAME,
   async (job: Job<IngestionJobData>) => {
     const { documentId, fileUrl } = job.data
-    console.log(`[Ingestion] Processing document ${documentId}`)
+    logger.info(`[Ingestion] Processing document ${documentId}`)
 
     // Update status to PROCESSING
     await prisma.document.update({
@@ -62,7 +63,7 @@ const worker = new Worker<IngestionJobData>(
         overlap: CHUNK_OVERLAP,
       })
 
-      console.log(`[Ingestion] Document ${documentId}: ${chunks.length} chunks`)
+      logger.info(`[Ingestion] Document ${documentId}: ${chunks.length} chunks`)
 
       // 3. Ensure Qdrant collection exists
       const dimensions = await embeddingService.getEmbeddingDimensions()
@@ -133,9 +134,9 @@ const worker = new Worker<IngestionJobData>(
         },
       })
 
-      console.log(`[Ingestion] Document ${documentId} ready: ${totalStored} chunks indexed`)
+      logger.info(`[Ingestion] Document ${documentId} ready: ${totalStored} chunks indexed`)
     } catch (error) {
-      console.error(`[Ingestion] Failed for document ${documentId}:`, error)
+      logger.error(`[Ingestion] Failed for document ${documentId}`, error)
       await prisma.document.update({
         where: { id: documentId },
         data: { status: 'FAILED', processingStep: null, processingPct: null },
@@ -150,11 +151,11 @@ const worker = new Worker<IngestionJobData>(
 )
 
 worker.on('completed', (job) => {
-  console.log(`[Ingestion] Job ${job.id} completed`)
+  logger.info(`[Ingestion] Job ${job.id} completed`)
 })
 
 worker.on('failed', (job, err) => {
-  console.error(`[Ingestion] Job ${job?.id} failed:`, err.message)
+  logger.error(`[Ingestion] Job ${job?.id} failed`, err)
 })
 
 export { worker as ingestionWorker }

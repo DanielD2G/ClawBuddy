@@ -2,6 +2,7 @@ import { prisma } from '../../lib/prisma.js'
 import { chatService } from '../../services/chat.service.js'
 import type { SSEEmit } from '../../lib/sse.js'
 import { secretRedactionService } from '../../services/secret-redaction.service.js'
+import { logger } from '../../lib/logger.js'
 
 /**
  * Find the most recent active Telegram session for this chat, or create a new one.
@@ -58,7 +59,11 @@ export async function handleTelegramMessage(
 
   const telegramEmit: SSEEmit = (event, data) => {
     if (event === 'content' && typeof data.text === 'string' && data.text.trim()) {
-      sendFn(data.text).catch(() => {})
+      sendFn(data.text).catch((err) =>
+        logger.warn('[Telegram] Failed to send content message', {
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      )
     }
   }
 

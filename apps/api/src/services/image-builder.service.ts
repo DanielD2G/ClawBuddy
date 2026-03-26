@@ -2,6 +2,7 @@ import Docker from 'dockerode'
 import { createHash } from 'crypto'
 import { prisma } from '../lib/prisma.js'
 import { IMAGE_TAG_HASH_LENGTH, SANDBOX_BASE_DOCKERFILE, SANDBOX_BASE_IMAGE } from '../constants.js'
+import { logger } from '../lib/logger.js'
 
 const docker = new Docker()
 const SANDBOX_LAYER_IMAGE_PREFIX = 'clawbuddy-sandbox-layer-'
@@ -166,7 +167,7 @@ export const imageBuilderService = {
       const result = await this.buildInstallationLayer(parentImage, installationScript, tag, onLog)
 
       if (!result.success) {
-        console.error(`[ImageBuilder] Failed to build skill image:`, result.logs)
+        logger.error('[ImageBuilder] Failed to build skill image', result.logs)
         // Fall back to base image
         return SANDBOX_BASE_IMAGE
       }
@@ -285,7 +286,7 @@ export const imageBuilderService = {
         }
       }
     } catch (err) {
-      console.error('[ImageBuilder] Failed to invalidate images:', err)
+      logger.error('[ImageBuilder] Failed to invalidate images', err)
     }
   },
 }

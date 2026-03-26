@@ -85,7 +85,11 @@ const ADVANCED_ROLES = [
 export function ModelConfigCard() {
   const queryClient = useQueryClient()
 
-  const { data, isLoading } = useQuery({
+  const {
+    data,
+    isLoading,
+    error: queryError,
+  } = useQuery({
     queryKey: ['model-config'],
     queryFn: () => apiClient.get<ModelConfigData>('/global-settings/models'),
   })
@@ -173,6 +177,12 @@ export function ModelConfigCard() {
       </CardHeader>
       <CardContent>
         {isLoading && <div className="text-sm text-muted-foreground">Loading...</div>}
+
+        {queryError && (
+          <div className="text-sm text-destructive">
+            Failed to load model config: {queryError.message}
+          </div>
+        )}
 
         {data && (
           <div className="space-y-5">

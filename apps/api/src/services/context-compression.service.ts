@@ -1,6 +1,7 @@
 import { createCompactLLM } from '../providers/index.js'
 import type { ChatMessage } from '../providers/llm.interface.js'
-import { recordTokenUsage } from './agent.service.js'
+import { recordTokenUsage } from './agent-token.service.js'
+import { logger } from '../lib/logger.js'
 import {
   DEFAULT_MAX_CONTEXT_TOKENS,
   RECENT_MESSAGES_TO_KEEP,
@@ -176,13 +177,13 @@ export async function compressContext(
 
     const summary = response.content?.trim() || existingSummary
 
-    console.log(
+    logger.info(
       `[Context] Compressed ${messagesToSummarize.length} messages, keeping ${recentMessages.length} recent`,
     )
 
     return { summary, recentMessages, compressed: true, lastSummarizedMessageId }
   } catch (err) {
-    console.error('[Context] Compression failed, using full history:', err)
+    logger.error('[Context] Compression failed, using full history', err)
     return {
       summary: existingSummary,
       recentMessages: history,

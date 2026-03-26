@@ -1,9 +1,10 @@
 import type { Context } from 'hono'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { AppError } from '../lib/errors.js'
+import { logger } from '../lib/logger.js'
 
 export const errorHandler = (err: Error, c: Context) => {
-  console.error(`[Error] ${err.message}`, err.stack)
+  logger.error(`[Error] ${err.message}`, err)
 
   if (err instanceof AppError) {
     return c.json(

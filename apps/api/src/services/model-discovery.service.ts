@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { settingsService } from './settings.service.js'
 import { listOpenAICompatibleModels } from '../providers/openai-compatible.js'
+import { logger } from '../lib/logger.js'
 
 const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
 
@@ -203,10 +204,9 @@ export async function discoverLLMModels(provider: string): Promise<string[]> {
 
     return result.llm
   } catch (err) {
-    console.warn(
-      `[model-discovery] Failed to fetch models for ${provider}:`,
-      err instanceof Error ? err.message : err,
-    )
+    logger.warn(`[model-discovery] Failed to fetch models for ${provider}`, {
+      error: err instanceof Error ? err.message : String(err),
+    })
     return []
   }
 }
@@ -229,10 +229,9 @@ export async function discoverEmbeddingModels(provider: string): Promise<string[
 
     return result.embedding
   } catch (err) {
-    console.warn(
-      `[model-discovery] Failed to fetch embedding models for ${provider}:`,
-      err instanceof Error ? err.message : err,
-    )
+    logger.warn(`[model-discovery] Failed to fetch embedding models for ${provider}`, {
+      error: err instanceof Error ? err.message : String(err),
+    })
     return []
   }
 }

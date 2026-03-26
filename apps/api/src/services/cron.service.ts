@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma.js'
 import { cronQueue } from '../workers/cron.worker.js'
+import { logger } from '../lib/logger.js'
 
 const BUILTIN_CRON_JOBS = [
   {
@@ -219,7 +220,7 @@ export const cronService = {
 
     await this.syncAllJobs()
     const count = BUILTIN_CRON_JOBS.length
-    console.log(`[Cron] Registered ${count} builtin jobs`)
+    logger.info(`[Cron] Registered ${count} builtin jobs`)
   },
 
   async syncAllJobs() {
