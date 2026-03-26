@@ -22,6 +22,7 @@ import { sendChatMessageSchema, createChatSessionSchema } from '@clawbuddy/share
 import { validateBody } from '../lib/validate.js'
 import { ValidationError } from '../lib/errors.js'
 import { getProviderErrorMessage } from '../lib/llm-retry.js'
+import { logger } from '../lib/logger.js'
 
 const app = new Hono()
 
@@ -178,7 +179,12 @@ app.post('/chat/sessions/:sessionId/approve', async (c) => {
             where: { id: sessionId },
             data: { agentStatus: 'idle', agentStateEncrypted: null },
           })
-          .catch(() => {})
+          .catch((updateErr: unknown) =>
+            logger.warn('[Chat] Failed to reset session on abort', {
+              sessionId,
+              error: updateErr instanceof Error ? updateErr.message : String(updateErr),
+            }),
+          )
         emit('aborted', { sessionId })
         emit('done', { sessionId })
         return
@@ -189,7 +195,12 @@ app.post('/chat/sessions/:sessionId/approve', async (c) => {
           where: { id: sessionId },
           data: { agentStatus: 'idle' },
         })
-        .catch(() => {})
+        .catch((updateErr: unknown) =>
+          logger.warn('[Chat] Failed to reset session on error', {
+            sessionId,
+            error: updateErr instanceof Error ? updateErr.message : String(updateErr),
+          }),
+        )
       emit('error', { message: getProviderErrorMessage(err) })
       emit('done', {
         sessionId,
@@ -216,13 +227,23 @@ app.post('/chat/sessions/:sessionId/abort', async (c) => {
         where: { id: sessionId },
         data: { agentStatus: 'idle', agentStateEncrypted: null },
       })
-      .catch(() => {}),
+      .catch((err: unknown) =>
+        logger.warn('[Chat] Failed to reset session on abort', {
+          sessionId,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      ),
     prisma.toolApproval
       .updateMany({
         where: { chatSessionId: sessionId, status: 'pending' },
         data: { status: 'denied', decidedAt: new Date() },
       })
-      .catch(() => {}),
+      .catch((err: unknown) =>
+        logger.warn('[Chat] Failed to deny pending approvals on abort', {
+          sessionId,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      ),
   ])
 
   return c.json({ success: true })

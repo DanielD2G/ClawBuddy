@@ -4,6 +4,7 @@ import { env } from '../env.js'
 import { getBuildInfo } from '../lib/build-info.js'
 import { settingsService } from './settings.service.js'
 import { updateLauncherService } from './update/update.launcher.js'
+import { logger } from '../lib/logger.js'
 import {
   buildFallbackManifest,
   clearReleaseCache,
@@ -91,7 +92,13 @@ async function hydrateRunManifest(run: UpdateRunRow | null) {
     return run
   }
 
-  const release = await fetchReleaseByVersion(run.targetVersion).catch(() => null)
+  const release = await fetchReleaseByVersion(run.targetVersion).catch((err) => {
+    logger.warn('[Update] Failed to fetch release manifest, using fallback', {
+      version: run.targetVersion,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return null
+  })
   const manifest =
     release?.manifest ?? buildFallbackManifest(run.targetVersion, run.targetReleaseUrl)
 
@@ -307,10 +314,7 @@ export const updateService = {
     try {
       latestRelease = await fetchLatestRelease(forceReleaseRefresh)
     } catch (error) {
-      console.error(
-        '[Update] Failed to fetch latest release:',
-        error instanceof Error ? error.message : String(error),
-      )
+      logger.error('[Update] Failed to fetch latest release', error)
     }
 
     const [support, currentVersion, rawCurrentRun, rawLastTerminalRun] = await Promise.all([

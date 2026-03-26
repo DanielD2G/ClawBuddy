@@ -1,4 +1,6 @@
 // ── Timeouts (milliseconds unless noted) ──────────
+export const MAX_BROWSER_SESSIONS = 20
+export const BROWSER_SESSION_TTL_MS = 10 * 60 * 1000 // 10 min
 export const BROWSER_IDLE_TIMEOUT_MS = 5 * 60 * 1000 // 5 min
 export const BROWSER_HEALTH_TIMEOUT_MS = 5000
 export const BROWSER_SCRIPT_DEFAULT_TIMEOUT_S = 30
@@ -72,7 +74,11 @@ export const TOKEN_ESTIMATION_DIVISOR = 4
 
 // ── Title generation ─────────────────────────────
 export const TITLE_TEMPERATURE = 0.3
-export const TITLE_MAX_TOKENS = 30
+// Reasoning models (o-series, gpt-5*) spend internal reasoning tokens within
+// max_completion_tokens. 30 was too low — the reasoning budget consumed all
+// tokens leaving zero for visible output. 300 gives ample room for reasoning
+// while still producing a short title.
+export const TITLE_MAX_TOKENS = 300
 
 // ── Pagination ───────────────────────────────────
 export const DEFAULT_PAGE_LIMIT = 20
@@ -94,7 +100,6 @@ export const CLAUDE_DEFAULT_TEMPERATURE = 0.7
 export const IMAGE_TAG_HASH_LENGTH = 12
 
 // ── Tool discovery ────────────────────────────────
-export const TOOL_DISCOVERY_THRESHOLD = 6
 export const TOOL_DISCOVERY_TOP_K = 3
 export const TOOL_DISCOVERY_COLLECTION = 'clawbuddy_tools'
 export const TOOL_DISCOVERY_EMBEDDING_INSTRUCTIONS_LIMIT = 500

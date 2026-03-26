@@ -3,6 +3,7 @@ import type { ChatMessage, ToolCall } from '../providers/llm.interface.js'
 import { decrypt, encrypt } from './crypto.service.js'
 import type { SecretInventory } from './secret-redaction.service.js'
 import { secretRedactionService } from './secret-redaction.service.js'
+import { logger } from '../lib/logger.js'
 
 export interface AgentResult {
   content: string
@@ -54,8 +55,10 @@ export function deserializeAgentState(session: {
   if (session.agentStateEncrypted) {
     try {
       return JSON.parse(decrypt(session.agentStateEncrypted)) as AgentState
-    } catch {
-      // Fall through to legacy plain JSON state below.
+    } catch (err) {
+      logger.warn('[AgentState] Failed to decrypt agent state, falling back to legacy format', {
+        error: err instanceof Error ? err.message : String(err),
+      })
     }
   }
   return session.agentState as unknown as AgentState | null

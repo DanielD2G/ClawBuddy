@@ -5,6 +5,7 @@ export default defineConfig({
   resolve: {
     alias: {
       'bun:test': fileURLToPath(new URL('./test/vitest-bun-shim.ts', import.meta.url)),
+      '@test': fileURLToPath(new URL('./test', import.meta.url)),
     },
   },
   test: {

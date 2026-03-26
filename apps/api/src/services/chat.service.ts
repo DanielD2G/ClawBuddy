@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client'
 import { prisma } from '../lib/prisma.js'
 import { createExecuteLLM, createTitleLLM } from '../providers/index.js'
-import { recordTokenUsage } from './agent.service.js'
+import { recordTokenUsage } from './agent-token.service.js'
 import { embeddingService } from './embedding.service.js'
 import { searchService } from './search.service.js'
 import { agentService } from './agent.service.js'
@@ -17,6 +17,7 @@ import {
 } from '../constants.js'
 import type { SecretInventory } from './secret-redaction.service.js'
 import { secretRedactionService } from './secret-redaction.service.js'
+import { logger } from '../lib/logger.js'
 
 export const chatService = {
   async createSession(data: { workspaceId: string; title?: string }) {
@@ -92,7 +93,9 @@ export const chatService = {
       })
       return message
     } catch (persistErr) {
-      console.error('[ChatService] Failed to persist assistant error message:', persistErr)
+      logger.error('[ChatService] Failed to persist assistant error message', persistErr, {
+        sessionId,
+      })
       return null
     }
   },
@@ -289,18 +292,15 @@ export const chatService = {
 
     const hasMentions = mentionedSlugs?.length && mentionedSlugs.length > 0
 
-    const debugAgent = process.env.DEBUG_AGENT === '1' || process.env.DEBUG === '1'
-    if (debugAgent) {
-      console.debug('[Chat] sendMessage routing', {
-        sessionId,
-        workspaceId: session.workspaceId,
-        hasNonDocCapabilities,
-        hasMentions,
-        mentionedSlugs,
-        capabilitySlugs: capabilities.map((c) => c.slug),
-        willUseAgent: hasNonDocCapabilities || hasMentions,
-      })
-    }
+    logger.debug('[Chat] sendMessage routing', {
+      sessionId,
+      workspaceId: session.workspaceId ?? undefined,
+      hasNonDocCapabilities,
+      hasMentions,
+      mentionedSlugs,
+      capabilitySlugs: capabilities.map((c) => c.slug),
+      willUseAgent: hasNonDocCapabilities || hasMentions,
+    })
 
     if (hasNonDocCapabilities || hasMentions) {
       return this._sendWithAgentLoop(
@@ -374,13 +374,18 @@ export const chatService = {
             where: { id: sessionId },
             data: { agentStatus: 'idle', agentStateEncrypted: null },
           })
-          .catch(() => {})
+          .catch((updateErr: unknown) =>
+            logger.warn('[ChatService] Failed to reset session on abort', {
+              sessionId,
+              error: updateErr instanceof Error ? updateErr.message : String(updateErr),
+            }),
+          )
         emit('aborted', { sessionId })
         emit('done', { sessionId })
         return
       }
 
-      console.error('[ChatService] Agent loop error:', err)
+      logger.error('[ChatService] Agent loop error', err, { sessionId })
 
       const persistedErrorMessage = await this.persistAssistantErrorMessage(sessionId, err)
       await prisma.chatSession
@@ -388,7 +393,12 @@ export const chatService = {
           where: { id: sessionId },
           data: { agentStatus: 'idle' },
         })
-        .catch(() => {})
+        .catch((updateErr: unknown) =>
+          logger.warn('[ChatService] Failed to reset session on error', {
+            sessionId,
+            error: updateErr instanceof Error ? updateErr.message : String(updateErr),
+          }),
+        )
 
       const errorMsg = getProviderErrorMessage(err)
       emit('error', { message: errorMsg })
@@ -540,11 +550,18 @@ export const chatService = {
         return prisma.$executeRaw`UPDATE "ChatSession" SET "title" = ${trimmed} WHERE "id" = ${sessionId}`
       })
       .catch((err) => {
-        console.warn('[ChatService] Auto-title generation failed, using fallback:', err.message)
+        logger.warn('[ChatService] Auto-title generation failed, using fallback', {
+          sessionId,
+          error: err.message,
+        })
         const fallback =
           content.slice(0, CHAT_TITLE_MAX_LEN) + (content.length > CHAT_TITLE_MAX_LEN ? '...' : '')
         prisma.$executeRaw`UPDATE "ChatSession" SET "title" = ${fallback} WHERE "id" = ${sessionId}`.catch(
-          () => {},
+          (fallbackErr: unknown) =>
+            logger.warn('[ChatService] Failed to persist fallback title', {
+              sessionId,
+              error: fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr),
+            }),
         )
       })
   },

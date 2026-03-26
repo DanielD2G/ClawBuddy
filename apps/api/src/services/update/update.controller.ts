@@ -28,6 +28,7 @@ import {
   fetchReleaseByVersion,
   normalizeVersion,
 } from './update.manifest.js'
+import { logger } from '../../lib/logger.js'
 
 const ACTIVE_STATUSES: UpdateRunStatus[] = ['queued', 'running']
 const LEASE_TTL_MS = 30_000
@@ -272,7 +273,7 @@ async function ensureSchemaInitialized() {
       throw error
     }
 
-    console.warn('[Updater] Update tables were not found. Initializing schema with prisma db push.')
+    logger.warn('[Updater] Update tables were not found. Initializing schema with prisma db push.')
     await runPrismaDbPush()
   }
 }
@@ -318,7 +319,13 @@ async function hydrateMissingManifest(run: AppUpdateRunRecord) {
     return { run, manifest: existingManifest }
   }
 
-  const release = await fetchReleaseByVersion(run.targetVersion).catch(() => null)
+  const release = await fetchReleaseByVersion(run.targetVersion).catch((err) => {
+    logger.warn('[Update] Failed to fetch release manifest, using fallback', {
+      version: run.targetVersion,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return null
+  })
   const manifest =
     release?.manifest ?? buildFallbackManifest(run.targetVersion, run.targetReleaseUrl)
   const targetImage = buildTargetImageReference(manifest)
@@ -625,7 +632,7 @@ export const updateControllerService = {
     controllerPromise = (async () => {
       const instanceId = process.env.CLAWBUDDY_UPDATER_ID || process.env.HOSTNAME || randomUUID()
       let lastWorkAt = Date.now()
-      console.log(
+      logger.info(
         `[Updater] Durable controller ${instanceId} starting (version ${getBuildInfo().version})`,
       )
 
@@ -636,7 +643,7 @@ export const updateControllerService = {
           const run = await claimNextRun(instanceId)
           if (!run) {
             if (ON_DEMAND_UPDATER && Date.now() - lastWorkAt >= IDLE_EXIT_MS) {
-              console.log('[Updater] No active update runs remain. Exiting on-demand controller.')
+              logger.info('[Updater] No active update runs remain. Exiting on-demand controller.')
               return
             }
 
@@ -648,7 +655,7 @@ export const updateControllerService = {
           await processRun(run, instanceId)
           await delay(500)
         } catch (error) {
-          console.error('[Updater] Controller loop failed:', toErrorMessage(error))
+          logger.error('[Updater] Controller loop failed', error)
           await delay(LOOP_ERROR_MS)
         }
       }

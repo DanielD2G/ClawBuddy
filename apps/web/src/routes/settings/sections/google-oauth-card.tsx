@@ -19,7 +19,11 @@ import {
 export function GoogleOAuthCard() {
   const [showGuide, setShowGuide] = useState(false)
 
-  const { data, isLoading } = useQuery({
+  const {
+    data,
+    isLoading,
+    error: queryError,
+  } = useQuery({
     queryKey: ['google-oauth-config'],
     queryFn: () => apiClient.get<{ configured: boolean }>('/global-settings/google-oauth'),
   })
@@ -152,6 +156,12 @@ export function GoogleOAuthCard() {
           )}
         </div>
         {isLoading && <div className="text-sm text-muted-foreground">Loading...</div>}
+
+        {queryError && (
+          <div className="text-sm text-destructive">
+            Failed to load OAuth config: {queryError.message}
+          </div>
+        )}
 
         {data && (
           <div className="space-y-3">

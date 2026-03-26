@@ -4,6 +4,7 @@ import type { ChatMessage, LLMToolDefinition, LLMResponse } from '../providers/l
 import { getTextContent } from '../providers/llm.interface.js'
 import type { SecretInventory } from './secret-redaction.service.js'
 import { secretRedactionService } from './secret-redaction.service.js'
+import { logger as appLogger } from '../lib/logger.js'
 
 export const DEBUG = process.env.DEBUG_AGENT === '1' || process.env.DEBUG === '1'
 
@@ -48,7 +49,7 @@ export function createSessionLogger(sessionId: string, inventory: SecretInventor
   }
 
   function writeLine(line: string) {
-    console.debug(line)
+    appLogger.debug(line)
     if (logFile) {
       try {
         appendFileSync(logFile, line + '\n')

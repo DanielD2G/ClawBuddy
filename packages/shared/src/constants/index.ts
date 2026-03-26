@@ -8,6 +8,9 @@ export const EMBEDDING_DIMENSIONS: Record<string, number> = {
 }
 
 // ── Always-on capabilities ──────────────────────
+// These capabilities are always enabled for every workspace (cannot be disabled).
+// However, only tool-discovery is loaded into the LLM prompt natively —
+// the agent must discover all other tools dynamically via discover_tools.
 export const ALWAYS_ON_CAPABILITY_SLUGS = [
   'document-search',
   'agent-memory',

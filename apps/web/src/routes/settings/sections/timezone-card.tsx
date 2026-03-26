@@ -8,7 +8,11 @@ import { TimezoneSelect } from '@/components/timezone-select'
 export function TimezoneCard() {
   const queryClient = useQueryClient()
 
-  const { data, isLoading } = useQuery({
+  const {
+    data,
+    isLoading,
+    error: queryError,
+  } = useQuery({
     queryKey: ['model-config'],
     queryFn: () => apiClient.get<{ timezone?: string }>('/global-settings/models'),
   })
@@ -40,7 +44,13 @@ export function TimezoneCard() {
       <CardContent>
         {isLoading && <div className="text-sm text-muted-foreground">Loading...</div>}
 
-        {!isLoading && (
+        {queryError && (
+          <div className="text-sm text-destructive">
+            Failed to load timezone: {queryError.message}
+          </div>
+        )}
+
+        {!isLoading && !queryError && (
           <div className="flex flex-col gap-1.5">
             <TimezoneSelect
               value={timezone}

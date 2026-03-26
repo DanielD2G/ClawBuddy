@@ -9,8 +9,8 @@ import {
   TOOL_DISCOVERY_COLLECTION,
   TOOL_DISCOVERY_TOP_K,
   TOOL_DISCOVERY_EMBEDDING_INSTRUCTIONS_LIMIT,
-  ALWAYS_ON_CAPABILITY_SLUGS,
 } from '../constants.js'
+import { logger } from '../lib/logger.js'
 
 /**
  * Generate a deterministic UUID from a slug string.
@@ -42,7 +42,6 @@ interface CapabilityPayload {
 interface DiscoveryContext {
   systemPrompt: string
   tools: LLMToolDefinition[]
-  alwaysOnSlugs: string[]
 }
 
 interface DiscoveredCapability {
@@ -127,9 +126,9 @@ export const toolDiscoveryService = {
     }))
 
     await qdrant.upsert(TOOL_DISCOVERY_COLLECTION, { points })
-    console.log(
-      `[ToolDiscovery] Indexed ${points.length} capabilities into ${TOOL_DISCOVERY_COLLECTION}:`,
-      ids.map((slug) => `${slug} (${slugToUUID(slug)})`).join(', '),
+    logger.info(
+      `[ToolDiscovery] Indexed ${points.length} capabilities into ${TOOL_DISCOVERY_COLLECTION}`,
+      { slugs: ids },
     )
   },
 
@@ -144,7 +143,7 @@ export const toolDiscoveryService = {
       const info = await qdrant.getCollection(TOOL_DISCOVERY_COLLECTION)
       const currentSize = (info.config.params.vectors as { size: number }).size
       if (currentSize !== dimensions) {
-        console.warn(
+        logger.warn(
           `[ToolDiscovery] Collection dimension mismatch (${currentSize} vs ${dimensions}). Recreating.`,
         )
         await qdrant.deleteCollection(TOOL_DISCOVERY_COLLECTION)
@@ -162,28 +161,33 @@ export const toolDiscoveryService = {
   /**
    * Search for relevant capabilities based on a natural language query.
    * Filters results to only include capabilities enabled for the workspace.
+   * @param maxResults - Maximum number of results to return (default: TOOL_DISCOVERY_TOP_K)
    */
   async search(
     query: string,
     enabledSlugs: string[],
     scoreThreshold = 0.3,
+    maxResults?: number,
   ): Promise<DiscoveredCapability[]> {
+    const topK = maxResults ?? TOOL_DISCOVERY_TOP_K
     const queryVector = await embeddingService.embed(query)
 
     // Search with a higher limit to account for post-filtering
     const results = await qdrant.search(TOOL_DISCOVERY_COLLECTION, {
       vector: queryVector,
-      limit: TOOL_DISCOVERY_TOP_K * 3,
+      limit: topK * 3,
       with_payload: true,
       score_threshold: scoreThreshold,
     })
 
-    console.log(
-      `[ToolDiscovery] Search "${query.slice(0, 80)}" returned ${results.length} results:`,
-      results.map((r) => ({
-        slug: (r.payload as unknown as CapabilityPayload).slug,
-        score: r.score,
-      })),
+    logger.debug(
+      `[ToolDiscovery] Search "${query.slice(0, 80)}" returned ${results.length} results (topK=${topK})`,
+      {
+        results: results.map((r) => ({
+          slug: (r.payload as unknown as CapabilityPayload).slug,
+          score: r.score,
+        })),
+      },
     )
 
     // Filter by enabled slugs and take top-K
@@ -192,7 +196,7 @@ export const toolDiscoveryService = {
         const payload = r.payload as unknown as CapabilityPayload
         return enabledSlugs.includes(payload.slug)
       })
-      .slice(0, TOOL_DISCOVERY_TOP_K)
+      .slice(0, topK)
       .map((r) => {
         const payload = r.payload as unknown as CapabilityPayload
         return {
@@ -226,7 +230,8 @@ export const toolDiscoveryService = {
 
   /**
    * Build the minimal discovery context for the agent loop.
-   * Only includes always-on capabilities + preloaded conversation capabilities + discover_tools.
+   * Only loads discover_tools natively — the agent discovers all other tools dynamically.
+   * Preloaded slugs (from conversation state) are also loaded to maintain continuity.
    */
   buildDiscoveryContext(
     capabilities: Array<{
@@ -239,25 +244,22 @@ export const toolDiscoveryService = {
     preloadedSlugs?: string[],
     timezone?: string,
   ): DiscoveryContext {
-    // Always-on capabilities
-    const alwaysOnSlugs = [...ALWAYS_ON_CAPABILITY_SLUGS]
     const preloadedSet = new Set(preloadedSlugs ?? [])
 
-    // Collect capabilities that should be loaded immediately
-    const loadedCaps = capabilities.filter(
-      (c) => alwaysOnSlugs.includes(c.slug) || preloadedSet.has(c.slug),
-    )
+    // Only load previously-discovered capabilities from this conversation (continuity)
+    const preloadedCaps = capabilities.filter((c) => preloadedSet.has(c.slug))
 
-    // Build system prompt with only loaded capabilities + discovery instructions
-    const systemPrompt = capabilityService.buildSystemPrompt(
-      [...loadedCaps, { name: toolDiscovery.name, systemPrompt: toolDiscovery.systemPrompt }],
-      timezone,
-    )
+    // Build system prompt: discovery instructions + any preloaded capability instructions
+    const promptCaps = [
+      ...preloadedCaps,
+      { name: toolDiscovery.name, systemPrompt: toolDiscovery.systemPrompt },
+    ]
+    const systemPrompt = capabilityService.buildSystemPrompt(promptCaps, timezone)
 
-    // Build tool definitions: always-on tools + mentioned tools + discover_tools
-    const tools: LLMToolDefinition[] = capabilityService.buildToolDefinitions(loadedCaps)
+    // Build tool definitions: preloaded tools + discover_tools
+    const tools: LLMToolDefinition[] = capabilityService.buildToolDefinitions(preloadedCaps)
 
-    // Add discover_tools (if not already loaded via always-on capabilities)
+    // Always add discover_tools
     for (const tool of toolDiscovery.tools) {
       if (!tools.some((t) => t.name === tool.name)) {
         tools.push({
@@ -268,6 +270,6 @@ export const toolDiscoveryService = {
       }
     }
 
-    return { systemPrompt, tools, alwaysOnSlugs }
+    return { systemPrompt, tools }
   },
 }

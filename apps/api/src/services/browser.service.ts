@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto'
 import type { Page, BrowserContext } from 'playwright-core'
 import { settingsService } from './settings.service.js'
 import {
+  MAX_BROWSER_SESSIONS,
+  BROWSER_SESSION_TTL_MS,
   BROWSER_IDLE_TIMEOUT_MS,
   MAX_READABLE_CONTENT_BYTES,
   BROWSER_HEALTH_TIMEOUT_MS,
@@ -18,6 +20,7 @@ import {
   SELECTOR_TEXT_MAX_LEN,
   SCREENSHOT_JPEG_QUALITY,
 } from '../constants.js'
+import { logger } from '../lib/logger.js'
 
 interface BrowserSession {
   grid: BrowserGrid
@@ -60,7 +63,10 @@ export async function captureOptimizedScreenshot(
       fullPage: options?.fullPage ?? false,
     })
     return buf.toString('base64')
-  } catch {
+  } catch (err) {
+    logger.warn('[Browser] Screenshot capture failed', {
+      error: err instanceof Error ? err.message : String(err),
+    })
     return undefined
   }
 }
@@ -267,7 +273,10 @@ export const browserService = {
         signal: AbortSignal.timeout(BROWSER_HEALTH_TIMEOUT_MS),
       })
       return res.ok
-    } catch {
+    } catch (err) {
+      logger.warn('[Browser] Health check failed', {
+        error: err instanceof Error ? err.message : String(err),
+      })
       return false
     }
   },
@@ -285,13 +294,33 @@ export const browserService = {
         return existing
       } catch {
         // Connection is dead — clean up and create a new session
-        console.log(`[Browser] Stale session detected for ${chatSessionId}, reconnecting...`)
+        logger.info(`[Browser] Stale session detected for ${chatSessionId}, reconnecting...`, {
+          sessionId: chatSessionId,
+        })
         try {
           await existing.closeFn()
-        } catch {
-          /* best effort */
+        } catch (closeErr) {
+          logger.warn('[Browser] Failed to close stale session', {
+            sessionId: chatSessionId,
+            error: closeErr instanceof Error ? closeErr.message : String(closeErr),
+          })
         }
         sessions.delete(chatSessionId)
+      }
+    }
+
+    // Evict expired TTL sessions, then enforce max session limit
+    await this.evictExpiredSessions()
+    if (sessions.size >= MAX_BROWSER_SESSIONS) {
+      const oldest = Array.from(sessions.entries()).sort(
+        ([, a], [, b]) => a.lastActivityAt.getTime() - b.lastActivityAt.getTime(),
+      )[0]
+      if (oldest) {
+        logger.info(
+          `[Browser] Max sessions (${MAX_BROWSER_SESSIONS}) reached, closing oldest idle session: ${oldest[0]}`,
+          { sessionId: oldest[0] },
+        )
+        await this.closeSession(oldest[0])
       }
     }
 
@@ -442,7 +471,9 @@ export const browserService = {
         errorMessage.includes('Target closed') ||
         errorMessage.includes('Browser has been closed')
       if (isConnectionError) {
-        console.log(`[Browser] Connection lost for ${chatSessionId}, cleaning up stale session`)
+        logger.info(`[Browser] Connection lost for ${chatSessionId}, cleaning up stale session`, {
+          sessionId: chatSessionId,
+        })
         await this.closeSession(chatSessionId)
         return {
           success: false,
@@ -470,8 +501,11 @@ export const browserService = {
 
     try {
       await session.closeFn()
-    } catch {
-      // Best-effort cleanup
+    } catch (err) {
+      logger.warn('[Browser] Failed to close session', {
+        sessionId: chatSessionId,
+        error: err instanceof Error ? err.message : String(err),
+      })
     }
     sessions.delete(chatSessionId)
   },
@@ -483,7 +517,7 @@ export const browserService = {
     const now = Date.now()
     for (const [id, session] of sessions) {
       if (now - session.lastActivityAt.getTime() > BROWSER_IDLE_TIMEOUT_MS) {
-        console.log(`[Browser] Cleaning up idle session: ${id}`)
+        logger.info(`[Browser] Cleaning up idle session: ${id}`, { sessionId: id })
         await this.closeSession(id)
       }
     }
@@ -497,6 +531,19 @@ export const browserService = {
       chatSessionId: id,
       lastActivityAt: s.lastActivityAt.toISOString(),
     }))
+  },
+
+  /**
+   * Evict sessions that have exceeded the TTL (10 minutes of inactivity).
+   */
+  async evictExpiredSessions(): Promise<void> {
+    const now = Date.now()
+    for (const [id, session] of sessions) {
+      if (now - session.lastActivityAt.getTime() > BROWSER_SESSION_TTL_MS) {
+        logger.info(`[Browser] Evicting TTL-expired session: ${id}`, { sessionId: id })
+        await this.closeSession(id)
+      }
+    }
   },
 
   /**

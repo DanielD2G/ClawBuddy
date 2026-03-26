@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client'
 import { prisma } from '../lib/prisma.js'
 import { encrypt, decrypt } from '../services/crypto.service.js'
 import { encryptConfigFields } from '../services/config-validation.service.js'
+import { logger } from '../lib/logger.js'
 import { settingsService } from '../services/settings.service.js'
 import type { ConfigFieldDefinition } from '../capabilities/types.js'
 
@@ -98,7 +99,7 @@ app.get('/google/callback', async (c) => {
 
   if (!tokenRes.ok) {
     const err = await tokenRes.text()
-    console.error('[OAuth] Token exchange failed:', err)
+    logger.error('[OAuth] Token exchange failed', err)
     return c.redirect(
       `/settings/workspace/capabilities?oauth=error&message=Token+exchange+failed&workspaceId=${stateData.workspaceId}`,
     )
@@ -182,7 +183,12 @@ app.get('/google/callback', async (c) => {
   if (activeSandboxes.length) {
     const { sandboxService } = await import('../services/sandbox.service.js')
     for (const s of activeSandboxes) {
-      await sandboxService.destroySandbox(s.id).catch(() => {})
+      await sandboxService.destroySandbox(s.id).catch((err) =>
+        logger.warn('[OAuth] Failed to destroy sandbox during credential rotation', {
+          sandboxId: s.id,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      )
     }
   }
 

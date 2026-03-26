@@ -1,6 +1,7 @@
 import { qdrant } from '../lib/qdrant.js'
 import { QDRANT_COLLECTION_NAME } from '@clawbuddy/shared'
 import type { Schemas } from '@qdrant/js-client-rest'
+import { logger } from '../lib/logger.js'
 
 export const searchService = {
   async search(
@@ -45,7 +46,7 @@ export const searchService = {
       const info = await qdrant.getCollection(QDRANT_COLLECTION_NAME)
       const currentSize = (info.config.params.vectors as { size: number }).size
       if (currentSize !== dimensions) {
-        console.warn(
+        logger.warn(
           `[Search] Collection dimension mismatch (${currentSize} vs ${dimensions}). Recreating collection.`,
         )
         await qdrant.deleteCollection(QDRANT_COLLECTION_NAME)

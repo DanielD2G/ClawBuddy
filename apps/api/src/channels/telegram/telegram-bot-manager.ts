@@ -4,6 +4,7 @@ import { prisma } from '../../lib/prisma.js'
 import { decrypt } from '../../services/crypto.service.js'
 import { handleTelegramMessage, createNewSession } from './telegram-handler.js'
 import { markdownToTelegramHtml, splitHtmlMessage } from './format-telegram.js'
+import { logger } from '../../lib/logger.js'
 
 const LEASE_TTL_MS = 20_000
 const HEARTBEAT_MS = 5_000
@@ -81,7 +82,9 @@ class TelegramBotManager {
   async sendToChat(workspaceId: string, chatId: string, text: string): Promise<void> {
     const entry = this.findByWorkspace(workspaceId)
     if (!entry) {
-      console.warn(`[Telegram] No active bot for workspace ${workspaceId}, cannot send message`)
+      logger.warn(`[Telegram] No active bot for workspace ${workspaceId}, cannot send message`, {
+        workspaceId,
+      })
       return
     }
     await this.sendFormattedMessage(entry.bot, chatId, text)
@@ -104,7 +107,7 @@ class TelegramBotManager {
         }
       }
     } catch (err) {
-      console.warn('[Telegram] HTML send failed, retrying as plain text:', err)
+      logger.warn('[Telegram] HTML send failed, retrying as plain text', { error: String(err) })
       const plain = text
         .replace(/#{1,6}\s+/gm, '')
         .replace(/\*\*/g, '')
@@ -158,7 +161,11 @@ class TelegramBotManager {
 
       await ctx.replyWithChatAction('typing')
       const typingInterval = setInterval(() => {
-        ctx.replyWithChatAction('typing').catch(() => {})
+        ctx.replyWithChatAction('typing').catch((err) =>
+          logger.warn('[Telegram] Failed to send typing indicator', {
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        )
       }, 4000)
 
       try {
@@ -170,13 +177,13 @@ class TelegramBotManager {
         clearInterval(typingInterval)
       } catch (err) {
         clearInterval(typingInterval)
-        console.error('[Telegram] Error handling message:', err)
+        logger.error('[Telegram] Error handling message', err)
         await ctx.reply('Sorry, an error occurred while processing your message. Please try again.')
       }
     })
 
     bot.catch((err) => {
-      console.error(`[Telegram] Bot error (channel ${channelId}):`, err)
+      logger.error(`[Telegram] Bot error (channel ${channelId})`, err)
     })
 
     const botInfo = await bot.api.getMe()
@@ -184,7 +191,7 @@ class TelegramBotManager {
     const leaseAcquired = await this.acquireLease(channelId)
 
     if (!leaseAcquired) {
-      console.log(
+      logger.info(
         `[Telegram] Lease for channel ${channelId} is owned by another instance. Skipping polling startup.`,
       )
       return botUsername
@@ -192,13 +199,13 @@ class TelegramBotManager {
 
     bot.start({
       onStart: () => {
-        console.log(`[Telegram] Bot @${botUsername} started for channel ${channelId}`)
+        logger.info(`[Telegram] Bot @${botUsername} started for channel ${channelId}`)
       },
     })
 
     const heartbeat = setInterval(() => {
       void this.heartbeatLease(channelId).catch((error) => {
-        console.error(`[Telegram] Failed to heartbeat lease for ${channelId}:`, error)
+        logger.error(`[Telegram] Failed to heartbeat lease for ${channelId}`, error)
       })
     }, HEARTBEAT_MS)
 
@@ -216,7 +223,7 @@ class TelegramBotManager {
     await entry.bot.stop()
     this.bots.delete(channelId)
     await this.releaseLease(channelId)
-    console.log(`[Telegram] Bot stopped for channel ${channelId}`)
+    logger.info(`[Telegram] Bot stopped for channel ${channelId}`)
   }
 
   async stopAll(): Promise<void> {
@@ -241,7 +248,7 @@ class TelegramBotManager {
         const config = channel.config as Record<string, string>
         await this.startBot(channel.id, decrypt(config.botToken), channel.workspaceId)
       } catch (error) {
-        console.error(`[Telegram] Failed to ensure leader for channel ${channel.id}:`, error)
+        logger.error(`[Telegram] Failed to ensure leader for channel ${channel.id}`, error)
       }
     }
   }

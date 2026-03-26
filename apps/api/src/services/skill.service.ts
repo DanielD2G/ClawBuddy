@@ -5,6 +5,7 @@ import { storageService } from './storage.service.js'
 import { imageBuilderService } from './image-builder.service.js'
 import { readFileSync, readdirSync } from 'fs'
 import { join } from 'path'
+import { logger } from '../lib/logger.js'
 
 const SKILLS_PREFIX = 'skills/'
 
@@ -87,7 +88,7 @@ export const skillService = {
     // Re-index tool discovery after skill changes
     const { toolDiscoveryService } = await import('./tool-discovery.service.js')
     toolDiscoveryService.indexCapabilities().catch((err) => {
-      console.error('[SkillService] Failed to re-index tool discovery:', err)
+      logger.error('[SkillService] Failed to re-index tool discovery', err)
     })
 
     return { success: true, slug: skill.slug }
@@ -145,11 +146,11 @@ export const skillService = {
             },
           })
         } catch (err) {
-          console.error(`[SkillService] Failed to sync skill ${obj.Key}:`, err)
+          logger.error(`[SkillService] Failed to sync skill ${obj.Key}`, err)
         }
       }
     } catch (err) {
-      console.error('[SkillService] Failed to sync skills from storage:', err)
+      logger.error('[SkillService] Failed to sync skills from storage', err)
       if (options?.throwOnError) {
         throw err
       }
@@ -192,7 +193,7 @@ export const skillService = {
 
         await storageService.upload(key, Buffer.from(content, 'utf-8'), 'application/json')
       } catch (err) {
-        console.error(`[SkillService] Failed to seed bundled skill ${file}:`, err)
+        logger.error(`[SkillService] Failed to seed bundled skill ${file}`, err)
       }
     }
   },
@@ -224,7 +225,7 @@ export const skillService = {
     // Re-index tool discovery after skill deletion
     const { toolDiscoveryService } = await import('./tool-discovery.service.js')
     toolDiscoveryService.indexCapabilities().catch((err) => {
-      console.error('[SkillService] Failed to re-index tool discovery after delete:', err)
+      logger.error('[SkillService] Failed to re-index tool discovery after delete', err)
     })
 
     return { success: true }

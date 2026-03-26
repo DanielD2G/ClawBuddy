@@ -12,6 +12,7 @@ import {
   mergeWithExistingConfig,
 } from './config-validation.service.js'
 import { buildSystemPrompt as buildSystemPromptText } from './system-prompt-builder.js'
+import { logger } from '../lib/logger.js'
 
 /** Capability slugs that are always enabled and hidden from the management UI */
 const HIDDEN_CAPABILITY_SLUGS = ['sub-agent-delegation']
@@ -328,7 +329,12 @@ export const capabilityService = {
     if (activeSandboxes.length) {
       const { sandboxService } = await import('./sandbox.service.js')
       for (const s of activeSandboxes) {
-        await sandboxService.destroySandbox(s.id).catch(() => {})
+        await sandboxService.destroySandbox(s.id).catch((err) =>
+          logger.warn('[Capability] Failed to destroy sandbox during workspace deletion', {
+            sandboxId: s.id,
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        )
       }
     }
 

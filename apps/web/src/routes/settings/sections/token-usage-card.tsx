@@ -50,7 +50,11 @@ function StatBox({ label, value }: { label: string; value: string }) {
 export function TokenUsageCard() {
   const queryClient = useQueryClient()
 
-  const { data, isLoading } = useQuery({
+  const {
+    data,
+    isLoading,
+    error: queryError,
+  } = useQuery({
     queryKey: ['token-usage'],
     queryFn: () => apiClient.get<TokenUsageData>('/global-settings/token-usage'),
   })
@@ -85,6 +89,12 @@ export function TokenUsageCard() {
       </CardHeader>
       <CardContent>
         {isLoading && <div className="text-sm text-muted-foreground">Loading...</div>}
+
+        {queryError && (
+          <div className="text-sm text-destructive">
+            Failed to load token usage: {queryError.message}
+          </div>
+        )}
 
         {data && (
           <div className="space-y-5">
