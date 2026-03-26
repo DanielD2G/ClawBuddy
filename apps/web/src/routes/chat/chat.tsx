@@ -235,7 +235,7 @@ export function ChatPage() {
                       onFocus={() => setFocused(true)}
                       onBlur={() => setFocused(false)}
                       disabled={isPending || isCompressing}
-                      placeholder="Ask anything — use / for tools, @ for files"
+                      placeholder="Ask anything..."
                       onDocumentMentionsChange={setMentionedDocIds}
                       capabilities={enabledCapabilities}
                       documents={readyDocuments}
