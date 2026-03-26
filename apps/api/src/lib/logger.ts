@@ -10,7 +10,7 @@ interface Logger {
   debug(message: string, ctx?: LogContext): void
   info(message: string, ctx?: LogContext): void
   warn(message: string, ctx?: LogContext): void
-  error(message: string, error?: unknown, ctx?: LogContext): void
+  error(message: string, errorOrCtx?: unknown, ctx?: LogContext): void
   child(ctx: LogContext): Logger
 }
 
@@ -44,7 +44,13 @@ function createLogger(baseCtx: LogContext = {}): Logger {
     debug: (msg, ctx) => emit('debug', msg, { ...baseCtx, ...ctx }),
     info: (msg, ctx) => emit('info', msg, { ...baseCtx, ...ctx }),
     warn: (msg, ctx) => emit('warn', msg, { ...baseCtx, ...ctx }),
-    error: (msg, err?, ctx?) => emit('error', msg, { ...baseCtx, ...ctx }, err),
+    error: (msg, errorOrCtx?, ctx?) => {
+      if (errorOrCtx && typeof errorOrCtx === 'object' && !(errorOrCtx instanceof Error) && !ctx) {
+        emit('error', msg, { ...baseCtx, ...(errorOrCtx as LogContext) })
+      } else {
+        emit('error', msg, { ...baseCtx, ...ctx }, errorOrCtx)
+      }
+    },
     child: (ctx) => createLogger({ ...baseCtx, ...ctx }),
   }
 }

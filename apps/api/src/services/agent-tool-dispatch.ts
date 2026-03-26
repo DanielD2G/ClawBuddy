@@ -173,7 +173,6 @@ export type ToolDispatchContext = {
   allowRules: string[]
   autoApprove?: boolean
   sandboxReady: boolean
-  useDiscovery: boolean
   modelId: string
   mentionedSlugs?: string[]
   signal?: AbortSignal
@@ -231,20 +230,10 @@ export async function preCheckTool(
   iteration: number,
   pendingToolCalls: ToolCall[],
 ): Promise<'ok' | 'rejected' | 'paused'> {
-  const {
-    sessionId,
-    emit,
-    log,
-    messages,
-    toolExecutionLog,
-    tools,
-    useDiscovery,
-    allowRules,
-    inventory,
-  } = ctx
+  const { sessionId, emit, log, messages, toolExecutionLog, tools, allowRules, inventory } = ctx
 
   // Discovery mode: reject undiscovered tools
-  if (useDiscovery && !tools.some((t) => t.name === toolCall.name)) {
+  if (!tools.some((t) => t.name === toolCall.name)) {
     const rejection = `Tool "${toolCall.name}" is not yet available. Call discover_tools first to find and load the appropriate tools for your task.`
     log.debugLog(`[REJECTED] "${toolCall.name}" — not in available tools (discovery mode)`)
     emit?.('tool_start', {
@@ -475,7 +464,7 @@ export async function postProcessToolResult(
   }
 
   // Dynamic tool injection from discover_tools
-  if (isDiscoveryTool && ctx.useDiscovery && result.output) {
+  if (isDiscoveryTool && result.output) {
     try {
       const parsed = JSON.parse(result.output)
       if (parsed.type === 'discovery_result' && parsed.discovered?.length) {

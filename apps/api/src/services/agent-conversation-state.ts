@@ -17,11 +17,13 @@ export function mergeConversationLoadedCapabilitySlugs(
   enabledCapabilitySlugs: Set<string>,
 ): string[] {
   const merged: string[] = []
+  const seen = new Set<string>()
 
   for (const slug of [...(additions ?? []), ...(existing ?? [])]) {
     if (!enabledCapabilitySlugs.has(slug)) continue
     if (slug === PROMPT_NATIVE_SLUG) continue
-    if (merged.includes(slug)) continue
+    if (seen.has(slug)) continue
+    seen.add(slug)
     merged.push(slug)
     if (merged.length >= MAX_CONVERSATION_LOADED_CAPABILITIES) break
   }

@@ -125,10 +125,6 @@ export const agentService = {
       })
     }
 
-    // Discovery mode: only discover_tools is loaded natively, all other tools are discovered dynamically
-    const useDiscovery = true
-    let tools: LLMToolDefinition[]
-    let systemPrompt: string
     // Track dynamically discovered capabilities during the agent loop
     const discoveredCapabilities: ToolDispatchContext['discoveredCapabilities'] = []
 
@@ -139,8 +135,8 @@ export const agentService = {
       conversationLoadedCapabilitySlugs,
       timezone,
     )
-    tools = ctx.tools
-    systemPrompt = ctx.systemPrompt
+    let tools = ctx.tools
+    let systemPrompt = ctx.systemPrompt
     log.debugLog('Discovery mode ACTIVE', {
       capabilityCount: capabilities.length,
       loadedTools: tools.map((t) => t.name),
@@ -247,7 +243,6 @@ You MUST use the tools from these capabilities to fulfill this request. Do NOT s
       toolNames: tools.map((t) => t.name),
       mentionedSlugs: options?.mentionedSlugs,
       conversationLoadedCapabilitySlugs,
-      discoveryMode: useDiscovery,
     })
 
     const llm = await createLLMProvider()
@@ -318,12 +313,10 @@ You MUST use the tools from these capabilities to fulfill this request. Do NOT s
     const toolExecutionLog: AgentResult['toolExecutions'] = []
     const collectedSources: NonNullable<AgentResult['sources']> = []
 
-    // Determine if we need a sandbox
-    // In discovery mode, always start sandbox since discovered tools may need it
-    const allToolNames = tools.map((t) => t.name)
-    const needsSandbox = useDiscovery || toolExecutorService.needsSandbox(allToolNames)
+    // Discovery mode always needs a sandbox since discovered tools may need it
+    const needsSandbox = true
 
-    log.debugLog('Sandbox check', { needsSandbox, allToolNames })
+    log.debugLog('Sandbox check', { needsSandbox })
 
     let sandboxReady = false
 
@@ -388,7 +381,6 @@ When using sourcePath in generate_file, use the full path: /workspace/filename o
       allowRules,
       autoApprove: options?.autoApprove,
       sandboxReady,
-      useDiscovery,
       modelId: llm.modelId,
       mentionedSlugs: options?.mentionedSlugs,
       signal: options?.signal,
@@ -590,7 +582,6 @@ When using sourcePath in generate_file, use the full path: /workspace/filename o
       allowRules: [], // populated below
       autoApprove: false, // populated below
       sandboxReady: true, // sandbox was set up during initial runAgentLoop
-      useDiscovery: false, // resume uses full tool list
       modelId: llm.modelId,
       mentionedSlugs: state.mentionedSlugs,
       signal,
@@ -676,13 +667,46 @@ When using sourcePath in generate_file, use the full path: /workspace/filename o
         try {
           const parsed = JSON.parse(result.output)
           if (parsed.type === 'discovery_result' && parsed.discovered?.length) {
+            const newCaps: typeof parsed.discovered = []
+            for (const cap of parsed.discovered) {
+              if (dispatchCtx.discoveredCapabilities.some((dc) => dc.slug === cap.slug)) continue
+              newCaps.push(cap)
+              dispatchCtx.discoveredCapabilities.push({
+                slug: cap.slug,
+                name: cap.name,
+                toolDefinitions: cap.tools,
+                systemPrompt: cap.instructions,
+                networkAccess: cap.networkAccess,
+                skillType: cap.skillType,
+              })
+              for (const tool of cap.tools as import('../capabilities/types.js').ToolDefinition[]) {
+                if (
+                  !dispatchCtx.tools.some((t) => t.name === tool.name) &&
+                  !DELEGATION_ONLY_TOOLS.has(tool.name)
+                ) {
+                  dispatchCtx.tools.push({
+                    name: tool.name,
+                    description: tool.description,
+                    parameters: tool.parameters,
+                  })
+                }
+              }
+            }
+            if (newCaps.length < parsed.discovered.length) {
+              result.output = JSON.stringify({ ...parsed, discovered: newCaps })
+            }
             dispatchCtx.conversationLoadedCapabilitySlugs =
               await persistConversationLoadedCapabilitySlugs(
                 sessionId,
                 dispatchCtx.conversationLoadedCapabilitySlugs,
-                parsed.discovered.map((cap: { slug: string }) => cap.slug),
+                newCaps.map((cap: { slug: string }) => cap.slug),
                 enabledCapabilitySlugs,
               )
+            log.debugLog('Tools dynamically injected (resume)', {
+              newSlugs: newCaps.map((c: { slug: string }) => c.slug),
+              skippedDuplicates: parsed.discovered.length - newCaps.length,
+              totalTools: dispatchCtx.tools.length,
+            })
           }
         } catch (err) {
           logger.warn('[Agent] Discovery output parse failed (resume)', {

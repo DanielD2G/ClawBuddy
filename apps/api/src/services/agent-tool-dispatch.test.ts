@@ -50,7 +50,20 @@ vi.mock('./tool-executor.service.js', () => ({
   toolExecutorService: {
     execute: mockExecute,
   },
-  NON_SANDBOX_TOOLS: new Set(['discover_tools']),
+  NON_SANDBOX_TOOLS: new Set([
+    'search_documents',
+    'save_document',
+    'generate_file',
+    'read_file',
+    'create_cron',
+    'list_crons',
+    'delete_cron',
+    'web_search',
+    'web_fetch',
+    'run_browser_script',
+    'discover_tools',
+    'delegate_task',
+  ]),
 }))
 
 vi.mock('./permission.service.js', () => ({
@@ -159,7 +172,6 @@ function createDispatchContext(overrides?: Partial<ToolDispatchContext>): ToolDi
     allowRules: [],
     autoApprove: false,
     sandboxReady: true,
-    useDiscovery: false,
     modelId: 'gpt-4o',
     discoveredCapabilities: [],
     enabledCapabilitySlugs: new Set(),
@@ -342,9 +354,8 @@ describe('preCheckTool', () => {
     expect(result).toBe('ok')
   })
 
-  test('rejects undiscovered tools in discovery mode', async () => {
+  test('rejects undiscovered tools not in available tools list', async () => {
     const ctx = createDispatchContext({
-      useDiscovery: true,
       tools: [{ name: 'discover_tools', description: 'Discover', parameters: {} }],
     })
 
