@@ -1,7 +1,7 @@
 import { prisma } from '../lib/prisma.js'
 import { Prisma } from '@prisma/client'
 import { createLLMProvider } from '../providers/index.js'
-import type { ChatMessage, LLMToolDefinition, LLMProvider } from '../providers/llm.interface.js'
+import type { ChatMessage, LLMProvider } from '../providers/llm.interface.js'
 import type { SSEEmit } from '../lib/sse.js'
 import { capabilityService } from './capability.service.js'
 import {

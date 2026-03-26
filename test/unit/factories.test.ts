@@ -55,7 +55,7 @@ describe('Mock Factories', () => {
 
     it('$transaction executes callback', async () => {
       const prisma = createMockPrisma()
-      const result = await prisma.$transaction(async (tx: unknown) => {
+      const result = await prisma.$transaction(async (_tx: unknown) => {
         return 'done'
       })
       expect(result).toBe('done')

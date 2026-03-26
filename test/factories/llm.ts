@@ -1,11 +1,5 @@
 import { vi } from 'vitest'
-import type {
-  LLMProvider,
-  LLMResponse,
-  ChatMessage,
-  LLMOptions,
-  LLMToolDefinition,
-} from '../../apps/api/src/providers/llm.interface.js'
+import type { LLMProvider, LLMResponse } from '../../apps/api/src/providers/llm.interface.js'
 
 interface MockLLMProviderOptions {
   /** Default response content for chatWithTools / chat */

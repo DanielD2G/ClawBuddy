@@ -341,8 +341,7 @@ describe('stream', () => {
       },
     })
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    for await (const _ of provider.stream([{ role: 'user', content: 'Hi' }])) {
+    for await (const _chunk of provider.stream([{ role: 'user', content: 'Hi' }])) {
       // consume
     }
 

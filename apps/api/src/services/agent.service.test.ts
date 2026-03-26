@@ -1,6 +1,5 @@
 import { describe, expect, test, vi, beforeEach } from 'vitest'
 import { createMockPrisma, type MockPrisma } from '@test/factories/prisma'
-import { createMockLLMProvider } from '@test/factories/llm'
 import { createMockSSEEmit } from '@test/factories/sse'
 
 // ── Hoisted mocks ───────────────────────────────────────────────────────

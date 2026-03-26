@@ -1,12 +1,5 @@
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
-import {
-  createWorkspace,
-  deleteWorkspace,
-  enableCapability,
-  setAutoExecute,
-  sendMessage,
-  assertToolUsed,
-} from './helpers'
+import { createWorkspace, deleteWorkspace, enableCapability, setAutoExecute } from './helpers'
 
 const API_BASE = process.env.API_BASE ?? 'http://localhost:4000/api'
 const TIMEOUT = 180_000

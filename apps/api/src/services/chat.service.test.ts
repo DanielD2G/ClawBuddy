@@ -504,7 +504,7 @@ describe('chatService.sendMessage', () => {
     const { capabilityService } = await import('./capability.service.js')
     vi.mocked(capabilityService.getEnabledCapabilitiesForWorkspace).mockResolvedValue([
       { slug: 'sandbox', id: 'cap-1', name: 'Sandbox' },
-    ] as any)
+    ] as unknown[])
 
     const { agentService } = await import('./agent.service.js')
     vi.mocked(agentService.runAgentLoop).mockResolvedValue({
@@ -543,7 +543,7 @@ describe('chatService.sendMessage', () => {
     const { capabilityService } = await import('./capability.service.js')
     vi.mocked(capabilityService.getEnabledCapabilitiesForWorkspace).mockResolvedValue([
       { slug: 'document-search', id: 'cap-doc', name: 'Doc Search' },
-    ] as any)
+    ] as unknown[])
 
     mockPrisma.chatMessage.create.mockResolvedValue({ id: 'msg-rag', role: 'assistant' })
 
@@ -558,7 +558,9 @@ describe('chatService.sendMessage', () => {
 
 describe('chatService._sendWithRAG', () => {
   const session = { id: 'sess-1', workspaceId: 'ws-1', title: null }
-  const inventory = { enabled: false } as any
+  const inventory = {
+    enabled: false,
+  } as unknown as import('./secret-redaction.service.js').SecretInventory
 
   test('emits sources when chunks are found', async () => {
     const emit = createMockEmit()
@@ -566,7 +568,7 @@ describe('chatService._sendWithRAG', () => {
     vi.mocked(searchService.search).mockResolvedValue([
       { id: 'q1', score: 0.9, payload: { chunkId: 'chunk-1' } },
       { id: 'q2', score: 0.8, payload: { chunkId: 'chunk-2' } },
-    ] as any)
+    ] as unknown[])
 
     mockPrisma.documentChunk.findMany.mockResolvedValue([
       {
@@ -601,7 +603,7 @@ describe('chatService._sendWithRAG', () => {
     vi.mocked(searchService.search).mockResolvedValue([
       { id: 'q1', score: 0.9, payload: { chunkId: 'chunk-1' } },
       { id: 'q2', score: 0.8, payload: { chunkId: 'chunk-2' } },
-    ] as any)
+    ] as unknown[])
 
     // Both chunks from the same document
     mockPrisma.documentChunk.findMany.mockResolvedValue([
@@ -646,7 +648,7 @@ describe('chatService._sendWithRAG', () => {
     const { searchService } = await import('./search.service.js')
     vi.mocked(searchService.search).mockResolvedValue([
       { id: 'q1', score: 0.9, payload: { chunkId: 'chunk-1' } },
-    ] as any)
+    ] as unknown[])
 
     mockPrisma.documentChunk.findMany.mockResolvedValue([
       {
@@ -674,7 +676,9 @@ describe('chatService._sendWithRAG', () => {
 
 describe('chatService._sendWithAgentLoop', () => {
   const session = { id: 'sess-1', workspaceId: 'ws-1', title: 'Existing' }
-  const inventory = { enabled: false } as any
+  const inventory = {
+    enabled: false,
+  } as unknown as import('./secret-redaction.service.js').SecretInventory
 
   test('sets agentStatus to running then idle on success', async () => {
     const emit = createMockEmit()
@@ -713,7 +717,8 @@ describe('chatService._sendWithAgentLoop', () => {
 
     // Should NOT set idle or emit done when paused
     const idleUpdate = mockPrisma.chatSession.update.mock.calls.find(
-      (c: unknown[]) => (c[0] as any).data?.agentStatus === 'idle',
+      (c: unknown[]) =>
+        (c[0] as Record<string, Record<string, unknown>>).data?.agentStatus === 'idle',
     )
     expect(idleUpdate).toBeUndefined()
     expect(emit).not.toHaveBeenCalledWith('done', expect.anything())
