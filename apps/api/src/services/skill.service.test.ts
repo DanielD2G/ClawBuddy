@@ -31,7 +31,7 @@ vi.mock('./image-builder.service.js', () => ({
 }))
 
 vi.mock('../capabilities/skill-parser.js', () => ({
-  parseSkillFile: vi.fn().mockReturnValue({
+  parseSkillSource: vi.fn().mockReturnValue({
     skill: {
       slug: 'test-skill',
       version: '1.0.0',
@@ -52,6 +52,9 @@ vi.mock('../capabilities/skill-parser.js', () => ({
       installationScript: null,
       source: 'uploaded',
     },
+    format: 'json',
+    storageExtension: '.skill',
+    contentType: 'application/json',
   }),
 }))
 
@@ -72,7 +75,7 @@ vi.mock('fs', () => ({
 }))
 
 import { skillService } from './skill.service.js'
-import { parseSkillFile } from '../capabilities/skill-parser.js'
+import { parseSkillSource } from '../capabilities/skill-parser.js'
 import { storageService } from './storage.service.js'
 import { imageBuilderService } from './image-builder.service.js'
 
@@ -88,14 +91,18 @@ describe('skill.service', () => {
   // ── uploadSkill ───────────────────────────────────────────────────────
 
   describe('uploadSkill', () => {
-    test('returns error for invalid JSON', async () => {
+    test('returns validation error for invalid skill content', async () => {
+      vi.mocked(parseSkillSource).mockImplementationOnce(() => {
+        throw new Error('Invalid skill file')
+      })
+
       const result = await skillService.uploadSkill('not valid json')
       expect(result.success).toBe(false)
-      expect(result.error).toBe('Invalid JSON in .skill file')
+      expect(result.error).toContain('Invalid skill file')
     })
 
     test('returns error when skill validation fails', async () => {
-      vi.mocked(parseSkillFile).mockImplementationOnce(() => {
+      vi.mocked(parseSkillSource).mockImplementationOnce(() => {
         throw new Error('Missing required field: name')
       })
 
@@ -129,7 +136,7 @@ describe('skill.service', () => {
     })
 
     test('tests installation script when present', async () => {
-      vi.mocked(parseSkillFile).mockReturnValueOnce({
+      vi.mocked(parseSkillSource).mockReturnValueOnce({
         skill: {
           slug: 'test-skill',
           version: '1.0.0',
@@ -150,10 +157,13 @@ describe('skill.service', () => {
           installationScript: 'apt-get install -y curl',
           source: 'uploaded',
         },
-      } as ReturnType<typeof parseSkillFile>)
+        format: 'json',
+        storageExtension: '.skill',
+        contentType: 'application/json',
+      } as ReturnType<typeof parseSkillSource>)
 
       const onBuildLog = vi.fn()
-      const result = await skillService.uploadSkill('{}', onBuildLog)
+      const result = await skillService.uploadSkill('{}', { onBuildLog })
 
       expect(mockImageBuilderService.testSkillInstallation).toHaveBeenCalledWith(
         'apt-get install -y curl',
@@ -164,7 +174,7 @@ describe('skill.service', () => {
     })
 
     test('returns error when installation script build fails', async () => {
-      vi.mocked(parseSkillFile).mockReturnValueOnce({
+      vi.mocked(parseSkillSource).mockReturnValueOnce({
         skill: {
           slug: 'test-skill',
           version: '1.0.0',
@@ -185,7 +195,10 @@ describe('skill.service', () => {
           installationScript: 'bad-command',
           source: 'uploaded',
         },
-      } as ReturnType<typeof parseSkillFile>)
+        format: 'json',
+        storageExtension: '.skill',
+        contentType: 'application/json',
+      } as ReturnType<typeof parseSkillSource>)
 
       mockImageBuilderService.testSkillInstallation.mockResolvedValueOnce({
         success: false,
@@ -290,9 +303,10 @@ describe('skill.service', () => {
   // ── syncSkillsFromStorage ─────────────────────────────────────────────
 
   describe('syncSkillsFromStorage', () => {
-    test('processes .skill files from storage', async () => {
+    test('processes skill files from storage', async () => {
       mockStorageService.listObjects.mockResolvedValueOnce([
         { Key: 'skills/test-skill.skill' },
+        { Key: 'skills/another-skill.md' },
         { Key: 'skills/readme.txt' }, // should be skipped
       ])
 
@@ -303,11 +317,36 @@ describe('skill.service', () => {
           yield Buffer.from(content)
         })(),
       )
+      mockStorageService.download.mockResolvedValueOnce(
+        (async function* () {
+          yield Buffer.from(content)
+        })(),
+      )
 
       await skillService.syncSkillsFromStorage()
 
       expect(mockStorageService.listObjects).toHaveBeenCalledWith('skills/')
       expect(mockPrisma.capability.upsert).toHaveBeenCalled()
+    })
+
+    test('prefers Markdown skill files over legacy .skill files for the same slug', async () => {
+      mockStorageService.listObjects.mockResolvedValueOnce([
+        { Key: 'skills/test-skill.skill' },
+        { Key: 'skills/test-skill.md' },
+      ])
+
+      mockStorageService.download.mockResolvedValueOnce(
+        (async function* () {
+          yield Buffer.from(
+            '---\nname: test-skill\ndescription: Test\nclawbuddy:\n  type: bash\n  tools:\n    - name: run\n      description: Test\n      parameters:\n        type: object\n        properties: {}\n---\nTest',
+          )
+        })(),
+      )
+
+      await skillService.syncSkillsFromStorage()
+
+      expect(mockStorageService.download).toHaveBeenCalledTimes(1)
+      expect(mockStorageService.download).toHaveBeenCalledWith('skills/test-skill.md')
     })
 
     test('handles storage errors gracefully', async () => {

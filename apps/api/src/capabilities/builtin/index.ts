@@ -11,7 +11,7 @@ import { webFetch } from './web-fetch.js'
 import { readFile } from './read-file.js'
 
 // Only capabilities with custom (non-sandbox) execution logic remain as builtins.
-// bash, python, aws-cli, kubectl, docker have been migrated to .skill files.
+// bash, python, aws-cli, kubectl, docker and related bundled tools now live as SKILL.md files.
 export const BUILTIN_CAPABILITIES: CapabilityDefinition[] = [
   documentSearch,
   agentMemory,

@@ -35,6 +35,7 @@
     "tar-stream": "^3.1.8",
     "turndown": "^7.2.2",
     "ws": "^8.19.0",
+    "yaml": "^2.8.2",
     "zod": "^3"
   },
   "devDependencies": {

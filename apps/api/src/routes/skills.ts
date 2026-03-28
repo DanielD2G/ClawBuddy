@@ -4,29 +4,40 @@ import { skillService } from '../services/skill.service.js'
 import { imageBuilderService } from '../services/image-builder.service.js'
 import { sandboxService } from '../services/sandbox.service.js'
 import { logger } from '../lib/logger.js'
+import { parseSkillSource } from '../capabilities/skill-parser.js'
 
 const app = new Hono()
 
 /**
- * Upload a .skill file. If it has an installation script, the endpoint
+ * Upload a skill source file. If it has an installation script, the endpoint
  * streams build logs via SSE so the frontend can show progress.
  */
 app.post('/skills/upload', async (c) => {
   const body = await c.req.json()
+  const content = typeof body?.content === 'string' ? body.content : null
+  const fileName = typeof body?.filename === 'string' ? body.filename : undefined
+
+  if (!content) {
+    return c.json({ success: false, error: 'Skill content is required' }, 400)
+  }
 
   // Check if the skill has an installation script to determine response type
   let hasInstallation = false
   try {
-    hasInstallation = !!body.installation
-  } catch {
-    return c.json({ success: false, error: 'Invalid skill data' }, 400)
+    hasInstallation = !!parseSkillSource(content).skill.installation
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Invalid skill data'
+    return c.json({ success: false, error: message }, 400)
   }
 
   if (hasInstallation) {
     // Stream build logs via SSE
     return streamSSE(c, async (stream) => {
-      const result = await skillService.uploadSkill(JSON.stringify(body), (line) => {
-        stream.writeSSE({ event: 'build_log', data: line })
+      const result = await skillService.uploadSkill(content, {
+        fileName,
+        onBuildLog: (line) => {
+          stream.writeSSE({ event: 'build_log', data: line })
+        },
       })
 
       if (result.success) {
@@ -48,7 +59,7 @@ app.post('/skills/upload', async (c) => {
   }
 
   // No installation script — simple JSON response
-  const result = await skillService.uploadSkill(JSON.stringify(body))
+  const result = await skillService.uploadSkill(content, { fileName })
   if (!result.success) {
     return c.json({ success: false, error: result.error, logs: result.logs }, 400)
   }

@@ -85,111 +85,106 @@ export function InstalledSkills({
       // Reset input
       if (fileInputRef.current) fileInputRef.current.value = ''
 
-      let skillData: Record<string, unknown>
+      let content: string
       try {
-        const text = await file.text()
-        skillData = JSON.parse(text)
+        content = await file.text()
       } catch {
-        setUploadState({ status: 'error', logs: [], error: 'Invalid JSON file' })
+        setUploadState({ status: 'error', logs: [], error: 'Unable to read skill file' })
         setShowUploadDialog(true)
         return
+      }
+
+      const uploadPayload = {
+        content,
+        filename: file.name,
       }
 
       setUploadState({ status: 'uploading', logs: [] })
       setShowUploadDialog(true)
 
-      // If skill has installation, use SSE for streaming logs
-      if (skillData.installation) {
-        setUploadState((s) => ({ ...s, status: 'building' }))
+      try {
+        const res = await fetch('/api/skills/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(uploadPayload),
+        })
 
-        try {
-          const res = await fetch('/api/skills/upload', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify(skillData),
-          })
+        const isEventStream =
+          res.headers.get('content-type')?.includes('text/event-stream') ?? false
 
-          if (!res.ok && !res.headers.get('content-type')?.includes('text/event-stream')) {
-            const err = await res.json().catch(() => ({ error: 'Upload failed' }))
+        if (!isEventStream) {
+          const payload = await res.json().catch(() => ({ error: 'Upload failed' }))
+
+          if (!res.ok) {
             setUploadState({
               status: 'error',
-              logs: err.logs ? err.logs.split('\n') : [],
-              error: err.error || 'Upload failed',
+              logs: payload.logs ? payload.logs.split('\n') : [],
+              error: payload.error || 'Upload failed',
             })
             return
           }
 
-          const reader = res.body?.getReader()
-          const decoder = new TextDecoder()
-          if (!reader) {
-            setUploadState({ status: 'error', logs: [], error: 'No response stream' })
-            return
-          }
-
-          let buffer = ''
-          while (true) {
-            const { done, value } = await reader.read()
-            if (done) break
-
-            buffer += decoder.decode(value, { stream: true })
-            const lines = buffer.split('\n')
-            buffer = lines.pop() || ''
-
-            for (const line of lines) {
-              if (line.startsWith('data:')) {
-                const data = line.slice(5).trim()
-
-                // Check for event type from previous line
-                if (data) {
-                  try {
-                    const parsed = JSON.parse(data)
-                    if (parsed.success === true) {
-                      setUploadState((s) => ({
-                        ...s,
-                        status: 'success',
-                        logs: [...s.logs, 'Skill installed successfully!'],
-                      }))
-                      queryClient.invalidateQueries({ queryKey: ['admin-skills'] })
-                    } else if (parsed.success === false) {
-                      setUploadState((s) => ({
-                        ...s,
-                        status: 'error',
-                        error: parsed.error,
-                        logs: parsed.logs ? [...s.logs, ...parsed.logs.split('\n')] : s.logs,
-                      }))
-                    }
-                  } catch {
-                    // Plain text log line
-                    setUploadState((s) => ({
-                      ...s,
-                      logs: [...s.logs, data],
-                    }))
-                  }
-                }
-              }
-            }
-          }
-        } catch (err) {
-          setUploadState({
-            status: 'error',
-            logs: [],
-            error: err instanceof Error ? err.message : 'Upload failed',
-          })
-        }
-      } else {
-        // No installation script -- simple upload
-        try {
-          await apiClient.post('/skills/upload', skillData)
           setUploadState({ status: 'success', logs: ['Skill installed successfully!'] })
           queryClient.invalidateQueries({ queryKey: ['admin-skills'] })
-        } catch (err) {
-          setUploadState({
-            status: 'error',
-            logs: [],
-            error: err instanceof Error ? err.message : 'Upload failed',
-          })
+          return
         }
+
+        setUploadState((s) => ({ ...s, status: 'building' }))
+
+        const reader = res.body?.getReader()
+        const decoder = new TextDecoder()
+        if (!reader) {
+          setUploadState({ status: 'error', logs: [], error: 'No response stream' })
+          return
+        }
+
+        let buffer = ''
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
+
+          for (const line of lines) {
+            if (!line.startsWith('data:')) continue
+
+            const data = line.slice(5).trim()
+            if (!data) continue
+
+            try {
+              const parsed = JSON.parse(data)
+              if (parsed.success === true) {
+                setUploadState((s) => ({
+                  ...s,
+                  status: 'success',
+                  logs: [...s.logs, 'Skill installed successfully!'],
+                }))
+                queryClient.invalidateQueries({ queryKey: ['admin-skills'] })
+              } else if (parsed.success === false) {
+                setUploadState((s) => ({
+                  ...s,
+                  status: 'error',
+                  error: parsed.error,
+                  logs: parsed.logs ? [...s.logs, ...parsed.logs.split('\n')] : s.logs,
+                }))
+              }
+            } catch {
+              setUploadState((s) => ({
+                ...s,
+                logs: [...s.logs, data],
+              }))
+            }
+          }
+        }
+      } catch (err) {
+        setUploadState({
+          status: 'error',
+          logs: [],
+          error: err instanceof Error ? err.message : 'Upload failed',
+        })
       }
     },
     [queryClient],
@@ -230,7 +225,7 @@ export function InstalledSkills({
           <input
             ref={fileInputRef}
             type="file"
-            accept=".skill,.json"
+            accept=".md,.skill,.json"
             className="hidden"
             onChange={handleFileSelect}
           />
@@ -256,7 +251,8 @@ export function InstalledSkills({
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Puzzle className="size-12 text-muted-foreground/50 mb-4" />
             <p className="text-muted-foreground text-center">
-              No skills installed yet. Upload a <code>.skill</code> file to get started.
+              No skills installed yet. Upload a <code>SKILL.md</code> or legacy <code>.skill</code>{' '}
+              file to get started.
             </p>
           </CardContent>
         </Card>

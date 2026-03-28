@@ -1,6 +1,6 @@
 import { prisma } from '../lib/prisma.js'
 import { Prisma } from '@prisma/client'
-import { parseSkillFile } from '../capabilities/skill-parser.js'
+import { parseSkillSource } from '../capabilities/skill-parser.js'
 import { storageService } from './storage.service.js'
 import { imageBuilderService } from './image-builder.service.js'
 import { readFileSync, readdirSync } from 'fs'
@@ -9,35 +9,58 @@ import { logger } from '../lib/logger.js'
 
 const SKILLS_PREFIX = 'skills/'
 
+function isSkillStorageKey(key: string): boolean {
+  return key.endsWith('.skill') || key.endsWith('.md')
+}
+
+function skillSlugFromStorageKey(key: string): string {
+  return key.replace(/^skills\//, '').replace(/\.(skill|md)$/, '')
+}
+
+function collectBundledSkillFiles(dir: string): string[] {
+  const entries = readdirSync(dir, { withFileTypes: true })
+  const files: string[] = []
+
+  for (const entry of entries) {
+    const fullPath = join(dir, entry.name)
+
+    if (entry.isDirectory()) {
+      files.push(...collectBundledSkillFiles(fullPath))
+      continue
+    }
+
+    if (entry.isFile() && (entry.name === 'SKILL.md' || entry.name.endsWith('.skill'))) {
+      files.push(fullPath)
+    }
+  }
+
+  return files
+}
+
 export const skillService = {
   /**
-   * Upload and install a skill from a .skill file buffer.
+   * Upload and install a skill from a legacy .skill file or a Markdown skill file.
    * If the skill has an installation script, it will be validated
    * by attempting a Docker build first.
    */
   async uploadSkill(
     fileContent: Buffer | string,
-    onBuildLog?: (line: string) => void,
+    options?: {
+      fileName?: string
+      onBuildLog?: (line: string) => void
+    },
   ): Promise<{
     success: boolean
     error?: string
     logs?: string
     slug?: string
   }> {
-    // Parse the JSON
-    let raw: unknown
-    try {
-      raw = JSON.parse(
-        typeof fileContent === 'string' ? fileContent : fileContent.toString('utf-8'),
-      )
-    } catch {
-      return { success: false, error: 'Invalid JSON in .skill file' }
-    }
+    const content = typeof fileContent === 'string' ? fileContent : fileContent.toString('utf-8')
 
     // Validate and parse
-    let parsed: ReturnType<typeof parseSkillFile>
+    let parsed: ReturnType<typeof parseSkillSource>
     try {
-      parsed = parseSkillFile(raw)
+      parsed = parseSkillSource(content)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       return { success: false, error: `Skill validation failed: ${message}` }
@@ -47,10 +70,10 @@ export const skillService = {
 
     // If skill has installation script, test the Docker build
     if (skill.installation) {
-      onBuildLog?.('Testing installation script...')
+      options?.onBuildLog?.('Testing installation script...')
       const buildResult = await imageBuilderService.testSkillInstallation(
         skill.installation,
-        onBuildLog,
+        options?.onBuildLog,
       )
 
       if (!buildResult.success) {
@@ -60,13 +83,14 @@ export const skillService = {
           logs: buildResult.logs,
         }
       }
-      onBuildLog?.('Installation script validated successfully.')
+      options?.onBuildLog?.('Installation script validated successfully.')
     }
 
-    // Upload .skill file to MinIO
-    const skillKey = `${SKILLS_PREFIX}${skill.slug}.skill`
-    const content = typeof fileContent === 'string' ? fileContent : fileContent.toString('utf-8')
-    await storageService.upload(skillKey, Buffer.from(content, 'utf-8'), 'application/json')
+    // Upload skill source to MinIO
+    const skillKey = `${SKILLS_PREFIX}${skill.slug}${parsed.storageExtension}`
+    await storageService.upload(skillKey, Buffer.from(content, 'utf-8'), parsed.contentType)
+    const alternateKey = `${SKILLS_PREFIX}${skill.slug}${parsed.storageExtension === '.md' ? '.skill' : '.md'}`
+    await storageService.deleteObject(alternateKey).catch(() => undefined)
 
     // Upsert capability in DB
     await prisma.capability.upsert({
@@ -103,14 +127,25 @@ export const skillService = {
       // First, seed bundled skills from filesystem to MinIO if they don't exist
       await this.seedBundledSkills()
 
-      // List all .skill files in MinIO
+      // List all skill files in MinIO
       const objects = await storageService.listObjects(SKILLS_PREFIX)
+      const preferredObjects = new Map<string, string>()
 
       for (const obj of objects) {
-        if (!obj.Key?.endsWith('.skill')) continue
+        if (!obj.Key || !isSkillStorageKey(obj.Key)) continue
+
+        const slug = skillSlugFromStorageKey(obj.Key)
+        const current = preferredObjects.get(slug)
+        if (!current || (obj.Key.endsWith('.md') && current.endsWith('.skill'))) {
+          preferredObjects.set(slug, obj.Key)
+        }
+      }
+
+      for (const key of preferredObjects.values()) {
+        const objKey = key
 
         try {
-          const body = await storageService.download(obj.Key)
+          const body = await storageService.download(objKey)
           if (!body) continue
 
           const chunks: Buffer[] = []
@@ -118,14 +153,13 @@ export const skillService = {
             chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
           }
           const content = Buffer.concat(chunks).toString('utf-8')
-          const raw = JSON.parse(content)
-          const { dbData } = parseSkillFile(raw)
+          const { dbData } = parseSkillSource(content)
 
           await prisma.capability.upsert({
             where: { slug: dbData.slug },
             create: {
               ...dbData,
-              skillFileKey: obj.Key,
+              skillFileKey: objKey,
               configSchema: dbData.configSchema as Prisma.InputJsonValue | undefined,
               toolDefinitions: dbData.toolDefinitions,
             },
@@ -142,11 +176,11 @@ export const skillService = {
               skillType: dbData.skillType,
               installationScript: dbData.installationScript,
               source: dbData.source,
-              skillFileKey: obj.Key,
+              skillFileKey: objKey,
             },
           })
         } catch (err) {
-          logger.error(`[SkillService] Failed to sync skill ${obj.Key}`, err)
+          logger.error(`[SkillService] Failed to sync skill ${objKey}`, err)
         }
       }
     } catch (err) {
@@ -158,7 +192,7 @@ export const skillService = {
   },
 
   /**
-   * Seed bundled .skill files from the filesystem to MinIO
+   * Seed bundled skill files from the filesystem to MinIO
    * (only if they don't already exist).
    */
   async seedBundledSkills() {
@@ -170,30 +204,36 @@ export const skillService = {
 
     let files: string[]
     try {
-      files = readdirSync(skillsDir).filter((f) => f.endsWith('.skill'))
+      files = collectBundledSkillFiles(skillsDir)
     } catch {
       // skills directory doesn't exist, skip
       return
     }
 
-    for (const file of files) {
-      const key = `${SKILLS_PREFIX}${file}`
+    for (const filePath of files) {
+      const content = readFileSync(filePath, 'utf-8')
 
       try {
-        const content = readFileSync(join(skillsDir, file), 'utf-8')
-        const { skill } = parseSkillFile(JSON.parse(content))
+        const parsed = parseSkillSource(content)
+        const key = `${SKILLS_PREFIX}${parsed.skill.slug}${parsed.storageExtension}`
 
         // Check if we need to update: compare version with DB
         const existing = await prisma.capability.findUnique({
-          where: { slug: skill.slug },
-          select: { version: true },
+          where: { slug: parsed.skill.slug },
+          select: { version: true, skillFileKey: true },
         })
 
-        if (existing && existing.version === skill.version) continue
+        if (
+          existing &&
+          existing.version === parsed.skill.version &&
+          existing.skillFileKey === key
+        ) {
+          continue
+        }
 
-        await storageService.upload(key, Buffer.from(content, 'utf-8'), 'application/json')
+        await storageService.upload(key, Buffer.from(content, 'utf-8'), parsed.contentType)
       } catch (err) {
-        logger.error(`[SkillService] Failed to seed bundled skill ${file}`, err)
+        logger.error(`[SkillService] Failed to seed bundled skill ${filePath}`, err)
       }
     }
   },
