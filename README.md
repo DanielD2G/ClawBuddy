@@ -75,7 +75,7 @@ Six sandboxed tools your AI can use, each running in isolated Docker containers:
 | **AWS CLI**    | S3, EC2, Lambda, CloudFormation, and 200+ AWS services |
 | **GitHub CLI** | Repos, issues, PRs, actions, releases, secrets         |
 
-Each capability is defined as a `.skill` file — easy to read, modify, or create new ones. See [Creating Skills](docs/creating-skills.md).
+Each capability is defined as an OpenCode-compatible `SKILL.md` file with a nested `clawbuddy:` section for ClawBuddy-specific runtime fields. See [Creating Skills](docs/creating-skills.md).
 
 ### Sub-Agent Delegation
 

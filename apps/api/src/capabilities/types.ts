@@ -1,3 +1,5 @@
+import type { Prisma } from '@prisma/client'
+
 export interface ToolDefinition {
   name: string
   description: string
@@ -76,4 +78,30 @@ export interface SkillDefinition {
   installation?: string
   tools: ToolDefinition[]
   inputs?: Record<string, SkillInput>
+}
+
+export interface ParsedSkillDocument {
+  skill: SkillDefinition
+  capability: CapabilityDefinition
+  dbData: {
+    slug: string
+    name: string
+    description: string
+    icon: string | undefined
+    category: string
+    version: string
+    toolDefinitions: Prisma.InputJsonValue
+    systemPrompt: string
+    dockerImage: string | null
+    packages: string[]
+    networkAccess: boolean
+    configSchema: Prisma.InputJsonValue | undefined
+    builtin: boolean
+    skillType: string
+    installationScript: string | null
+    source: string
+  }
+  format: 'markdown'
+  storageExtension: '.md'
+  contentType: 'text/markdown'
 }
