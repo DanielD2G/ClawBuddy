@@ -10,11 +10,7 @@ import { logger } from '../lib/logger.js'
 const SKILLS_PREFIX = 'skills/'
 
 function isSkillStorageKey(key: string): boolean {
-  return key.endsWith('.skill') || key.endsWith('.md')
-}
-
-function skillSlugFromStorageKey(key: string): string {
-  return key.replace(/^skills\//, '').replace(/\.(skill|md)$/, '')
+  return key.endsWith('.md')
 }
 
 function collectBundledSkillFiles(dir: string): string[] {
@@ -29,7 +25,7 @@ function collectBundledSkillFiles(dir: string): string[] {
       continue
     }
 
-    if (entry.isFile() && (entry.name === 'SKILL.md' || entry.name.endsWith('.skill'))) {
+    if (entry.isFile() && entry.name === 'SKILL.md') {
       files.push(fullPath)
     }
   }
@@ -39,7 +35,7 @@ function collectBundledSkillFiles(dir: string): string[] {
 
 export const skillService = {
   /**
-   * Upload and install a skill from a legacy .skill file or a Markdown skill file.
+   * Upload and install a Markdown skill file.
    * If the skill has an installation script, it will be validated
    * by attempting a Docker build first.
    */
@@ -87,10 +83,8 @@ export const skillService = {
     }
 
     // Upload skill source to MinIO
-    const skillKey = `${SKILLS_PREFIX}${skill.slug}${parsed.storageExtension}`
+    const skillKey = `${SKILLS_PREFIX}${skill.slug}.md`
     await storageService.upload(skillKey, Buffer.from(content, 'utf-8'), parsed.contentType)
-    const alternateKey = `${SKILLS_PREFIX}${skill.slug}${parsed.storageExtension === '.md' ? '.skill' : '.md'}`
-    await storageService.deleteObject(alternateKey).catch(() => undefined)
 
     // Upsert capability in DB
     await prisma.capability.upsert({
@@ -129,20 +123,11 @@ export const skillService = {
 
       // List all skill files in MinIO
       const objects = await storageService.listObjects(SKILLS_PREFIX)
-      const preferredObjects = new Map<string, string>()
 
       for (const obj of objects) {
         if (!obj.Key || !isSkillStorageKey(obj.Key)) continue
 
-        const slug = skillSlugFromStorageKey(obj.Key)
-        const current = preferredObjects.get(slug)
-        if (!current || (obj.Key.endsWith('.md') && current.endsWith('.skill'))) {
-          preferredObjects.set(slug, obj.Key)
-        }
-      }
-
-      for (const key of preferredObjects.values()) {
-        const objKey = key
+        const objKey = obj.Key
 
         try {
           const body = await storageService.download(objKey)
@@ -215,7 +200,7 @@ export const skillService = {
 
       try {
         const parsed = parseSkillSource(content)
-        const key = `${SKILLS_PREFIX}${parsed.skill.slug}${parsed.storageExtension}`
+        const key = `${SKILLS_PREFIX}${parsed.skill.slug}.md`
 
         // Check if we need to update: compare version with DB
         const existing = await prisma.capability.findUnique({

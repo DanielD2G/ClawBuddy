@@ -22,33 +22,6 @@ const ToolDefinitionSchema = z.object({
   }),
 })
 
-const SkillDefinitionSchema = z.object({
-  name: z.string(),
-  slug: z.string().regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens'),
-  description: z.string(),
-  version: z.string().default('1.0.0'),
-  icon: z.string().optional(),
-  category: z.string().default('general'),
-  type: z.enum(['bash', 'python', 'js']),
-  networkAccess: z.boolean().default(false),
-  instructions: z.string(),
-  installation: z.string().optional(),
-  tools: z.array(ToolDefinitionSchema).min(1),
-  inputs: z
-    .record(
-      z.union([
-        z.enum(['var', 'secret', 'textarea']),
-        z.object({
-          type: z.enum(['var', 'secret', 'textarea']),
-          default: z.string().optional(),
-          description: z.string().optional(),
-          placeholder: z.string().optional(),
-        }),
-      ]),
-    )
-    .optional(),
-})
-
 const OpenCodeSkillNameSchema = z
   .string()
   .min(1)
@@ -127,10 +100,7 @@ function inputsToConfigSchema(inputs: Record<string, SkillInput>): ConfigFieldDe
   })
 }
 
-function buildParsedSkillDocument(
-  skill: SkillDefinition,
-  format: ParsedSkillDocument['format'],
-): ParsedSkillDocument {
+function buildParsedSkillDocument(skill: SkillDefinition): ParsedSkillDocument {
   const configSchema = skill.inputs ? inputsToConfigSchema(skill.inputs) : undefined
 
   const capability: CapabilityDefinition = {
@@ -173,9 +143,9 @@ function buildParsedSkillDocument(
     skill,
     capability,
     dbData,
-    format,
-    storageExtension: format === 'markdown' ? '.md' : '.skill',
-    contentType: format === 'markdown' ? 'text/markdown' : 'application/json',
+    format: 'markdown',
+    storageExtension: '.md',
+    contentType: 'text/markdown',
   }
 }
 
@@ -226,31 +196,16 @@ function parseMarkdownSkill(content: string): ParsedSkillDocument {
     inputs: skillDoc.clawbuddy.inputs,
   }
 
-  return buildParsedSkillDocument(skill, 'markdown')
-}
-
-/**
- * Parse and validate a legacy .skill JSON file into a CapabilityDefinition
- * and Prisma-compatible data for upserting.
- */
-export function parseSkillFile(raw: unknown): ParsedSkillDocument {
-  const skill = SkillDefinitionSchema.parse(raw)
-
-  return buildParsedSkillDocument(skill, 'json')
+  return buildParsedSkillDocument(skill)
 }
 
 export function parseSkillSource(content: string): ParsedSkillDocument {
   const trimmed = content.trimStart()
 
   if (trimmed.startsWith('{')) {
-    let raw: unknown
-    try {
-      raw = JSON.parse(content)
-    } catch {
-      throw new Error('Invalid JSON in legacy .skill file')
-    }
-
-    return parseSkillFile(raw)
+    throw new Error(
+      'Legacy .skill JSON files are no longer supported. Convert the skill to SKILL.md.',
+    )
   }
 
   return parseMarkdownSkill(content)

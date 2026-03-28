@@ -1,35 +1,16 @@
 import { describe, expect, test } from 'vitest'
-import { parseSkillFile, parseSkillSource } from './skill-parser.js'
+import { parseSkillSource } from './skill-parser.js'
 
 describe('skill-parser', () => {
-  test('parses legacy .skill JSON files', () => {
-    const result = parseSkillFile({
-      name: 'Bash Shell',
-      slug: 'bash',
-      description: 'Execute bash commands in a sandboxed environment.',
-      version: '1.0.0',
-      type: 'bash',
-      networkAccess: false,
-      instructions: 'Use bash carefully.',
-      tools: [
-        {
-          name: 'run_bash',
-          description: 'Execute bash commands.',
-          parameters: {
-            type: 'object',
-            properties: {
-              command: { type: 'string' },
-            },
-            required: ['command'],
-          },
-        },
-      ],
-    })
-
-    expect(result.format).toBe('json')
-    expect(result.storageExtension).toBe('.skill')
-    expect(result.skill.slug).toBe('bash')
-    expect(result.dbData.systemPrompt).toBe('Use bash carefully.')
+  test('rejects legacy .skill JSON files', () => {
+    expect(() =>
+      parseSkillSource(
+        JSON.stringify({
+          name: 'Bash Shell',
+          slug: 'bash',
+        }),
+      ),
+    ).toThrow('Legacy .skill JSON files are no longer supported')
   })
 
   test('parses Markdown skills with OpenCode frontmatter and clawbuddy config', () => {

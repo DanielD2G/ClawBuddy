@@ -4,8 +4,6 @@ ClawBuddy now uses Markdown skills compatible with the OpenCode `SKILL.md` forma
 
 The OpenCode-compatible fields stay at the top level, and every field that is specific to ClawBuddy lives under `clawbuddy:`.
 
-Legacy `.skill` JSON files are still supported for backward compatibility, but new skills should be written as `SKILL.md`.
-
 ## File Layout
 
 Use one folder per skill:
@@ -151,13 +149,7 @@ inputs:
 
 ## Uploading Skills
 
-From the Settings UI you can upload:
-
-- `SKILL.md`
-- legacy `.skill`
-- legacy `.json`
-
-Markdown is the preferred format.
+From the Settings UI you can upload `SKILL.md`.
 
 ## Bundled Skills
 

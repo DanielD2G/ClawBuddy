@@ -101,7 +101,7 @@ export interface ParsedSkillDocument {
     installationScript: string | null
     source: string
   }
-  format: 'json' | 'markdown'
-  storageExtension: '.skill' | '.md'
-  contentType: 'application/json' | 'text/markdown'
+  format: 'markdown'
+  storageExtension: '.md'
+  contentType: 'text/markdown'
 }

@@ -225,7 +225,7 @@ export function InstalledSkills({
           <input
             ref={fileInputRef}
             type="file"
-            accept=".md,.skill,.json"
+            accept=".md"
             className="hidden"
             onChange={handleFileSelect}
           />
@@ -251,8 +251,7 @@ export function InstalledSkills({
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Puzzle className="size-12 text-muted-foreground/50 mb-4" />
             <p className="text-muted-foreground text-center">
-              No skills installed yet. Upload a <code>SKILL.md</code> or legacy <code>.skill</code>{' '}
-              file to get started.
+              No skills installed yet. Upload a <code>SKILL.md</code> file to get started.
             </p>
           </CardContent>
         </Card>

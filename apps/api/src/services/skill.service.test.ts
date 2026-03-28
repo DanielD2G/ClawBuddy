@@ -52,9 +52,9 @@ vi.mock('../capabilities/skill-parser.js', () => ({
       installationScript: null,
       source: 'uploaded',
     },
-    format: 'json',
-    storageExtension: '.skill',
-    contentType: 'application/json',
+    format: 'markdown',
+    storageExtension: '.md',
+    contentType: 'text/markdown',
   }),
 }))
 
@@ -119,9 +119,9 @@ describe('skill.service', () => {
       expect(result.success).toBe(true)
       expect(result.slug).toBe('test-skill')
       expect(mockStorageService.upload).toHaveBeenCalledWith(
-        'skills/test-skill.skill',
+        'skills/test-skill.md',
         expect.any(Buffer),
-        'application/json',
+        'text/markdown',
       )
       expect(mockPrisma.capability.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -157,9 +157,9 @@ describe('skill.service', () => {
           installationScript: 'apt-get install -y curl',
           source: 'uploaded',
         },
-        format: 'json',
-        storageExtension: '.skill',
-        contentType: 'application/json',
+        format: 'markdown',
+        storageExtension: '.md',
+        contentType: 'text/markdown',
       } as ReturnType<typeof parseSkillSource>)
 
       const onBuildLog = vi.fn()
@@ -195,9 +195,9 @@ describe('skill.service', () => {
           installationScript: 'bad-command',
           source: 'uploaded',
         },
-        format: 'json',
-        storageExtension: '.skill',
-        contentType: 'application/json',
+        format: 'markdown',
+        storageExtension: '.md',
+        contentType: 'text/markdown',
       } as ReturnType<typeof parseSkillSource>)
 
       mockImageBuilderService.testSkillInstallation.mockResolvedValueOnce({
@@ -238,12 +238,12 @@ describe('skill.service', () => {
       mockPrisma.capability.findUnique.mockResolvedValueOnce({
         slug: 'my-skill',
         source: 'uploaded',
-        skillFileKey: 'skills/my-skill.skill',
+        skillFileKey: 'skills/my-skill.md',
       })
 
       const result = await skillService.deleteSkill('my-skill')
       expect(result.success).toBe(true)
-      expect(mockStorageService.deleteObject).toHaveBeenCalledWith('skills/my-skill.skill')
+      expect(mockStorageService.deleteObject).toHaveBeenCalledWith('skills/my-skill.md')
       expect(mockPrisma.capability.delete).toHaveBeenCalledWith({
         where: { slug: 'my-skill' },
       })
@@ -253,7 +253,7 @@ describe('skill.service', () => {
       mockPrisma.capability.findUnique.mockResolvedValueOnce({
         slug: 'my-skill',
         source: 'uploaded',
-        skillFileKey: 'skills/my-skill.skill',
+        skillFileKey: 'skills/my-skill.md',
       })
       mockStorageService.deleteObject.mockRejectedValueOnce(new Error('Storage error'))
 
@@ -305,7 +305,7 @@ describe('skill.service', () => {
   describe('syncSkillsFromStorage', () => {
     test('processes skill files from storage', async () => {
       mockStorageService.listObjects.mockResolvedValueOnce([
-        { Key: 'skills/test-skill.skill' },
+        { Key: 'skills/test-skill.md' },
         { Key: 'skills/another-skill.md' },
         { Key: 'skills/readme.txt' }, // should be skipped
       ])
@@ -327,26 +327,6 @@ describe('skill.service', () => {
 
       expect(mockStorageService.listObjects).toHaveBeenCalledWith('skills/')
       expect(mockPrisma.capability.upsert).toHaveBeenCalled()
-    })
-
-    test('prefers Markdown skill files over legacy .skill files for the same slug', async () => {
-      mockStorageService.listObjects.mockResolvedValueOnce([
-        { Key: 'skills/test-skill.skill' },
-        { Key: 'skills/test-skill.md' },
-      ])
-
-      mockStorageService.download.mockResolvedValueOnce(
-        (async function* () {
-          yield Buffer.from(
-            '---\nname: test-skill\ndescription: Test\nclawbuddy:\n  type: bash\n  tools:\n    - name: run\n      description: Test\n      parameters:\n        type: object\n        properties: {}\n---\nTest',
-          )
-        })(),
-      )
-
-      await skillService.syncSkillsFromStorage()
-
-      expect(mockStorageService.download).toHaveBeenCalledTimes(1)
-      expect(mockStorageService.download).toHaveBeenCalledWith('skills/test-skill.md')
     })
 
     test('handles storage errors gracefully', async () => {
