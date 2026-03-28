@@ -48,11 +48,15 @@ export const webFetch: CapabilityDefinition = {
   ],
   systemPrompt: `You have access to web_fetch for downloading and reading web content directly.
 
-**When to use each web tool:**
-- **web_fetch**: When you have a specific URL to read (documentation, API endpoints, GitHub files, articles)
-- **web_search**: When you need to FIND information with a search query
-- **run_browser_script**: Only when you need to INTERACT with a page (login, fill forms, click buttons)
+**IMPORTANT: web_fetch FIRST principle**
+Whenever a URL or domain is known — from the user's request, a component prompt, notes, or any prior context — ALWAYS use web_fetch to go directly to that page. Do NOT use web_search to look up information that's available at a known URL. web_search is for discovery (finding URLs you don't have); web_fetch is for retrieval (reading pages you already know about).
 
-web_fetch returns the full page content converted to Markdown by default. For JSON APIs, the raw JSON is returned as-is.`,
+**When to use each web tool:**
+- **web_fetch**: When you have a specific URL or website domain to read. This includes when someone says "get data from example.com" — construct the URL and fetch it directly.
+- **web_search**: ONLY when you need to DISCOVER/FIND pages and you don't have a URL or domain. Never use web_search as a lazy shortcut to avoid parsing HTML from web_fetch.
+- **run_browser_script**: Only when you need to INTERACT with a page (login, fill forms, click buttons, JavaScript-rendered content)
+
+web_fetch returns the full page content converted to Markdown by default. For JSON APIs, the raw JSON is returned as-is.
+If a web_fetch result is too large or doesn't contain the data you need, try fetching a more specific sub-page URL rather than falling back to web_search.`,
   sandbox: {},
 }
